@@ -4,6 +4,37 @@
 
 VS Code extension that parses GitHub Copilot's local log files and displays usage statistics (suggestions shown/accepted, acceptance rate by language and date) in a WebviewPanel.
 
+## Directory Structure
+
+```
+copilot-insight/
+├── .github/
+│   ├── copilot-instructions.md   # This file — agent guidance and conventions
+│   └── workflows/
+│       ├── ci.yml                # CI: type-check, lint, test on push/PR
+│       └── release.yml           # Publish to VS Code Marketplace on tag push
+├── images/                       # Extension icon and screenshot assets
+├── src/
+│   ├── extension.ts              # Activation entry point; registers all commands and wires the pipeline
+│   ├── types.ts                  # Shared TypeScript interfaces (CopilotUsageStats, ParsingContext, …)
+│   ├── copilotLogParser.ts       # Orchestrates log discovery and delegates to logFileReader / logContentParser
+│   ├── logFileReader.ts          # File-system utilities: session dir sorting, .log file reading
+│   ├── logContentParser.ts       # Line-by-line parser for both JSON-embedded and plain-text log formats
+│   ├── copilotUsagePanel.ts      # Singleton WebviewPanel (createOrShow pattern)
+│   ├── copilotUsageHtml.ts       # Generates the HTML string rendered in the WebviewPanel
+│   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Copilot Usage" sidebar view
+│   ├── inlineCompletionWrapper.ts   # Real-time inline-completion tracking via provider interception
+│   ├── exportStats.ts            # Serializes CopilotUsageStats to CSV or JSON
+│   ├── weeklyTrend.ts            # Compares this-week vs last-week acceptance rates
+│   ├── duckdbClient.ts           # Placeholder DuckDB client interface (not yet wired)
+│   └── test/                     # Mocha/vscode-test test files (*.test.ts)
+├── dist/                         # Build output — extension.js (CJS bundle, git-ignored)
+├── biome.json                    # Biome linter + formatter config
+├── esbuild.js                    # esbuild bundler script (dev and production modes)
+├── package.json                  # Extension manifest, commands, configuration, scripts
+└── tsconfig.json                 # TypeScript compiler options (target: ES2022, module: Node16)
+```
+
 ## Architecture
 
 Three-layer pipeline:
