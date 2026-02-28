@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#4fc3f7"/>
+      <stop offset="100%" stop-color="#0288d1"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#81c784"/>
+      <stop offset="100%" stop-color="#388e3c"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#ba68c8"/>
+      <stop offset="100%" stop-color="#7b1fa2"/>
+    </linearGradient>
+    <linearGradient id="bar4" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#ffb74d"/>
+      <stop offset="100%" stop-color="#f57c00"/>
+    </linearGradient>
+    <linearGradient id="sparkle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff176"/>
+      <stop offset="100%" stop-color="#fdd835"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rectangle -->
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#bg)"/>
+
+  <!-- Subtle grid lines -->
+  <line x1="24" y1="45" x2="104" y2="45" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <line x1="24" y1="60" x2="104" y2="60" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <line x1="24" y1="75" x2="104" y2="75" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+
+  <!-- Chart bars (representing usage stats) -->
+  <!-- Bar 1 - shortest -->
+  <rect x="28" y="72" width="14" height="26" rx="3" ry="3" fill="url(#bar1)" opacity="0.9"/>
+  <!-- Bar 2 - medium -->
+  <rect x="48" y="55" width="14" height="43" rx="3" ry="3" fill="url(#bar2)" opacity="0.9"/>
+  <!-- Bar 3 - tallest -->
+  <rect x="68" y="38" width="14" height="60" rx="3" ry="3" fill="url(#bar3)" opacity="0.9"/>
+  <!-- Bar 4 - medium-tall -->
+  <rect x="88" y="48" width="14" height="50" rx="3" ry="3" fill="url(#bar4)" opacity="0.9"/>
+
+  <!-- Trend line connecting bar tops -->
+  <polyline points="35,72 55,55 75,38 95,48"
+            fill="none" stroke="#ffffff" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+
+  <!-- Dots on trend line -->
+  <circle cx="35" cy="72" r="3" fill="#ffffff" opacity="0.9"/>
+  <circle cx="55" cy="55" r="3" fill="#ffffff" opacity="0.9"/>
+  <circle cx="75" cy="38" r="3" fill="#ffffff" opacity="0.9"/>
+  <circle cx="95" cy="48" r="3" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Insight sparkle/star (top-right area) -->
+  <g transform="translate(100, 26)" fill="url(#sparkle)">
+    <path d="M0,-8 L2,-2 L8,0 L2,2 L0,8 L-2,2 L-8,0 L-2,-2 Z" opacity="0.95"/>
+  </g>
+  <!-- Small sparkle -->
+  <g transform="translate(88, 20) scale(0.45)" fill="url(#sparkle)">
+    <path d="M0,-8 L2,-2 L8,0 L2,2 L0,8 L-2,2 L-8,0 L-2,-2 Z" opacity="0.7"/>
+  </g>
+
+  <!-- Bottom baseline -->
+  <line x1="22" y1="98" x2="108" y2="98" stroke="#ffffff" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- "Copilot Insight" text label -->
+  <text x="64" y="114" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9" font-weight="bold" fill="#ffffff" opacity="0.7" letter-spacing="1.5">INSIGHT</text>
+</svg>
