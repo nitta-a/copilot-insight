@@ -117,7 +117,9 @@ class CategoryItem extends vscode.TreeItem {
     const arrow = trend.rateDiff > 0 ? "↑" : trend.rateDiff < 0 ? "↓" : "→";
     const diffStr = trend.rateDiff !== 0 ? ` (${arrow}${Math.abs(trend.rateDiff).toFixed(1)}%)` : "";
 
-    items.push(new StatItem("This Week Rate", `${thisRateStr}${diffStr}`, trend.rateDiff >= 0 ? "arrow-up" : "arrow-down"));
+    items.push(
+      new StatItem("This Week Rate", `${thisRateStr}${diffStr}`, trend.rateDiff >= 0 ? "arrow-up" : "arrow-down"),
+    );
     items.push(new StatItem("Last Week Rate", lastRateStr, "history"));
     items.push(
       new StatItem(

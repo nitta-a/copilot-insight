@@ -35,6 +35,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
   const chatLatencyDetailStr = buildChatLatencyDetailStr(stats);
 
   const insightsSection = buildInsightsSection(stats);
+  const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -198,6 +199,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
     </div>
   </div>
   ${insightsSection}
+  ${contextInsightsSection}
   ${weeklyTrendSection}
   ${hourSection}
   ${chatHourSection}
@@ -524,9 +526,13 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
     const diff = trend.rateDiff;
     if (diff > 0) {
-      insights.push(`<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+      insights.push(
+        `<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+      );
     } else if (diff < 0) {
-      insights.push(`<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+      insights.push(
+        `<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+      );
     }
   }
 
@@ -540,25 +546,66 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
       return rateB > rateA ? b : a;
     });
     const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
-    insights.push(`<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`,
+    );
   }
 
   // 3. Peak hour insight
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
-    insights.push(`<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`,
+    );
   }
 
   // 4. Chat vs inline ratio
   if (stats.totalChat > 0 && stats.totalShown > 0) {
-    const ratio = (stats.totalChat / (stats.totalChat + stats.totalShown) * 100).toFixed(1);
-    insights.push(`<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`);
+    const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`,
+    );
   }
 
   if (insights.length === 0) {
     return "";
   }
   return `<h2>💡 Insights</h2>\n<div class="insights-section">${insights.join("\n")}</div>`;
+}
+
+/** Build the Context Window Insights section showing which context sources Copilot used. */
+function buildContextInsightsSection(byContextSource: Map<string, number>): string {
+  if (byContextSource.size === 0) {
+    return "";
+  }
+  const sorted = Array.from(byContextSource.entries()).sort((a, b) => b[1] - a[1]);
+  const total = sorted.reduce((sum, [, v]) => sum + v, 0);
+  const maxVal = Math.max(...sorted.map(([, v]) => v), 1);
+  const sourceColorClass = new Map<string, string>([
+    ["Open Tabs", "blue"],
+    ["Workspace", "green"],
+    ["MCP / External Docs", "purple"],
+    ["Current File", "orange"],
+    ["Snippet", "orange"],
+  ]);
+  const bars = sorted
+    .map(([source, count]) => {
+      const pct = ((count / total) * 100).toFixed(1);
+      const colorClass = sourceColorClass.get(source) ?? "blue";
+      return `<div class="bar-row">
+  <span class="bar-label model-bar-label">${escapeHtml(source)}</span>
+  <div class="bar-group">
+    <div class="bar-track">
+      <div class="bar-fill ${colorClass}" style="width:${(count / maxVal) * 100}%"></div>
+    </div>
+  </div>
+  <span class="bar-count">${count} (${pct}%)</span>
+</div>`;
+    })
+    .join("\n");
+  return `<h2>🔍 Context Window Insights</h2>
+<p style="font-size:0.85em;opacity:0.8;margin:0 0 8px">Context sources referenced in Copilot suggestions — total: ${total}</p>
+${bars}`;
 }
 
 /** Render a bar chart with shown/accepted/rate for Map<string, LanguageStat> data (model stats). */

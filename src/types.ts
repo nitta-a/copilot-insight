@@ -51,6 +51,9 @@ export interface CopilotUsageStats {
 
   // Session tracking
   bySession: Map<string, SessionStat>;
+
+  // Context Window Insights
+  byContextSource: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

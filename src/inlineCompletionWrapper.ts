@@ -98,10 +98,7 @@ export function wrapInlineCompletionProvider(
     },
 
     /** Forward partial-accept events to the original provider if it supports them. */
-    handleDidPartiallyAcceptCompletionItem(
-      item: vscode.InlineCompletionItem,
-      info: { acceptedLength: number },
-    ): void {
+    handleDidPartiallyAcceptCompletionItem(item: vscode.InlineCompletionItem, info: { acceptedLength: number }): void {
       augmented.handleDidPartiallyAcceptCompletionItem?.(item, info);
     },
   };

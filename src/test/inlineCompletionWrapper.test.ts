@@ -34,11 +34,19 @@ suite("wrapInlineCompletionProvider", () => {
 
     const shownCalls: string[] = [];
     const acceptedCalls: string[] = [];
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", (l) => shownCalls.push(l), (l) =>
-      acceptedCalls.push(l),
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      (l) => shownCalls.push(l),
+      (l) => acceptedCalls.push(l),
     );
 
-    const result = wrapped.provideInlineCompletionItems(makeDocument("typescript"), stubPosition, stubContext, stubToken);
+    const result = wrapped.provideInlineCompletionItems(
+      makeDocument("typescript"),
+      stubPosition,
+      stubContext,
+      stubToken,
+    );
 
     assert.ok(Array.isArray(result));
     const items = result as vscode.InlineCompletionItem[];
@@ -56,7 +64,12 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => [item],
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
+    );
     const result = wrapped.provideInlineCompletionItems(makeDocument("python"), stubPosition, stubContext, stubToken);
 
     const items = result as vscode.InlineCompletionItem[];
@@ -69,7 +82,12 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => list,
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
+    );
     const result = wrapped.provideInlineCompletionItems(makeDocument("rust"), stubPosition, stubContext, stubToken);
 
     assert.ok(!Array.isArray(result));
@@ -83,7 +101,12 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => null,
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
+    );
     const result = wrapped.provideInlineCompletionItems(makeDocument("go"), stubPosition, stubContext, stubToken);
     assert.strictEqual(result, null);
   });
@@ -93,12 +116,18 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => Promise.resolve([new vscode.InlineCompletionItem("async")]),
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
-    const result = await (
-      wrapped.provideInlineCompletionItems(makeDocument("java"), stubPosition, stubContext, stubToken) as Promise<
-        vscode.InlineCompletionItem[]
-      >
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
     );
+    const result = await (wrapped.provideInlineCompletionItems(
+      makeDocument("java"),
+      stubPosition,
+      stubContext,
+      stubToken,
+    ) as Promise<vscode.InlineCompletionItem[]>);
 
     assert.ok(Array.isArray(result));
     assert.strictEqual(result[0].command?.command, "my.accept.cmd");
@@ -110,10 +139,18 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => Promise.resolve(null),
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
-    const result = await (
-      wrapped.provideInlineCompletionItems(makeDocument("java"), stubPosition, stubContext, stubToken) as Promise<null>
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
     );
+    const result = await (wrapped.provideInlineCompletionItems(
+      makeDocument("java"),
+      stubPosition,
+      stubContext,
+      stubToken,
+    ) as Promise<null>);
     assert.strictEqual(result, null);
   });
 
@@ -123,7 +160,12 @@ suite("wrapInlineCompletionProvider", () => {
     };
 
     const shownCalls: string[] = [];
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", (l) => shownCalls.push(l), () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      (l) => shownCalls.push(l),
+      () => {},
+    );
 
     // Simulate a shown item that carries languageId in command.arguments[0]
     const shownItem = new vscode.InlineCompletionItem("shown");
@@ -142,7 +184,12 @@ suite("wrapInlineCompletionProvider", () => {
       },
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {}, () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "my.accept.cmd",
+      () => {},
+      () => {},
+    );
     const item = new vscode.InlineCompletionItem("x");
     wrapped.handleDidShowCompletionItem?.(item);
     assert.strictEqual(delegated, true);
@@ -151,7 +198,12 @@ suite("wrapInlineCompletionProvider", () => {
   test("handleDidShowCompletionItem with empty languageId still increments", () => {
     const shownCalls: string[] = [];
     const provider: vscode.InlineCompletionItemProvider = { provideInlineCompletionItems: () => [] };
-    const wrapped = wrapInlineCompletionProvider(provider, "cmd", (l) => shownCalls.push(l), () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "cmd",
+      (l) => shownCalls.push(l),
+      () => {},
+    );
 
     // item without command -> empty languageId
     wrapped.handleDidShowCompletionItem?.(new vscode.InlineCompletionItem("x"));
@@ -167,7 +219,12 @@ suite("wrapInlineCompletionProvider", () => {
       },
     };
 
-    const wrapped = wrapInlineCompletionProvider(provider, "cmd", () => {}, () => {});
+    const wrapped = wrapInlineCompletionProvider(
+      provider,
+      "cmd",
+      () => {},
+      () => {},
+    );
     const item = new vscode.InlineCompletionItem("partial");
     wrapped.handleDidPartiallyAcceptCompletionItem?.(item, { acceptedLength: 3 });
     assert.strictEqual(delegatedItem, item);

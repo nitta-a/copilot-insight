@@ -11,6 +11,27 @@ const INTENT_DISPLAY_NAMES: Record<string, string> = {
 
 const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 
+/** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
+export function normalizeContextSource(raw: string): string {
+  const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
+  if (lower.includes("opentab")) {
+    return "Open Tabs";
+  }
+  if (lower.includes("workspace") || lower.includes("reposearch")) {
+    return "Workspace";
+  }
+  if (lower.includes("mcp") || lower.includes("externaldoc")) {
+    return "MCP / External Docs";
+  }
+  if (lower.includes("currentfile") || lower === "current") {
+    return "Current File";
+  }
+  if (lower.includes("snippet")) {
+    return "Snippet";
+  }
+  return "";
+}
+
 /** Increment a Map<string, number> counter by 1 (no-op if key is empty). */
 export function incrementCount(map: Map<string, number>, key: string): void {
   if (!key) {
@@ -95,6 +116,27 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   } else if (eventLower.includes("rejected") || eventLower.includes("dismissed")) {
     ctx.totalRejected++;
+  }
+
+  // Context Window Insights: parse context source references from JSON telemetry
+  const contextItems = data.contextItems ?? data.references ?? data.usedContext;
+  if (Array.isArray(contextItems)) {
+    for (const item of contextItems) {
+      const rawType = (item as Record<string, unknown>)?.type ?? (item as Record<string, unknown>)?.kind;
+      if (typeof rawType === "string") {
+        const source = normalizeContextSource(rawType);
+        if (source) {
+          incrementCount(ctx.byContextSource, source);
+        }
+      }
+    }
+  }
+  const directType = data.contextType ?? data.sourceType;
+  if (typeof directType === "string") {
+    const source = normalizeContextSource(directType);
+    if (source) {
+      incrementCount(ctx.byContextSource, source);
+    }
   }
 }
 
@@ -310,6 +352,36 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
 
 // --- Public API ---
 
+/**
+ * Parse context provider log lines that record which context sources were used.
+ * Returns true if the line was handled as a context event.
+ */
+function parseContextProviderLine(line: string, lower: string, ctx: ParsingContext): boolean {
+  if (!lower.includes("context")) {
+    return false;
+  }
+  // Match lines like: "[ContextProvider] added openTab: file.ts"
+  // or "context source: workspace" / "context from mcp"
+  if (!lower.includes("[contextprovider]") && !lower.includes("context source") && !lower.includes("context from")) {
+    return false;
+  }
+  const sourcePatterns: [RegExp, string][] = [
+    [/opentab/i, "Open Tabs"],
+    [/workspace/i, "Workspace"],
+    [/\bmcp\b/i, "MCP / External Docs"],
+    [/externaldoc/i, "MCP / External Docs"],
+    [/currentfile/i, "Current File"],
+    [/snippet/i, "Snippet"],
+  ];
+  for (const [pattern, source] of sourcePatterns) {
+    if (pattern.test(line)) {
+      incrementCount(ctx.byContextSource, source);
+      return true;
+    }
+  }
+  return false;
+}
+
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
@@ -320,6 +392,9 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
     return;
   }
   if (parseCcreqLine(line, lineCtx, ctx)) {
+    return;
+  }
+  if (parseContextProviderLine(line, lineCtx.lower, ctx)) {
     return;
   }
   parseLegacyKeywordLine(line, lineCtx.lower, lineCtx.dateKey, ctx);
