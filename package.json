@@ -110,7 +110,11 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [7, 14, 30],
+          "enum": [
+            7,
+            14,
+            30
+          ],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.topLanguagesCount": {
