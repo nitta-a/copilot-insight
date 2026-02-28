@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { parseCopilotLogs } from "./copilotLogParser";
 import { CopilotUsagePanel } from "./copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./copilotUsageTreeProvider";
+import { EventTracker } from "./eventTracker";
 import { exportAsCsv, exportAsJson } from "./exportStats";
 import { InlineCompletionTracker } from "./inlineCompletionWrapper";
 import type { CopilotUsageStats } from "./types";
@@ -13,6 +14,10 @@ export function activate(context: vscode.ExtensionContext) {
   // provider registered after activation (including GitHub Copilot) is
   // intercepted and its show/accept events are counted in real-time.
   const inlineTracker = new InlineCompletionTracker(context);
+
+  // Phase 1: Event instrumentation — capture text-change, editor-switch, and
+  // completion-accept events and persist them to structured storage.
+  const eventTracker = new EventTracker(context);
 
   const treeProvider = new CopilotUsageTreeProvider();
 
@@ -98,6 +103,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     treeProvider,
     copilotUsageTreeView,
+    eventTracker,
     showCopilotUsageDisposable,
     changeDailyUsagePeriodDisposable,
     refreshDisposable,
