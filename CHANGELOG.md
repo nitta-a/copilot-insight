@@ -4,7 +4,13 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [0.1.0] - Pre-release
+## [1.0.0] - 2026-02-28
 
-- Initial pre-release
-- Show GitHub Copilot usage statistics (suggestions shown/accepted, acceptance rate) by language and date via the `Show GitHub Copilot Usage` command
+### Added
+- Initial stable release
+- Copilot usage statistics dashboard (suggestions shown / accepted / acceptance rate)
+- Breakdown by language and date
+- Weekly trend comparison
+- Activity bar view with dashboard button
+- CSV / JSON export
+- Extension icon and activity bar icon

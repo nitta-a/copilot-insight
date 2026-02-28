@@ -2,8 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by language and date.",
-  "version": "0.1.0",
-  "preview": true,
+  "version": "1.0.0",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {
@@ -45,7 +44,8 @@
     "commands": [
       {
         "command": "copilot-insight.showCopilotUsage",
-        "title": "Copilot Insight: Show Usage"
+        "title": "Copilot Insight: Show Usage",
+        "icon": "$(open-preview)"
       },
       {
         "command": "copilot-insight.changeDailyUsagePeriod",
@@ -69,6 +69,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "copilot-insight.showCopilotUsage",
+          "when": "view == copilotUsageView",
+          "group": "navigation"
+        },
         {
           "command": "copilot-insight.refreshUsage",
           "when": "view == copilotUsageView",
@@ -134,8 +139,10 @@
     "format": "biome format ./src",
     "format:fix": "biome format --write ./src",
     "test": "vscode-test",
-    "vsce:package": "vsce package --pre-release --no-dependencies",
-    "vsce:publish": "vsce publish --pre-release --no-dependencies",
+    "vsce:pre-package": "vsce package --pre-release --no-dependencies",
+    "vsce:package": "vsce package",
+    "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
+    "vsce:publish": "vsce publish",
     "inext": "code --install-extension "
   },
   "devDependencies": {
