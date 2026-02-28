@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import {
   incrementStatCount,
+  normalizeContextSource,
   parseLogContent,
   parseTextLogLine,
   processJsonEntry,
@@ -36,6 +37,7 @@ function makeEmptyStats(): ParsingContext {
     chatLatencyP50: 0,
     chatLatencyP95: 0,
     bySession: new Map(),
+    byContextSource: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -510,6 +512,146 @@ suite("logContentParser", () => {
         stats,
       );
       assert.strictEqual(stats.bySession.size, 0);
+    });
+  });
+
+  suite("normalizeContextSource", () => {
+    test("maps openTab variants to 'Open Tabs'", () => {
+      assert.strictEqual(normalizeContextSource("openTab"), "Open Tabs");
+      assert.strictEqual(normalizeContextSource("openTabs"), "Open Tabs");
+      assert.strictEqual(normalizeContextSource("open-tab"), "Open Tabs");
+      assert.strictEqual(normalizeContextSource("open tab"), "Open Tabs");
+    });
+
+    test("maps workspace variants to 'Workspace'", () => {
+      assert.strictEqual(normalizeContextSource("workspace"), "Workspace");
+      assert.strictEqual(normalizeContextSource("workspaceFile"), "Workspace");
+      assert.strictEqual(normalizeContextSource("workspaceIndex"), "Workspace");
+      assert.strictEqual(normalizeContextSource("repoSearch"), "Workspace");
+    });
+
+    test("maps mcp/external variants to 'MCP / External Docs'", () => {
+      assert.strictEqual(normalizeContextSource("mcp"), "MCP / External Docs");
+      assert.strictEqual(normalizeContextSource("externalDoc"), "MCP / External Docs");
+    });
+
+    test("maps currentFile variants to 'Current File'", () => {
+      assert.strictEqual(normalizeContextSource("currentFile"), "Current File");
+      assert.strictEqual(normalizeContextSource("current"), "Current File");
+    });
+
+    test("maps snippet to 'Snippet'", () => {
+      assert.strictEqual(normalizeContextSource("snippet"), "Snippet");
+    });
+
+    test("returns empty string for unknown types", () => {
+      assert.strictEqual(normalizeContextSource("unknown"), "");
+      assert.strictEqual(normalizeContextSource(""), "");
+    });
+  });
+
+  suite("Context Window Insights – JSON parsing", () => {
+    test("parses contextItems array with type field", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_shown",
+          contextItems: [{ type: "openTab" }, { type: "openTab" }, { type: "workspace" }],
+        },
+        stats,
+      );
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 2);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("parses references array with kind field", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_shown",
+          references: [{ kind: "mcp" }, { kind: "openTab" }],
+        },
+        stats,
+      );
+      assert.strictEqual(stats.byContextSource.get("MCP / External Docs"), 1);
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
+    });
+
+    test("parses usedContext array", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "shown", usedContext: [{ type: "currentFile" }] }, stats);
+      assert.strictEqual(stats.byContextSource.get("Current File"), 1);
+    });
+
+    test("parses direct contextType string field", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "shown", contextType: "workspaceFile" }, stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("parses sourceType string field", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "shown", sourceType: "openTab" }, stats);
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
+    });
+
+    test("ignores unknown context types", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "shown", contextItems: [{ type: "unknown_source" }] }, stats);
+      assert.strictEqual(stats.byContextSource.size, 0);
+    });
+
+    test("ignores non-array contextItems", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "shown", contextItems: "openTab" }, stats);
+      assert.strictEqual(stats.byContextSource.size, 0);
+    });
+  });
+
+  suite("Context Window Insights – text log parsing", () => {
+    test("[ContextProvider] openTab line recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 [ContextProvider] added openTab: src/app.ts", stats);
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
+    });
+
+    test("[ContextProvider] workspace line recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 [ContextProvider] fetching workspace context", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("[ContextProvider] mcp line recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 [ContextProvider] resolving mcp reference", stats);
+      assert.strictEqual(stats.byContextSource.get("MCP / External Docs"), 1);
+    });
+
+    test("context source: workspace line recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 context source: workspace index", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("context from openTab line recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 context from openTab file.ts", stats);
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
+    });
+
+    test("unrelated context line not recorded", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 some unrelated log context", stats);
+      assert.strictEqual(stats.byContextSource.size, 0);
+    });
+
+    test("accumulates multiple context source mentions", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 [ContextProvider] added openTab: a.ts", stats);
+      parseTextLogLine("2024-06-01 [ContextProvider] added openTab: b.ts", stats);
+      parseTextLogLine("2024-06-01 [ContextProvider] workspace context loaded", stats);
+      assert.strictEqual(stats.byContextSource.get("Open Tabs"), 2);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
     });
   });
 });

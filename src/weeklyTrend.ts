@@ -18,10 +18,7 @@ export interface WeeklyComparison {
  * Calculate weekly trend by comparing this week (Mon–today) with last week (Mon–Sun).
  * Uses ISO week convention: Monday = start of week.
  */
-export function calculateWeeklyTrend(
-  byDate: Map<string, DateStat>,
-  chatByDate: Map<string, number>,
-): WeeklyComparison {
+export function calculateWeeklyTrend(byDate: Map<string, DateStat>, chatByDate: Map<string, number>): WeeklyComparison {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -42,8 +39,7 @@ export function calculateWeeklyTrend(
   const thisWeek = aggregateDateRange(byDate, chatByDate, thisMonday, today);
   const lastWeek = aggregateDateRange(byDate, chatByDate, lastMonday, lastSunday);
 
-  const rateDiff =
-    thisWeek.shown > 0 && lastWeek.shown > 0 ? thisWeek.rate - lastWeek.rate : 0;
+  const rateDiff = thisWeek.shown > 0 && lastWeek.shown > 0 ? thisWeek.rate - lastWeek.rate : 0;
 
   return { thisWeek, lastWeek, rateDiff };
 }
