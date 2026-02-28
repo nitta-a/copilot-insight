@@ -110,7 +110,11 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [7, 14, 30],
+          "enum": [
+            7,
+            14,
+            30
+          ],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.topLanguagesCount": {
@@ -156,5 +160,8 @@
     "esbuild": "^0.27.3",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.32.0"
   }
 }
