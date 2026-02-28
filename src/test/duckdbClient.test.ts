@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import type { DuckDbClient, DuckDbRow } from "../duckdbClient";
+import { createDuckDbClient } from "../duckdbClient";
 
 suite("duckdbClient – interface contract", () => {
   test("DuckDbRow is assignable from a plain object", () => {
@@ -63,5 +64,9 @@ suite("duckdbClient – interface contract", () => {
     await assert.doesNotReject(async () => {
       await mock.close();
     });
+  });
+
+  test("createDuckDbClient rejects until DuckDB package is available", async () => {
+    await assert.rejects(createDuckDbClient, /DuckDB is not yet available/);
   });
 });
