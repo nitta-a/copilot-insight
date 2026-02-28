@@ -3,8 +3,10 @@
 out/**
 node_modules/**
 src/**
+.github/**
 .gitignore
 .yarnrc
+biome.json
 esbuild.js
 vsc-extension-quickstart.md
 **/tsconfig.json
@@ -12,3 +14,4 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+images/icon.svg
