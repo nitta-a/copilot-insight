@@ -135,15 +135,19 @@ export class InlineCompletionTracker implements vscode.Disposable {
   private readonly _originalRegister: typeof vscode.languages.registerInlineCompletionItemProvider;
 
   constructor(context: vscode.ExtensionContext) {
-    // Save the original before patching so we can restore it on dispose.
-    this._originalRegister = vscode.languages.registerInlineCompletionItemProvider.bind(vscode.languages);
+    // Save the exact original reference (no .bind()) so dispose() can restore it
+    // with strict reference equality.
+    this._originalRegister = vscode.languages.registerInlineCompletionItemProvider;
+
+    // Keep a bound copy only for calling, so the 'this' context is correct at runtime.
+    const callOriginal = this._originalRegister.bind(vscode.languages);
 
     // Patch the global registration function.
     (vscode.languages as unknown as Record<string, unknown>).registerInlineCompletionItemProvider = (
       selector: vscode.DocumentSelector,
       provider: vscode.InlineCompletionItemProvider,
     ): vscode.Disposable =>
-      this._originalRegister(
+      callOriginal(
         selector,
         wrapInlineCompletionProvider(
           provider,
