@@ -1,10 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import * as vscode from "vscode";
 import { parseLogContent } from "./logContentParser";
 import type { ParsingContext } from "./types";
 
-/** Maximum number of recent session directories to scan. */
-const MAX_SESSION_DIRS = 5;
+function getMaxSessionDirs(): number {
+  return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
+}
 
 export async function isDirectory(dirPath: string): Promise<boolean> {
   try {
@@ -28,7 +30,7 @@ export async function getSortedSessionDirs(logBaseDir: string, fallback: string)
         dirs.push(dirPath);
       }
     }
-    return dirs.sort().reverse().slice(0, MAX_SESSION_DIRS);
+    return dirs.sort().reverse().slice(0, getMaxSessionDirs());
   } catch {
     return [fallback];
   }

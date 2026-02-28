@@ -49,8 +49,73 @@
       {
         "command": "copilot-insight.changeDailyUsagePeriod",
         "title": "Copilot Insight: Change Daily Usage Period"
+      },
+      {
+        "command": "copilot-insight.refreshUsage",
+        "title": "Copilot Insight: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "copilot-insight.exportCsv",
+        "title": "Copilot Insight: Export CSV",
+        "icon": "$(file)"
+      },
+      {
+        "command": "copilot-insight.exportJson",
+        "title": "Copilot Insight: Export JSON",
+        "icon": "$(json)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "copilot-insight.refreshUsage",
+          "when": "view == copilotUsageView",
+          "group": "navigation"
+        },
+        {
+          "command": "copilot-insight.exportCsv",
+          "when": "view == copilotUsageView",
+          "group": "export"
+        },
+        {
+          "command": "copilot-insight.exportJson",
+          "when": "view == copilotUsageView",
+          "group": "export"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "copilot-insight.changeDailyUsagePeriod",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Copilot Insight",
+      "properties": {
+        "copilot-insight.maxSessionDirs": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of recent VS Code session directories to scan for Copilot logs."
+        },
+        "copilot-insight.defaultDisplayDays": {
+          "type": "integer",
+          "default": 14,
+          "enum": [7, 14, 30],
+          "description": "Default number of days to show in the Daily Usage chart."
+        },
+        "copilot-insight.topLanguagesCount": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 3,
+          "maximum": 30,
+          "description": "Number of top languages to display in the Usage by Language chart."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

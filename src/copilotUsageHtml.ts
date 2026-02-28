@@ -1,15 +1,17 @@
+import * as vscode from "vscode";
 import type { CopilotUsageStats, LanguageStat } from "./copilotLogParser";
+import { calculateWeeklyTrend } from "./weeklyTrend";
 
-const TOP_LANGUAGES_COUNT = 10;
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
 const HOUR_CELL_SCALE = 0.85;
 const SESSION_ID_MAX_LENGTH = 20;
 
 export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
+  const topCount = vscode.workspace.getConfiguration("copilot-insight").get<number>("topLanguagesCount", 10);
   const languageData = Array.from(stats.byLanguage.entries())
     .sort((a, b) => b[1].shown - a[1].shown)
-    .slice(0, TOP_LANGUAGES_COUNT);
+    .slice(0, topCount);
 
   const dateData = Array.from(stats.byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
@@ -22,6 +24,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
   const intentSection = buildSimpleBarChart(stats.byChatIntent, "🎯 Chat Intent (Agent/Plan/Ask)", "blue");
   const hourSection = buildHourGrid(stats.byHour, "⏰ Activity by Hour", "", "completions");
   const chatHourSection = buildHourGrid(stats.chatByHour, "💬 Chat Activity by Hour", " chat", "chat requests");
+  const weeklyTrendSection = buildWeeklyTrendSection(stats);
   const warningSection = buildWarningSection(stats.logFilesFound);
   const errorSection = stats.totalErrors > 0 ? buildSimpleBarChart(stats.errorsByType, "⚠️ Errors by Type", "red") : "";
   const latencyDistSection = buildLatencyDistSection(stats);
@@ -128,6 +131,15 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
     .hist-count { font-size: 0.7em; opacity: 0.7; min-width: 30px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+    .trend-container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .trend-card { background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 6px; padding: 16px; }
+    .trend-card h3 { font-size: 0.95em; margin: 0 0 12px 0; opacity: 0.8; }
+    .trend-stat { display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.85em; }
+    .trend-diff { font-weight: bold; font-size: 1.1em; margin-top: 8px; text-align: center; }
+    .trend-up { color: var(--vscode-charts-green); }
+    .trend-down { color: var(--vscode-charts-red, #f14c4c); }
+    .trend-neutral { opacity: 0.6; }
+    @media (max-width: 600px) { .trend-container { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -172,6 +184,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
       <div class="stat-label">Errors</div>
     </div>
   </div>
+  ${weeklyTrendSection}
   ${hourSection}
   ${chatHourSection}
   ${languageSection}
@@ -442,4 +455,42 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function buildWeeklyTrendSection(stats: CopilotUsageStats): string {
+  const trend = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
+
+  if (trend.thisWeek.shown === 0 && trend.lastWeek.shown === 0) {
+    return "";
+  }
+
+  const thisRateStr = trend.thisWeek.shown > 0 ? `${trend.thisWeek.rate.toFixed(1)}%` : "—";
+  const lastRateStr = trend.lastWeek.shown > 0 ? `${trend.lastWeek.rate.toFixed(1)}%` : "—";
+
+  let diffHtml = "";
+  if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
+    const sign = trend.rateDiff > 0 ? "+" : "";
+    const cssClass = trend.rateDiff > 0 ? "trend-up" : trend.rateDiff < 0 ? "trend-down" : "trend-neutral";
+    const arrow = trend.rateDiff > 0 ? "↑" : trend.rateDiff < 0 ? "↓" : "→";
+    diffHtml = `<div class="trend-diff ${cssClass}">${arrow} ${sign}${trend.rateDiff.toFixed(1)}%</div>`;
+  }
+
+  return `<h2>📈 Weekly Trend</h2>
+<div class="trend-container">
+  <div class="trend-card">
+    <h3>Last Week</h3>
+    <div class="trend-stat"><span>Shown</span><span>${trend.lastWeek.shown}</span></div>
+    <div class="trend-stat"><span>Accepted</span><span>${trend.lastWeek.accepted}</span></div>
+    <div class="trend-stat"><span>Rate</span><span>${lastRateStr}</span></div>
+    <div class="trend-stat"><span>Chat</span><span>${trend.lastWeek.chat}</span></div>
+  </div>
+  <div class="trend-card">
+    <h3>This Week</h3>
+    <div class="trend-stat"><span>Shown</span><span>${trend.thisWeek.shown}</span></div>
+    <div class="trend-stat"><span>Accepted</span><span>${trend.thisWeek.accepted}</span></div>
+    <div class="trend-stat"><span>Rate</span><span>${thisRateStr}</span></div>
+    <div class="trend-stat"><span>Chat</span><span>${trend.thisWeek.chat}</span></div>
+    ${diffHtml}
+  </div>
+</div>`;
 }

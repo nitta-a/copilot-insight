@@ -2,7 +2,9 @@ import * as vscode from "vscode";
 import type { CopilotUsageStats } from "./copilotLogParser";
 import { getHtmlContent } from "./copilotUsageHtml";
 
-const DEFAULT_DISPLAY_DAYS = 14;
+function getDefaultDisplayDays(): number {
+  return vscode.workspace.getConfiguration("copilot-insight").get<number>("defaultDisplayDays", 14);
+}
 
 export class CopilotUsagePanel {
   public static currentPanel: CopilotUsagePanel | undefined;
@@ -35,7 +37,7 @@ export class CopilotUsagePanel {
   private constructor(panel: vscode.WebviewPanel, _extensionUri: vscode.Uri, stats: CopilotUsageStats) {
     this._panel = panel;
     this._stats = stats;
-    this._days = DEFAULT_DISPLAY_DAYS;
+    this._days = getDefaultDisplayDays();
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
