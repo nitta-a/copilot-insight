@@ -48,6 +48,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
         { sessionId: "session-2", shown: 40, accepted: 30, chat: 5, errors: 1 },
       ],
     ]),
+    byContextSource: new Map(),
     ...overrides,
   };
 }
