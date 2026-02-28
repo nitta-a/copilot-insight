@@ -526,9 +526,13 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
     const diff = trend.rateDiff;
     if (diff > 0) {
-      insights.push(`<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+      insights.push(
+        `<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+      );
     } else if (diff < 0) {
-      insights.push(`<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+      insights.push(
+        `<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+      );
     }
   }
 
@@ -542,19 +546,25 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
       return rateB > rateA ? b : a;
     });
     const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
-    insights.push(`<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`,
+    );
   }
 
   // 3. Peak hour insight
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
-    insights.push(`<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`,
+    );
   }
 
   // 4. Chat vs inline ratio
   if (stats.totalChat > 0 && stats.totalShown > 0) {
-    const ratio = (stats.totalChat / (stats.totalChat + stats.totalShown) * 100).toFixed(1);
-    insights.push(`<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`);
+    const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`,
+    );
   }
 
   if (insights.length === 0) {
