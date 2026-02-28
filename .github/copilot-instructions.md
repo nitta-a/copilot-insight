@@ -52,10 +52,10 @@ After making any code changes, always run the following commands in order and fi
 npm run check-types
 npm run lint
 npm run format
-npm test
+xvfb-run -a npm test
 ```
 
 - **`npm run check-types`** — TypeScript type-check (no emit). Fix all type errors before proceeding.
 - **`npm run lint`** — Biome linter on `src/**/*.ts`. Fix or suppress all warnings/errors.
 - **`npm run format`** — Biome formatter check on `src/**/*.ts`. Run `npm run format:fix` to auto-fix formatting issues.
-- **`npm test`** — Compiles tests and runs the full test suite via `vscode-test`. All tests must pass.
+- **`xvfb-run -a npm test`** — Compiles tests and runs the full test suite via `vscode-test`. **All tests must pass.** VS Code requires a display; use `xvfb-run -a` in headless environments (CI uses this too). Do **not** skip or ignore test failures.

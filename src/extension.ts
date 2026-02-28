@@ -3,11 +3,17 @@ import { parseCopilotLogs } from "./copilotLogParser";
 import { CopilotUsagePanel } from "./copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./copilotUsageTreeProvider";
 import { exportAsCsv, exportAsJson } from "./exportStats";
+import { InlineCompletionTracker } from "./inlineCompletionWrapper";
 import type { CopilotUsageStats } from "./types";
 
 let cachedStats: CopilotUsageStats | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  // Install the inline-completion wrapper as early as possible so that any
+  // provider registered after activation (including GitHub Copilot) is
+  // intercepted and its show/accept events are counted in real-time.
+  const inlineTracker = new InlineCompletionTracker(context);
+
   const treeProvider = new CopilotUsageTreeProvider();
 
   const copilotUsageTreeView = vscode.window.createTreeView("copilotUsageView", {
