@@ -1,6 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="3" y="3" width="7" height="9" rx="1"/>
-  <rect x="14" y="3" width="7" height="5" rx="1"/>
-  <rect x="14" y="12" width="7" height="9" rx="1"/>
-  <rect x="3" y="16" width="7" height="5" rx="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Bar chart bars -->
+  <rect x="2" y="14" width="3.5" height="7" rx="0.8" fill="currentColor" stroke="none"/>
+  <rect x="7.25" y="10" width="3.5" height="11" rx="0.8" fill="currentColor" stroke="none"/>
+  <rect x="12.5" y="6" width="3.5" height="15" rx="0.8" fill="currentColor" stroke="none"/>
+  <rect x="17.75" y="9" width="3.5" height="12" rx="0.8" fill="currentColor" stroke="none"/>
+  <!-- Trend line -->
+  <polyline points="3.75,14 9,10 14.25,6 19.5,9" stroke-width="1.8" fill="none"/>
+  <!-- Dots on trend line -->
+  <circle cx="3.75" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="9" cy="10" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="14.25" cy="6" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="19.5" cy="9" r="1.2" fill="currentColor" stroke="none"/>
+  <!-- Insight sparkle -->
+  <path d="M20.5,2 L21,3.5 L22.5,4 L21,4.5 L20.5,6 L20,4.5 L18.5,4 L20,3.5 Z" fill="currentColor" stroke="none"/>
 </svg>
