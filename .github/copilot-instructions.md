@@ -43,3 +43,19 @@ Output goes to `dist/extension.js` (CJS, `vscode` external).
 1. Register in `package.json` under `contributes.commands`.
 2. Call `context.subscriptions.push(vscode.commands.registerCommand(...))` in `activate()`.
 3. No activation events needed — `activationEvents: []` (VS Code 1.109+ auto-activates).
+
+## Post-Implementation Checks
+
+After making any code changes, always run the following commands in order and fix any errors before finishing:
+
+```bash
+npm run check-types
+npm run lint
+npm run format
+npm test
+```
+
+- **`npm run check-types`** — TypeScript type-check (no emit). Fix all type errors before proceeding.
+- **`npm run lint`** — Biome linter on `src/**/*.ts`. Fix or suppress all warnings/errors.
+- **`npm run format`** — Biome formatter check on `src/**/*.ts`. Run `npm run format:fix` to auto-fix formatting issues.
+- **`npm test`** — Compiles tests and runs the full test suite via `vscode-test`. All tests must pass.
