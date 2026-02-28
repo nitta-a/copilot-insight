@@ -88,7 +88,7 @@ export class EventTracker implements vscode.Disposable {
     latencyMs?: number;
     isPartialAccept?: boolean;
   }): void {
-    const openPaths = (vscode.window.visibleTextEditors ?? []).map((e) => e.document.uri.fsPath).filter(Boolean);
+    const openPaths = vscode.window.visibleTextEditors.map((e) => e.document.uri.fsPath).filter(Boolean);
 
     const event: CompletionAcceptEvent = {
       sessionId: this._sessionId,

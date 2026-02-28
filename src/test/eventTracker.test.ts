@@ -1,15 +1,27 @@
 import * as assert from "assert";
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { EventTracker } from "../eventTracker";
 
+/** Remove a directory tree (cleanup). */
+function rmrf(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // best-effort cleanup
+  }
+}
+
 suite("EventTracker", () => {
   let tracker: EventTracker;
+  const storagePath = "/tmp/event-tracker-test-storage";
 
   setup(() => {
+    rmrf(storagePath);
     const subscriptions: vscode.Disposable[] = [];
     const context = {
       subscriptions,
-      globalStorageUri: vscode.Uri.file("/tmp/event-tracker-test-storage"),
+      globalStorageUri: vscode.Uri.file(storagePath),
       logUri: vscode.Uri.file("/tmp/logs/session-abc123"),
     } as unknown as vscode.ExtensionContext;
     tracker = new EventTracker(context);
@@ -17,6 +29,7 @@ suite("EventTracker", () => {
 
   teardown(() => {
     tracker.dispose();
+    rmrf(storagePath);
   });
 
   test("storage is accessible after construction", () => {
