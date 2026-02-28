@@ -18,7 +18,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
       ["2026-02-27", { shown: 50, accepted: 35 }],
       ["2026-02-28", { shown: 50, accepted: 35 }],
     ]),
-    byModel: new Map([["gpt-4", 80]]),
+    byModel: new Map([["gpt-4", { shown: 80, accepted: 60 }]]),
     byChatModel: new Map([["gpt-4o", 15]]),
     byHour: new Map([["10", 30]]),
     byChatIntent: new Map([["Agent", 10]]),
@@ -89,10 +89,11 @@ suite("exportStats", () => {
       assert.ok(dateLine.endsWith(",7"), "Should end with chat count 7");
     });
 
-    test("includes model section", () => {
+    test("includes model section with rate", () => {
       const csv = exportAsCsv(makeStats());
       assert.ok(csv.includes("# Inline Completion Model"));
-      assert.ok(csv.includes("gpt-4,80"));
+      assert.ok(csv.includes("Model,Shown,Accepted,Rate"));
+      assert.ok(csv.includes("gpt-4,80,60,75.0%"));
     });
 
     test("includes chat model section", () => {
@@ -122,6 +123,31 @@ suite("exportStats", () => {
       const csv = exportAsCsv(makeStats({ byModel: new Map(), byChatModel: new Map() }));
       assert.ok(!csv.includes("# Inline Completion Model"));
       assert.ok(!csv.includes("# Chat Model"));
+    });
+
+    test("includes chat intent section", () => {
+      const csv = exportAsCsv(makeStats());
+      assert.ok(csv.includes("# Chat Intent"), "Should contain chat intent header");
+      assert.ok(csv.includes("Intent,Count"), "Should contain intent CSV header");
+      assert.ok(csv.includes("Agent,10"), "Should contain Agent intent row");
+    });
+
+    test("includes activity by hour section", () => {
+      const csv = exportAsCsv(makeStats());
+      assert.ok(csv.includes("# Activity by Hour"), "Should contain hourly header");
+      assert.ok(csv.includes("Hour,Inline,Chat"), "Should contain hourly CSV header");
+      assert.ok(csv.includes("10,30,5"), "Should contain hour 10 with inline=30, chat=5");
+      assert.ok(csv.includes("00,0,0"), "Should contain hour 00 with zeros");
+    });
+
+    test("omits chat intent section when empty", () => {
+      const csv = exportAsCsv(makeStats({ byChatIntent: new Map() }));
+      assert.ok(!csv.includes("# Chat Intent"));
+    });
+
+    test("omits hourly section when both maps are empty", () => {
+      const csv = exportAsCsv(makeStats({ byHour: new Map(), chatByHour: new Map() }));
+      assert.ok(!csv.includes("# Activity by Hour"));
     });
 
     test("escapes values containing commas", () => {
@@ -176,7 +202,7 @@ suite("exportStats", () => {
 
     test("converts model maps to objects", () => {
       const parsed = JSON.parse(exportAsJson(makeStats()));
-      assert.strictEqual(parsed.byModel["gpt-4"], 80);
+      assert.deepStrictEqual(parsed.byModel["gpt-4"], { shown: 80, accepted: 60 });
       assert.strictEqual(parsed.byChatModel["gpt-4o"], 15);
     });
 

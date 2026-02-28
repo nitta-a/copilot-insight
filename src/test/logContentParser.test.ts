@@ -349,7 +349,7 @@ suite("logContentParser", () => {
       parseTextLogLine("2024-06-01 ccreq:mno345 | success | gpt-4o | 120ms | [XtabProvider]", stats);
       assert.strictEqual(stats.totalChat, 0);
       assert.strictEqual(stats.totalAccepted, 1);
-      assert.strictEqual(stats.byModel.get("gpt-4o"), 1);
+      assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 0, accepted: 1 });
       assert.strictEqual(stats.byChatModel.size, 0);
     });
 
@@ -372,7 +372,7 @@ suite("logContentParser", () => {
         stats,
       );
       assert.strictEqual(stats.totalShown, 1);
-      assert.strictEqual(stats.byModel.get("gpt-4.5"), 1);
+      assert.deepStrictEqual(stats.byModel.get("gpt-4.5"), { shown: 1, accepted: 0 });
     });
 
     test("accumulates counts across multiple chat models", () => {

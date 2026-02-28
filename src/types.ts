@@ -25,7 +25,7 @@ export interface CopilotUsageStats {
   avgLatencyMs: number;
   byLanguage: Map<string, LanguageStat>;
   byDate: Map<string, DateStat>;
-  byModel: Map<string, number>;
+  byModel: Map<string, LanguageStat>;
   byChatModel: Map<string, number>;
   byHour: Map<string, number>;
   byChatIntent: Map<string, number>;

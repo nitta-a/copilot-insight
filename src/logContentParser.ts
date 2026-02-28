@@ -145,7 +145,7 @@ function parseFetchCompletionsLine(
     }
     const engineMatch = line.match(/\/v1\/engines\/([\w.-]+)\/completions/);
     if (engineMatch) {
-      incrementCount(ctx.byModel, engineMatch[1]);
+      incrementStatCount(ctx.byModel, engineMatch[1], "shown");
     }
     if (latencyMs > 0) {
       ctx.latencySum += latencyMs;
@@ -241,7 +241,7 @@ function recordInlineAccepted(
     incrementCount(ctx.byHour, hourKey);
   }
   if (model) {
-    incrementCount(ctx.byModel, model);
+    incrementStatCount(ctx.byModel, model, "accepted");
   }
   if (latency > 0) {
     ctx.latencySum += latency;

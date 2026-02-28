@@ -44,9 +44,10 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   // By Model section
   if (stats.byModel.size > 0) {
     lines.push("# Inline Completion Model");
-    lines.push("Model,Count");
-    for (const [model, count] of Array.from(stats.byModel.entries()).sort((a, b) => b[1] - a[1])) {
-      lines.push(`${csvEscape(model)},${count}`);
+    lines.push("Model,Shown,Accepted,Rate");
+    for (const [model, stat] of Array.from(stats.byModel.entries()).sort((a, b) => b[1].shown - a[1].shown)) {
+      const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
+      lines.push(`${csvEscape(model)},${stat.shown},${stat.accepted},${rate}%`);
     }
     lines.push("");
   }
@@ -57,6 +58,29 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
     lines.push("Model,Count");
     for (const [model, count] of Array.from(stats.byChatModel.entries()).sort((a, b) => b[1] - a[1])) {
       lines.push(`${csvEscape(model)},${count}`);
+    }
+    lines.push("");
+  }
+
+  // By Chat Intent section
+  if (stats.byChatIntent.size > 0) {
+    lines.push("# Chat Intent");
+    lines.push("Intent,Count");
+    for (const [intent, count] of Array.from(stats.byChatIntent.entries()).sort((a, b) => b[1] - a[1])) {
+      lines.push(`${csvEscape(intent)},${count}`);
+    }
+    lines.push("");
+  }
+
+  // Activity by Hour section
+  if (stats.byHour.size > 0 || stats.chatByHour.size > 0) {
+    lines.push("# Activity by Hour");
+    lines.push("Hour,Inline,Chat");
+    for (let h = 0; h < 24; h++) {
+      const hourKey = String(h).padStart(2, "0");
+      const inline = stats.byHour.get(hourKey) ?? 0;
+      const chat = stats.chatByHour.get(hourKey) ?? 0;
+      lines.push(`${hourKey},${inline},${chat}`);
     }
     lines.push("");
   }
@@ -112,7 +136,7 @@ export function exportAsJson(stats: CopilotUsageStats): string {
         { ...stat, chat: stats.chatByDate.get(dateStr) ?? 0 },
       ]),
     ),
-    byModel: mapToObject<number>(stats.byModel),
+    byModel: mapToObject<LanguageStat>(stats.byModel),
     byChatModel: mapToObject<number>(stats.byChatModel),
     byChatIntent: mapToObject<number>(stats.byChatIntent),
     byHour: mapToObject<number>(stats.byHour),

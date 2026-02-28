@@ -20,7 +20,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
       ["2026-02-27", { shown: 20, accepted: 15 }],
       ["2026-02-28", { shown: 15, accepted: 10 }],
     ]),
-    byModel: new Map([["gpt-4", 80]]),
+    byModel: new Map([["gpt-4", { shown: 80, accepted: 60 }]]),
     byChatModel: new Map([["gpt-4o", 15]]),
     byHour: new Map([["10", 30]]),
     byChatIntent: new Map([["Agent", 10]]),

@@ -19,7 +19,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
 
   const languageSection = buildLanguageSection(languageData);
   const dateSection = buildDateSection(dateData, days, stats.chatByDate);
-  const modelSection = buildSimpleBarChart(stats.byModel, "🤖 Inline Completion Model", "blue");
+  const modelSection = buildModelBarChart(stats.byModel, "🤖 Inline Completion Model");
   const chatModelSection = buildSimpleBarChart(stats.byChatModel, "💬 Chat Model", "green");
   const intentSection = buildSimpleBarChart(stats.byChatIntent, "🎯 Chat Intent (Agent/Plan/Ask)", "blue");
   const hourSection = buildHourGrid(stats.byHour, "⏰ Activity by Hour", "", "completions");
@@ -33,6 +33,8 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
   const chatAvgLatencyStr = stats.chatAvgLatencyMs > 0 ? `${stats.chatAvgLatencyMs.toFixed(0)}ms` : "—";
   const latencyDetailStr = buildLatencyDetailStr(stats);
   const chatLatencyDetailStr = buildChatLatencyDetailStr(stats);
+
+  const insightsSection = buildInsightsSection(stats);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -140,6 +142,17 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
     .trend-down { color: var(--vscode-charts-red, #f14c4c); }
     .trend-neutral { opacity: 0.6; }
     @media (max-width: 600px) { .trend-container { grid-template-columns: 1fr; } }
+    .insights-section { margin-bottom: 24px; }
+    .insight-card {
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border-left: 3px solid var(--vscode-charts-blue);
+      border-radius: 4px;
+      padding: 10px 14px;
+      margin: 6px 0;
+      font-size: 0.9em;
+    }
+    .insight-icon { margin-right: 6px; }
+    .rate-bar-track { height: 8px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 2px; overflow: hidden; margin-bottom: 2px; }
   </style>
 </head>
 <body>
@@ -184,6 +197,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
       <div class="stat-label">Errors</div>
     </div>
   </div>
+  ${insightsSection}
   ${weeklyTrendSection}
   ${hourSection}
   ${chatHourSection}
@@ -239,6 +253,7 @@ function buildDateSection(dateData: [string, LanguageStat][], days: number, chat
     <span><span class="dot blue"></span>Shown</span>
     <span><span class="dot green"></span>Accepted</span>
     <span><span class="dot purple"></span>Chat</span>
+    <span><span class="dot orange"></span>Rate</span>
   </div>
   ${renderDateBarChart(dateData, chatByDate)}`;
 }
@@ -325,6 +340,8 @@ function renderDateBarChart(data: [string, LanguageStat][], chatByDate: Map<stri
     .map(([label, { shown, accepted }]) => {
       const chatCount = chatByDate.get(label) ?? 0;
       const formatted = formatDateLabel(label);
+      const rate = shown > 0 ? ((accepted / shown) * 100).toFixed(1) : "0.0";
+      const rateNum = shown > 0 ? (accepted / shown) * 100 : 0;
       return `<div class="bar-row">
   <span class="bar-label">${escapeHtml(formatted)}</span>
   <div class="bar-group">
@@ -337,8 +354,11 @@ function renderDateBarChart(data: [string, LanguageStat][], chatByDate: Map<stri
     <div class="bar-track">
       <div class="bar-fill purple" style="width:${(chatCount / maxVal) * 100}%"></div>
     </div>
+    <div class="rate-bar-track">
+      <div class="bar-fill orange" style="width:${rateNum}%"></div>
+    </div>
   </div>
-  <span class="bar-count">${shown} / ${accepted} / ${chatCount}</span>
+  <span class="bar-count">${shown} / ${accepted} / ${chatCount} (${rate}%)</span>
 </div>`;
     })
     .join("\n");
@@ -493,4 +513,64 @@ function buildWeeklyTrendSection(stats: CopilotUsageStats): string {
     ${diffHtml}
   </div>
 </div>`;
+}
+
+/** Build an insights section with automatically-generated summary observations. */
+function buildInsightsSection(stats: CopilotUsageStats): string {
+  const insights: string[] = [];
+
+  // 1. Weekly rate trend insight
+  const trend = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
+  if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
+    const diff = trend.rateDiff;
+    if (diff > 0) {
+      insights.push(`<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+    } else if (diff < 0) {
+      insights.push(`<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`);
+    }
+  }
+
+  // 2. Best language insight
+  const minShownForInsight = 5;
+  const langEntries = Array.from(stats.byLanguage.entries()).filter(([, s]) => s.shown >= minShownForInsight);
+  if (langEntries.length > 0) {
+    const best = langEntries.reduce((a, b) => {
+      const rateA = a[1].accepted / a[1].shown;
+      const rateB = b[1].accepted / b[1].shown;
+      return rateB > rateA ? b : a;
+    });
+    const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
+    insights.push(`<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`);
+  }
+
+  // 3. Peak hour insight
+  if (stats.byHour.size > 0) {
+    const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
+    insights.push(`<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`);
+  }
+
+  // 4. Chat vs inline ratio
+  if (stats.totalChat > 0 && stats.totalShown > 0) {
+    const ratio = (stats.totalChat / (stats.totalChat + stats.totalShown) * 100).toFixed(1);
+    insights.push(`<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`);
+  }
+
+  if (insights.length === 0) {
+    return "";
+  }
+  return `<h2>💡 Insights</h2>\n<div class="insights-section">${insights.join("\n")}</div>`;
+}
+
+/** Render a bar chart with shown/accepted/rate for Map<string, LanguageStat> data (model stats). */
+function buildModelBarChart(data: Map<string, LanguageStat>, title: string): string {
+  const sorted = Array.from(data.entries()).sort((a, b) => b[1].shown - a[1].shown);
+  if (sorted.length === 0) {
+    return "";
+  }
+  return `<h2>${title}</h2>
+  <div class="legend">
+    <span><span class="dot blue"></span>Shown</span>
+    <span><span class="dot green"></span>Accepted</span>
+  </div>
+  ${renderBarChartWithRate(sorted)}`;
 }
