@@ -86,6 +86,14 @@ let currentDays = 14;
 // Theme helpers — read VS Code CSS variables for chart colours
 // ---------------------------------------------------------------------------
 
+/**
+ * Distinct hardcoded red used exclusively for statistical anomaly data points.
+ * Using a fixed colour (rather than the theme's `--vscode-charts-red`) ensures
+ * anomaly points are immediately recognisable across light, dark, and
+ * high-contrast themes where the theme red may blend with other series.
+ */
+const ANOMALY_POINT_COLOR = "#FF4B4B";
+
 function getCssVar(name: string): string {
   return getComputedStyle(document.body).getPropertyValue(name).trim();
 }
@@ -223,8 +231,14 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
   );
   const hasTrueRates = trueRates.some((r) => r !== null);
 
-  // Per-point styling for anomaly detection
-  const pointColors = timeline.map((e) => (e.isAnomaly ? c.red : c.orange));
+  // Per-point styling for anomaly detection.
+  // Anomaly points use ANOMALY_COLOR (#FF4B4B) — a hardcoded bright red that
+  // stands out across light, dark, and high-contrast themes — rather than the
+  // theme's generic red.  A larger radius and explicit border further
+  // emphasise the anomalous day.
+  const pointColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
+  const pointBorderColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
+  const pointBorderWidths = timeline.map((e) => (e.isAnomaly ? 2 : 1));
   const pointRadii = timeline.map((e) => (e.isAnomaly ? 8 : 3));
 
   if (timelineChart) {
@@ -283,6 +297,8 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
           yAxisID: "yRate",
           borderWidth: 2,
           pointBackgroundColor: pointColors,
+          pointBorderColor: pointBorderColors,
+          pointBorderWidth: pointBorderWidths,
           pointRadius: pointRadii,
           tension: 0.3,
           order: 1,
