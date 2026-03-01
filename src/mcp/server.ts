@@ -19,6 +19,7 @@ import { InMemoryAnalyticsDb } from "../db/duckdbClient";
 import { EventStorage } from "../events/eventStorage";
 import { computeModelPerformance } from "../metrics/metricsEngine";
 import type { CompletionAcceptEvent, TrackedEvent } from "../events/eventSchema";
+export { resolveStoragePath } from "./storageResolver";
 
 // ── Constants (mirrored from dashboardPayload.ts) ────────────────────────────
 
