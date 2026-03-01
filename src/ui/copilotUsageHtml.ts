@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
+import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
-import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -670,51 +670,6 @@ function buildModelBarChart(data: Map<string, LanguageStat>, title: string): str
     <span><span class="dot green"></span>Accepted</span>
   </div>
   ${renderBarChartWithRate(sorted)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard interactive section (Chart.js canvases + controls)
-// ---------------------------------------------------------------------------
-
-function buildDashboardSection(payload?: DashboardPayload): string {
-  if (!payload) {
-    return "";
-  }
-  return `<section id="db-interactive">
-  <div class="db-tabs" role="tablist">
-    <button class="db-tab-btn active" data-tab="overview" role="tab" aria-selected="true">📊 Overview (ROI)</button>
-    <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
-    <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
-  </div>
-  <div id="db-period-selector" style="margin: 0 0 16px;"></div>
-
-  <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
-    <div id="db-summary-cards" class="stats-grid"></div>
-    <h2>🌐 Language Breakdown</h2>
-    <div id="db-language-table"></div>
-  </div>
-
-  <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
-    <h2>📈 True Acceptance Rate Timeline</h2>
-    <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
-  </div>
-
-  <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
-    <div id="db-velocity-section">
-      <h2>🌊 Flow &amp; Velocity Correlation</h2>
-      <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
-        Scatter of typing speed (KPM) vs relative completion activity.
-        Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
-      </p>
-      <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
-    </div>
-  </div>
-
-  <div style="margin:16px 0 8px">
-    <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
-    <button id="db-btn-export-png" class="db-export-btn">🖼️ Export Chart (PNG)</button>
-  </div>
-</section>`;
 }
 
 /** Emit the nonce-protected data + script tags for the dashboard WebView. */
