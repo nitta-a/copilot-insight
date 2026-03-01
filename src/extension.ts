@@ -46,6 +46,20 @@ export function activate(context: vscode.ExtensionContext) {
     return stats;
   }
 
+  /** Compute advanced metrics (best-effort) from tracked events. */
+  function getAdvancedMetrics(stats: CopilotUsageStats) {
+    const dates = eventTracker.storage.listDates();
+    const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
+    if (allEvents.length === 0) {
+      return {};
+    }
+    return {
+      trueAcceptance: computeTrueAcceptanceRate(allEvents, stats.totalShown),
+      velocity: computeVelocityAnalysis(allEvents),
+      modelPerformance: computeModelPerformance(allEvents),
+    };
+  }
+
   const showCopilotUsageDisposable = vscode.commands.registerCommand("copilot-insight.showCopilotUsage", async () => {
     await vscode.window.withProgress(
       {
@@ -54,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
       async () => {
         const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats);
+        CopilotUsagePanel.createOrShow(context.extensionUri, stats, getAdvancedMetrics(stats));
       },
     );
   });
@@ -75,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats);
+          CopilotUsagePanel.createOrShow(context.extensionUri, stats, getAdvancedMetrics(stats));
         }
       },
     );

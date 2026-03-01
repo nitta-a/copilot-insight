@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "module": "ES2022",
+    "target": "ES2022",
+    "lib": ["ES2024", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true
+  },
+  "include": ["webview/**/*.ts", "src/ui/dashboardMessages.ts"]
+}

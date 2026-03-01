@@ -43,11 +43,29 @@ async function main() {
 			esbuildProblemMatcherPlugin,
 		],
 	});
+
+	// Separate bundle for the WebView frontend (browser context, IIFE format).
+	const webviewCtx = await esbuild.context({
+		entryPoints: ['webview/dashboard.ts'],
+		bundle: true,
+		format: 'iife',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'browser',
+		outfile: 'dist/webview/dashboard.js',
+		logLevel: 'silent',
+		plugins: [esbuildProblemMatcherPlugin],
+	});
+
 	if (watch) {
 		await ctx.watch();
+		await webviewCtx.watch();
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+		await webviewCtx.rebuild();
+		await webviewCtx.dispose();
 	}
 }
 
