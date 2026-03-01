@@ -32,6 +32,7 @@ export interface DbWorkerClient {
   trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult>;
   velocity(windowMs?: number): Promise<VelocityAnalysisResult>;
   modelPerformance(): Promise<ModelPerformanceResult>;
+  compact(ttlMs?: number): Promise<{ compacted: number }>;
   close(): Promise<void>;
 }
 
@@ -120,6 +121,11 @@ export class DbWorkerClientImpl implements DbWorkerClient {
       crossTab: raw.crossTab,
       bestModelByLanguage: new Map(Object.entries(raw.bestModelByLanguage)),
     };
+  }
+
+  /** Compact events older than `ttlMs` into daily aggregated stats. */
+  async compact(ttlMs?: number): Promise<{ compacted: number }> {
+    return (await this._send("compact", { ttlMs })) as { compacted: number };
   }
 
   /** Shut down the worker thread and release all resources. */

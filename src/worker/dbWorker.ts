@@ -133,6 +133,17 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         break;
       }
 
+      case "compact": {
+        const opts = (msg.payload ?? {}) as { ttlMs?: number };
+        const compacted = db.compact(opts.ttlMs);
+        // Trim cachedEvents to match the db's TTL so metric functions stay consistent.
+        const effectiveTtl = opts.ttlMs ?? 24 * 60 * 60 * 1000;
+        const cutoff = new Date(Date.now() - effectiveTtl).toISOString();
+        cachedEvents = cachedEvents.filter((e) => e.timestamp >= cutoff);
+        parentPort?.postMessage({ type: "compact", id: msg.id, result: { compacted } });
+        break;
+      }
+
       case "close": {
         await db.close();
         cachedEvents = [];
