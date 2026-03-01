@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import type { DuckDbClient, DuckDbRow } from "../duckdbClient";
-import { createDuckDbClient } from "../duckdbClient";
+import { InMemoryAnalyticsDb, createDuckDbClient } from "../duckdbClient";
+import type { TextChangeEvent, CompletionAcceptEvent } from "../eventSchema";
 
 suite("duckdbClient – interface contract", () => {
   test("DuckDbRow is assignable from a plain object", () => {
@@ -68,5 +69,145 @@ suite("duckdbClient – interface contract", () => {
 
   test("createDuckDbClient rejects until DuckDB package is available", async () => {
     await assert.rejects(createDuckDbClient, /DuckDB is not yet available/);
+  });
+});
+
+suite("InMemoryAnalyticsDb", () => {
+  test("starts with zero size", () => {
+    const db = new InMemoryAnalyticsDb();
+    assert.strictEqual(db.size, 0);
+  });
+
+  test("ingests raw events and increments size", () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "typescript",
+        charsAdded: 10,
+        charsDeleted: 2,
+      } as TextChangeEvent,
+    ]);
+    assert.strictEqual(db.size, 1);
+  });
+
+  test("query('events') returns all ingested events", async () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "typescript",
+        charsAdded: 10,
+        charsDeleted: 2,
+      } as TextChangeEvent,
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:01:00Z",
+        eventType: "completionAccept",
+        languageId: "python",
+        modelName: "gpt-4o",
+        latencyMs: 200,
+        isPartialAccept: false,
+        acceptedCharacters: 50,
+        openEditorPaths: [],
+      } as CompletionAcceptEvent,
+    ]);
+    const rows = await db.query("events");
+    assert.strictEqual(rows.length, 2);
+  });
+
+  test("query('sessions') groups events by session", async () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "ts",
+        charsAdded: 5,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+      {
+        sessionId: "s2",
+        timestamp: "2026-02-28T11:00:00Z",
+        eventType: "textChange",
+        languageId: "ts",
+        charsAdded: 3,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+    ]);
+    const rows = await db.query("sessions");
+    assert.strictEqual(rows.length, 2);
+  });
+
+  test("query('events_by_type:completionAccept') filters events", async () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "ts",
+        charsAdded: 5,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:01:00Z",
+        eventType: "completionAccept",
+        languageId: "ts",
+        modelName: "",
+        latencyMs: 0,
+        isPartialAccept: false,
+        acceptedCharacters: 20,
+        openEditorPaths: [],
+      } as CompletionAcceptEvent,
+    ]);
+    const rows = await db.query("events_by_type:completionAccept");
+    assert.strictEqual(rows.length, 1);
+  });
+
+  test("close prevents further queries", async () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "ts",
+        charsAdded: 5,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+    ]);
+    await db.close();
+    const rows = await db.query("events");
+    assert.deepStrictEqual(rows, []);
+  });
+
+  test("close prevents further ingestion", async () => {
+    const db = new InMemoryAnalyticsDb();
+    await db.close();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "ts",
+        charsAdded: 5,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+    ]);
+    assert.strictEqual(db.size, 0);
+  });
+
+  test("implements DuckDbClient interface", async () => {
+    const db: DuckDbClient = new InMemoryAnalyticsDb();
+    assert.strictEqual(typeof db.query, "function");
+    assert.strictEqual(typeof db.close, "function");
+    await db.close();
   });
 });

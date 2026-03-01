@@ -5,6 +5,9 @@ import { CopilotUsageTreeProvider } from "./copilotUsageTreeProvider";
 import { EventTracker } from "./eventTracker";
 import { exportAsCsv, exportAsJson } from "./exportStats";
 import { InlineCompletionTracker } from "./inlineCompletionWrapper";
+import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metricsEngine";
+import { generateMarkdownReport } from "./reportGenerator";
+import { StatusBarIndicator } from "./statusBarIndicator";
 import type { CopilotUsageStats } from "./types";
 
 let cachedStats: CopilotUsageStats | undefined;
@@ -18,6 +21,16 @@ export function activate(context: vscode.ExtensionContext) {
   // Phase 1: Event instrumentation — capture text-change, editor-switch, and
   // completion-accept events and persist them to structured storage.
   const eventTracker = new EventTracker(context);
+
+  // Phase 3: Real-time status bar indicator showing current-session
+  // Copilot contribution (acceptance rate + counts).
+  const statusBar = new StatusBarIndicator();
+
+  // Periodically refresh the status bar from the inline tracker.
+  const statusBarRefreshMs = 3_000;
+  const statusBarTimer = setInterval(() => {
+    statusBar.update(inlineTracker.stats);
+  }, statusBarRefreshMs);
 
   const treeProvider = new CopilotUsageTreeProvider();
 
@@ -100,15 +113,56 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Phase 3: Export Markdown report with ROI estimation.
+  const exportReportDisposable = vscode.commands.registerCommand("copilot-insight.exportReport", async () => {
+    if (!cachedStats) {
+      vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
+      return;
+    }
+
+    // Gather events for advanced metrics (best-effort).
+    const dates = eventTracker.storage.listDates();
+    const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
+
+    const trueAcceptance =
+      allEvents.length > 0 ? computeTrueAcceptanceRate(allEvents, cachedStats.totalShown) : undefined;
+    const velocity = allEvents.length > 0 ? computeVelocityAnalysis(allEvents) : undefined;
+    const modelPerformance = allEvents.length > 0 ? computeModelPerformance(allEvents) : undefined;
+
+    const period = dates.length > 0 ? `${dates[0]} — ${dates[dates.length - 1]}` : "All available data";
+    const projectName = vscode.workspace.name;
+
+    const content = generateMarkdownReport({
+      period,
+      projectName,
+      stats: cachedStats,
+      trueAcceptance,
+      velocity,
+      modelPerformance,
+    });
+
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file("copilot-usage-report.md"),
+      filters: { markdown: ["md"] },
+    });
+    if (uri) {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
+      vscode.window.showInformationMessage(`Report exported to ${uri.fsPath}`);
+    }
+  });
+
   context.subscriptions.push(
     treeProvider,
     copilotUsageTreeView,
     eventTracker,
+    statusBar,
+    { dispose: () => clearInterval(statusBarTimer) },
     showCopilotUsageDisposable,
     changeDailyUsagePeriodDisposable,
     refreshDisposable,
     exportCsvDisposable,
     exportJsonDisposable,
+    exportReportDisposable,
   );
 }
 
