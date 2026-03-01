@@ -1,7 +1,7 @@
 import * as assert from "assert";
-import type { DuckDbClient, DuckDbRow } from "../../db/duckdbClient";
-import { InMemoryAnalyticsDb, createDuckDbClient } from "../../db/duckdbClient";
-import type { TextChangeEvent, CompletionAcceptEvent } from "../../events/eventSchema";
+import type { DuckDbClient, DuckDbRow } from "../../src/db/duckdbClient";
+import { InMemoryAnalyticsDb, createDuckDbClient } from "../../src/db/duckdbClient";
+import type { TextChangeEvent, CompletionAcceptEvent } from "../../src/events/eventSchema";
 
 suite("duckdbClient – interface contract", () => {
   test("DuckDbRow is assignable from a plain object", () => {

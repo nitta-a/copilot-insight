@@ -2,8 +2,8 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import type { TextChangeEvent, TrackedEvent } from "../../events/eventSchema";
-import { EventStorage } from "../../events/eventStorage";
+import type { TextChangeEvent, TrackedEvent } from "../../src/events/eventSchema";
+import { EventStorage } from "../../src/events/eventStorage";
 
 /** Create a fresh temp directory for each test. */
 function makeTempDir(): string {

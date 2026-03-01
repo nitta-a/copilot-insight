@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import type { EventRecord, FileMetadataRecord, SessionRecord } from "../../db/dbSchema";
-import { buildFileMetadataRecords, buildSessionRecords, normaliseEvent } from "../../db/dbSchema";
+import type { EventRecord, FileMetadataRecord, SessionRecord } from "../../src/db/dbSchema";
+import { buildFileMetadataRecords, buildSessionRecords, normaliseEvent } from "../../src/db/dbSchema";
 
 suite("dbSchema", () => {
   suite("normaliseEvent", () => {

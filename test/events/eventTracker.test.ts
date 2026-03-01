@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as fs from "fs";
 import * as vscode from "vscode";
-import { EventTracker } from "../../events/eventTracker";
+import { EventTracker } from "../../src/events/eventTracker";
 
 /** Remove a directory tree (cleanup). */
 function rmrf(dir: string): void {

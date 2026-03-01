@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { exportAsCsv, exportAsJson } from "../../export/exportStats";
-import type { CopilotUsageStats } from "../../types";
+import { exportAsCsv, exportAsJson } from "../../src/export/exportStats";
+import type { CopilotUsageStats } from "../../src/types";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {

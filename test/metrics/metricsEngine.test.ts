@@ -1,10 +1,10 @@
 import * as assert from "assert";
-import type { TrackedEvent, CompletionAcceptEvent, TextChangeEvent } from "../../events/eventSchema";
+import type { TrackedEvent, CompletionAcceptEvent, TextChangeEvent } from "../../src/events/eventSchema";
 import {
   computeModelPerformance,
   computeTrueAcceptanceRate,
   computeVelocityAnalysis,
-} from "../../metrics/metricsEngine";
+} from "../../src/metrics/metricsEngine";
 
 suite("metricsEngine", () => {
   suite("computeTrueAcceptanceRate", () => {
