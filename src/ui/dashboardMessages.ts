@@ -58,6 +58,21 @@ export interface LanguageEntry {
   rate: number;
 }
 
+export interface WeekStat {
+  shown: number;
+  accepted: number;
+  /** Acceptance rate as percentage 0–100. */
+  rate: number;
+  chat: number;
+}
+
+export interface WeeklyTrendData {
+  thisWeek: WeekStat;
+  lastWeek: WeekStat;
+  /** Acceptance rate difference (thisWeek.rate - lastWeek.rate). Positive = improved. */
+  rateDiff: number;
+}
+
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline. */
@@ -66,6 +81,10 @@ export interface DashboardPayload {
   timeline: TimelineEntry[];
   velocityPoints: VelocityPoint[];
   languageBreakdown: LanguageEntry[];
+  /** Auto-generated insight strings (plain text, safe to render as text content). */
+  insights: string[];
+  /** Weekly trend comparison data (null when insufficient data). */
+  weeklyTrend: WeeklyTrendData | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
+import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
-import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -31,17 +31,10 @@ export function getHtmlContent(
   const intentSection = buildSimpleBarChart(stats.byChatIntent, "🎯 Chat Intent (Agent/Plan/Ask)", "blue");
   const hourSection = buildHourGrid(stats.byHour, "⏰ Activity by Hour", "", "completions");
   const chatHourSection = buildHourGrid(stats.chatByHour, "💬 Chat Activity by Hour", " chat", "chat requests");
-  const weeklyTrendSection = buildWeeklyTrendSection(stats);
   const warningSection = buildWarningSection(stats.logFilesFound);
   const errorSection = stats.totalErrors > 0 ? buildSimpleBarChart(stats.errorsByType, "⚠️ Errors by Type", "red") : "";
   const latencyDistSection = buildLatencyDistSection(stats);
   const sessionSection = buildSessionSection(stats.bySession);
-  const avgLatencyStr = stats.avgLatencyMs > 0 ? `${stats.avgLatencyMs.toFixed(0)}ms` : "—";
-  const chatAvgLatencyStr = stats.chatAvgLatencyMs > 0 ? `${stats.chatAvgLatencyMs.toFixed(0)}ms` : "—";
-  const latencyDetailStr = buildLatencyDetailStr(stats);
-  const chatLatencyDetailStr = buildChatLatencyDetailStr(stats);
-
-  const insightsSection = buildInsightsSection(stats);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
 
   return `<!DOCTYPE html>
@@ -103,7 +96,7 @@ export function getHtmlContent(
     .period-selector a { color: var(--vscode-textLink-foreground); text-decoration: none; }
     .period-selector a:hover { text-decoration: underline; }
     .warning {
-      margin-top: 30px;
+      margin-bottom: 16px;
       padding: 16px;
       background: var(--vscode-inputValidation-warningBackground);
       border-radius: 6px;
@@ -195,69 +188,79 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
+    /* ── Tab bar ──────────────────────────────────────────────────────── */
+    .db-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-editor-inactiveSelectionBackground)); margin-bottom: 16px; }
+    .db-tab-btn {
+      background: transparent;
+      color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-family: var(--vscode-font-family);
+      opacity: 0.75;
+    }
+    .db-tab-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
+    .db-tab-btn.active {
+      color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+      border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-charts-blue));
+      opacity: 1;
+      font-weight: 600;
+    }
+    .db-tab-pane { display: none; }
+    .db-tab-pane.active { display: block; }
   </style>
 </head>
 <body>
   <h1>🤖 GitHub Copilot Usage Dashboard</h1>
-
-  ${buildDashboardSection(dashboardPayload)}
-
-  <hr class="db-section-sep">
-  <h2 style="margin-top:0">📋 Detailed Statistics</h2>
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-value">${stats.totalShown}</div>
-      <div class="stat-label">Suggestions Shown</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.totalAccepted}</div>
-      <div class="stat-label">Suggestions Accepted</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.acceptanceRate.toFixed(1)}%</div>
-      <div class="stat-label">Acceptance Rate</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.logFilesFound}</div>
-      <div class="stat-label">Log Files Parsed</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.totalChat}</div>
-      <div class="stat-label">Chat Requests</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${avgLatencyStr}</div>
-      <div class="stat-label">Inline Avg Latency</div>
-      <div class="stat-detail">${latencyDetailStr}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${chatAvgLatencyStr}</div>
-      <div class="stat-label">Chat Avg Latency</div>
-      <div class="stat-detail">${chatLatencyDetailStr}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.totalRejected}</div>
-      <div class="stat-label">Rejected</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${stats.totalErrors}</div>
-      <div class="stat-label">Errors</div>
-    </div>
-  </div>
-  ${insightsSection}
-  ${contextInsightsSection}
-  ${weeklyTrendSection}
-  ${hourSection}
-  ${chatHourSection}
-  ${languageSection}
-  ${dateSection}
-  ${latencyDistSection}
-  ${modelSection}
-  ${chatModelSection}
-  ${intentSection}
-  ${errorSection}
-  ${sessionSection}
   ${warningSection}
+  <section id="db-interactive">
+    <div class="db-tabs" role="tablist">
+      <button class="db-tab-btn active" data-tab="overview" role="tab" aria-selected="true">📊 Overview (ROI)</button>
+      <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
+      <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
+    </div>
+    <div id="db-period-selector" style="margin: 0 0 16px;"></div>
+
+    <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
+      <div id="db-summary-cards" class="stats-grid"></div>
+      <div id="db-insights-container"></div>
+      <div id="db-weekly-trend-container"></div>
+      ${dashboardPayload ? '<h2>🌐 Language Breakdown</h2><div id="db-language-table"></div>' : languageSection}
+    </div>
+
+    <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
+      <h2>📈 True Acceptance Rate Timeline</h2>
+      <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+      ${dateSection}
+      ${modelSection}
+      ${chatModelSection}
+      ${intentSection}
+      ${latencyDistSection}
+      ${errorSection}
+      ${sessionSection}
+    </div>
+
+    <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
+      <div id="db-velocity-section">
+        <h2>🌊 Flow &amp; Velocity Correlation</h2>
+        <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
+          Scatter of typing speed (KPM) vs relative completion activity.
+          Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
+        </p>
+        <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
+      </div>
+      ${hourSection}
+      ${chatHourSection}
+      ${contextInsightsSection}
+    </div>
+
+    <div style="margin:16px 0 8px">
+      <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
+      <button id="db-btn-export-png" class="db-export-btn">🖼️ Export Chart (PNG)</button>
+    </div>
+  </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
 </html>`;
@@ -667,40 +670,6 @@ function buildModelBarChart(data: Map<string, LanguageStat>, title: string): str
     <span><span class="dot green"></span>Accepted</span>
   </div>
   ${renderBarChartWithRate(sorted)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard interactive section (Chart.js canvases + controls)
-// ---------------------------------------------------------------------------
-
-function buildDashboardSection(payload?: DashboardPayload): string {
-  if (!payload) {
-    return "";
-  }
-  return `<section id="db-interactive">
-  <div id="db-summary-cards" class="stats-grid"></div>
-  <div id="db-period-selector" style="margin: 10px 0 16px;"></div>
-
-  <h2>📈 True Acceptance Rate Timeline</h2>
-  <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
-
-  <div id="db-velocity-section">
-    <h2>🌊 Flow &amp; Velocity Correlation</h2>
-    <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
-      Scatter of typing speed (KPM) vs relative completion activity.
-      Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
-    </p>
-    <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
-  </div>
-
-  <h2>🌐 Language Breakdown</h2>
-  <div id="db-language-table"></div>
-
-  <div style="margin:16px 0 8px">
-    <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
-    <button id="db-btn-export-png" class="db-export-btn">🖼️ Export Chart (PNG)</button>
-  </div>
-</section>`;
 }
 
 /** Emit the nonce-protected data + script tags for the dashboard WebView. */
