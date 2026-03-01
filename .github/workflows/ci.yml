@@ -34,5 +34,14 @@ jobs:
       - name: Build
         run: node esbuild.js
 
+      - name: Prepare VS Code binaries before firewall
+        run: |
+          set -euo pipefail
+          wget https://update.code.visualstudio.com/latest/linux-x64/stable -O /tmp/vscode.tar.gz
+          mkdir -p .vscode-test
+          tar -xzf /tmp/vscode.tar.gz -C .vscode-test --strip-components=1
+
       - name: Test
         run: xvfb-run -a npm test
+        env:
+          VSCODE_EXECUTABLE_PATH: ${{ github.workspace }}/.vscode-test/code
