@@ -61,8 +61,10 @@ function buildDb(globalStoragePath: string): { db: InMemoryAnalyticsDb; allEvent
  *   when launched standalone it is supplied via `--storage` CLI argument or the
  *   `COPILOT_INSIGHT_STORAGE_PATH` environment variable.
  */
+declare const __PKG_VERSION__: string;
+
 export async function startMcpServer(globalStoragePath: string): Promise<void> {
-  const server = new Server({ name: "copilot-insight", version: "1.0.0" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "copilot-insight", version: __PKG_VERSION__ }, { capabilities: { tools: {} } });
 
   // ── Tool registry ───────────────────────────────────────────────────────────
 
@@ -85,7 +87,7 @@ export async function startMcpServer(globalStoragePath: string): Promise<void> {
       {
         name: "get_model_efficiency",
         description:
-          "Returns per-language model efficiency statistics showing which AI model achieves the highest acceptance rate for each programming language.",
+          "Returns per-language model efficiency statistics showing which AI model has the highest number of accepted completions for each programming language.",
         inputSchema: {
           type: "object" as const,
           properties: {},
@@ -178,12 +180,20 @@ export async function startMcpServer(globalStoragePath: string): Promise<void> {
 
       const baselines = db.calculateBaselines(ANOMALY_BASELINE_DAYS);
 
+      // Restrict daily counts to the same window used for the baseline.
+      const windowCutoff = new Date();
+      windowCutoff.setDate(windowCutoff.getDate() - ANOMALY_BASELINE_DAYS);
+      const windowCutoffStr = windowCutoff.toISOString().slice(0, 10);
+
       const dailyCounts = new Map<string, number>();
       for (const e of allEvents) {
         if (e.eventType !== "completionAccept") {
           continue;
         }
         const date = e.timestamp.slice(0, 10);
+        if (date < windowCutoffStr) {
+          continue;
+        }
         dailyCounts.set(date, (dailyCounts.get(date) ?? 0) + 1);
       }
 

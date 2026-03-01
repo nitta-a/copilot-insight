@@ -178,23 +178,27 @@ suite("MCP server – get_anomaly_report logic", () => {
     await db.close();
   });
 
-  test("anomaly report detects day with significantly different count", async () => {
+  test("baseline variance enables anomaly detection preconditions", async () => {
     const db = new InMemoryAnalyticsDb();
-    // Days with count 10 baseline
+    // Baseline days: 10 events per day for 12 days (no variance)
     for (let day = 1; day <= 12; day++) {
       for (let i = 0; i < 10; i++) {
         db.ingest([makeAcceptEvent(`2026-01-${String(day).padStart(2, "0")}`)]);
       }
     }
-    // Anomalous day: 1 event (much lower than baseline of 10)
+
+    // With uniform baseline: stdDev is 0, so canDetect is false
+    let baselines = db.calculateBaselines(14);
+    assert.strictEqual(baselines.stdDev, 0);
+    let canDetect = baselines.sampleSize >= 2 && baselines.stdDev > 0;
+    assert.strictEqual(canDetect, false);
+
+    // Introduce variance with an anomalous day: 1 event (much lower than baseline of 10)
     db.ingest([makeAcceptEvent("2026-01-13")]);
-
-    const baselines = db.calculateBaselines(14);
-    assert.ok(baselines.stdDev === 0 || baselines.sampleSize >= 2);
-
-    // With uniform baseline: stdDev is 0, so canDetect is false (expected)
-    // Once there's variance, anomalies are detected
-    assert.ok(baselines.sampleSize >= 2);
+    baselines = db.calculateBaselines(14);
+    assert.ok(baselines.stdDev > 0);
+    canDetect = baselines.sampleSize >= 2 && baselines.stdDev > 0;
+    assert.strictEqual(canDetect, true);
     await db.close();
   });
 });

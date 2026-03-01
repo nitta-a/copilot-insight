@@ -1,5 +1,6 @@
 // @ts-check
 const esbuild = require("esbuild");
+const { version } = require("./package.json");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -56,6 +57,7 @@ async function main() {
 		platform: 'node',
 		outfile: 'dist/mcp-server.js',
 		logLevel: 'silent',
+		define: { __PKG_VERSION__: JSON.stringify(version) },
 		plugins: [esbuildProblemMatcherPlugin],
 	});
 
