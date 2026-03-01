@@ -36,6 +36,14 @@ export interface TrueAcceptanceResult {
   revertedCount: number;
 }
 
+/**
+ * Fraction of accepted characters that must be deleted to classify
+ * the acceptance as "reverted".  A threshold of 0.5 means that if
+ * ≥ 50 % of the accepted text length is deleted within the window,
+ * the completion is considered a false/wasted acceptance.
+ */
+const REVERT_DELETION_THRESHOLD = 0.5;
+
 /** Default window (ms) within which a deletion following an accept is considered a revert. */
 const DEFAULT_REVERT_WINDOW_MS = 30_000;
 
@@ -65,7 +73,7 @@ export function computeTrueAcceptanceRate(
       continue;
     }
     const acceptTime = new Date(accept.timestamp).getTime();
-    const threshold = accept.acceptedCharacters * 0.5;
+    const threshold = accept.acceptedCharacters * REVERT_DELETION_THRESHOLD;
 
     let deletedInWindow = 0;
     for (const change of textChanges) {
@@ -129,7 +137,10 @@ const KPM_WINDOW_MS = 60_000;
 /**
  * KPM drop threshold: if KPM in the window containing a completion accept
  * is below `averageKpm * KPM_DISRUPTION_FACTOR`, it is flagged as a
- * flow disruption.
+ * flow disruption.  A factor of 0.6 means a 40 %+ drop from the session
+ * average is considered disruptive — chosen based on empirical studies
+ * showing that significant context-switching costs appear when typing
+ * velocity drops below ~60 % of normal pace.
  */
 const KPM_DISRUPTION_FACTOR = 0.6;
 

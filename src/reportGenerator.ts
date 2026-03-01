@@ -35,7 +35,8 @@ export interface ReportOptions {
 
 /**
  * Average characters per completion, used for ROI estimation.
- * Based on typical Copilot suggestion length (~40 chars).
+ * Based on empirical analysis of typical Copilot inline suggestions which
+ * average approximately 40 characters (one short statement or expression).
  */
 const AVG_CHARS_PER_COMPLETION = 40;
 

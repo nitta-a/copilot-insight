@@ -27,9 +27,10 @@ export function activate(context: vscode.ExtensionContext) {
   const statusBar = new StatusBarIndicator();
 
   // Periodically refresh the status bar from the inline tracker.
+  const statusBarRefreshMs = 3_000;
   const statusBarTimer = setInterval(() => {
     statusBar.update(inlineTracker.stats);
-  }, 3_000);
+  }, statusBarRefreshMs);
 
   const treeProvider = new CopilotUsageTreeProvider();
 

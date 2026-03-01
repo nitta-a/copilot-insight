@@ -28,12 +28,13 @@ export class MetricsWorkerClient {
    */
   constructor(workerPath: string) {
     this._worker = new Worker(workerPath);
-    this._worker.on("message", (msg: { type: string; result?: unknown; error?: string }) => {
-      const entry = this._pending.get(msg.type);
+    this._worker.on("message", (msg: { type: string; id: string; result?: unknown; error?: string }) => {
+      const key = msg.id ?? msg.type;
+      const entry = this._pending.get(key);
       if (!entry) {
         return;
       }
-      this._pending.delete(msg.type);
+      this._pending.delete(key);
       if (msg.error) {
         entry.reject(new Error(msg.error));
       } else {
@@ -48,15 +49,16 @@ export class MetricsWorkerClient {
     });
   }
 
-  /** Send a typed message and wait for the response. */
+  /** Send a typed message and wait for the response, using a unique id for correlation. */
   private _send(type: string, payload?: unknown): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
       if (!this._worker) {
         reject(new Error("Worker has been terminated"));
         return;
       }
-      this._pending.set(type, { resolve, reject });
-      this._worker.postMessage({ type, payload });
+      const id = `${type}:${this._idCounter++}`;
+      this._pending.set(id, { resolve, reject });
+      this._worker.postMessage({ type, id, payload });
     });
   }
 
