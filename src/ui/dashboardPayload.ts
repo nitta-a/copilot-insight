@@ -7,7 +7,15 @@
 
 import type { CopilotUsageStats } from "../types";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { DashboardPayload, LanguageEntry, SummaryData, TimelineEntry, VelocityPoint } from "./dashboardMessages";
+import type {
+  DashboardPayload,
+  LanguageEntry,
+  SummaryData,
+  TimelineEntry,
+  VelocityPoint,
+  WeeklyTrendData,
+} from "./dashboardMessages";
+import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 /** Average characters per accepted completion (used for ROI estimation). */
 const AVG_CHARS_PER_COMPLETION = 40;
@@ -131,5 +139,52 @@ export function buildDashboardPayload(
       rate: stat.shown > 0 ? (stat.accepted / stat.shown) * 100 : 0,
     }));
 
-  return { days, summary, timeline, velocityPoints, languageBreakdown };
+  // ── Weekly trend ─────────────────────────────────────────────────────────
+  const trendResult = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
+  const weeklyTrend: WeeklyTrendData | null =
+    trendResult.thisWeek.shown > 0 || trendResult.lastWeek.shown > 0 ? trendResult : null;
+
+  // ── Insights ─────────────────────────────────────────────────────────────
+  const insights: string[] = [];
+
+  // 1. Weekly rate trend
+  if (trendResult.thisWeek.shown > 0 && trendResult.lastWeek.shown > 0) {
+    const diff = trendResult.rateDiff;
+    if (diff > 0) {
+      insights.push(
+        `📈 This week's acceptance rate is +${diff.toFixed(1)}% higher than last week (${trendResult.thisWeek.rate.toFixed(1)}% vs ${trendResult.lastWeek.rate.toFixed(1)}%).`,
+      );
+    } else if (diff < 0) {
+      insights.push(
+        `📉 This week's acceptance rate is ${diff.toFixed(1)}% lower than last week (${trendResult.thisWeek.rate.toFixed(1)}% vs ${trendResult.lastWeek.rate.toFixed(1)}%).`,
+      );
+    }
+  }
+
+  // 2. Best language
+  const minShownForInsight = 5;
+  const langEntries = Array.from(stats.byLanguage.entries()).filter(([, s]) => s.shown >= minShownForInsight);
+  if (langEntries.length > 0) {
+    const best = langEntries.reduce((a, b) => {
+      const rateA = a[1].accepted / a[1].shown;
+      const rateB = b[1].accepted / b[1].shown;
+      return rateB > rateA ? b : a;
+    });
+    const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
+    insights.push(`🏆 Highest acceptance rate: ${best[0]} at ${bestRate}% (${best[1].accepted}/${best[1].shown}).`);
+  }
+
+  // 3. Peak hour
+  if (stats.byHour.size > 0) {
+    const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
+    insights.push(`⏰ Most active hour: ${peakEntry[0]}:00 with ${peakEntry[1]} completions.`);
+  }
+
+  // 4. Chat vs inline ratio
+  if (stats.totalChat > 0 && stats.totalShown > 0) {
+    const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
+    insights.push(`💬 Chat usage ratio: ${ratio}% of all Copilot interactions are chat requests.`);
+  }
+
+  return { days, summary, timeline, velocityPoints, languageBreakdown, insights, weeklyTrend };
 }

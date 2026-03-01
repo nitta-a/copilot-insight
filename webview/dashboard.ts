@@ -38,6 +38,7 @@ import type {
   TimelineEntry,
   VelocityPoint,
   WebviewToHostMessage,
+  WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 
 // Register only the Chart.js components we actually use (tree-shaking).
@@ -488,6 +489,70 @@ function renderLanguageTable(entries: LanguageEntry[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Insights
+// ---------------------------------------------------------------------------
+
+function renderInsights(insights: string[]): void {
+  const el = document.getElementById("db-insights-container");
+  if (!el) {
+    return;
+  }
+  if (insights.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const cards = insights
+    .map((text) => `<div class="insight-card"><span class="insight-icon"></span>${escHtml(text)}</div>`)
+    .join("\n");
+  el.innerHTML = `<h2>💡 Insights</h2>\n<div class="insights-section">${cards}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Weekly trend
+// ---------------------------------------------------------------------------
+
+function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
+  const el = document.getElementById("db-weekly-trend-container");
+  if (!el) {
+    return;
+  }
+  if (!trend || (trend.thisWeek.shown === 0 && trend.lastWeek.shown === 0)) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const thisRateStr = trend.thisWeek.shown > 0 ? `${trend.thisWeek.rate.toFixed(1)}%` : "—";
+  const lastRateStr = trend.lastWeek.shown > 0 ? `${trend.lastWeek.rate.toFixed(1)}%` : "—";
+
+  let diffHtml = "";
+  if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
+    const sign = trend.rateDiff > 0 ? "+" : "";
+    const cssClass = trend.rateDiff > 0 ? "trend-up" : trend.rateDiff < 0 ? "trend-down" : "trend-neutral";
+    const arrow = trend.rateDiff > 0 ? "↑" : trend.rateDiff < 0 ? "↓" : "→";
+    diffHtml = `<div class="trend-diff ${cssClass}">${arrow} ${sign}${trend.rateDiff.toFixed(1)}%</div>`;
+  }
+
+  el.innerHTML = `<h2>📈 Weekly Trend</h2>
+<div class="trend-container">
+  <div class="trend-card">
+    <h3>Last Week</h3>
+    <div class="trend-stat"><span>Shown</span><span>${trend.lastWeek.shown}</span></div>
+    <div class="trend-stat"><span>Accepted</span><span>${trend.lastWeek.accepted}</span></div>
+    <div class="trend-stat"><span>Rate</span><span>${lastRateStr}</span></div>
+    <div class="trend-stat"><span>Chat</span><span>${trend.lastWeek.chat}</span></div>
+  </div>
+  <div class="trend-card">
+    <h3>This Week</h3>
+    <div class="trend-stat"><span>Shown</span><span>${trend.thisWeek.shown}</span></div>
+    <div class="trend-stat"><span>Accepted</span><span>${trend.thisWeek.accepted}</span></div>
+    <div class="trend-stat"><span>Rate</span><span>${thisRateStr}</span></div>
+    <div class="trend-stat"><span>Chat</span><span>${trend.thisWeek.chat}</span></div>
+    ${diffHtml}
+  </div>
+</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Period selector
 // ---------------------------------------------------------------------------
 
@@ -509,6 +574,12 @@ function renderPeriodSelector(activeDays: number): void {
       const days = Number(btn.dataset.days);
       currentDays = days;
       vscode.setState({ days, currentTab });
+      // Show loading state while waiting for updated data.
+      const interactive = document.getElementById("db-interactive");
+      if (interactive) {
+        interactive.style.opacity = "0.6";
+        interactive.style.pointerEvents = "none";
+      }
       vscode.postMessage({ type: "changePeriod", payload: { days } } satisfies WebviewToHostMessage);
     });
   });
@@ -577,10 +648,18 @@ function render(payload: DashboardPayload): void {
   currentDays = payload.days;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
+  renderInsights(payload.insights);
+  renderWeeklyTrend(payload.weeklyTrend);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
   renderLanguageTable(payload.languageBreakdown);
   renderPeriodSelector(payload.days);
+  // Clear loading state set by the period selector.
+  const interactive = document.getElementById("db-interactive");
+  if (interactive) {
+    interactive.style.opacity = "";
+    interactive.style.pointerEvents = "";
+  }
 }
 
 // ---------------------------------------------------------------------------

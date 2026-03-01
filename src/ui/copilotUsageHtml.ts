@@ -31,13 +31,10 @@ export function getHtmlContent(
   const intentSection = buildSimpleBarChart(stats.byChatIntent, "🎯 Chat Intent (Agent/Plan/Ask)", "blue");
   const hourSection = buildHourGrid(stats.byHour, "⏰ Activity by Hour", "", "completions");
   const chatHourSection = buildHourGrid(stats.chatByHour, "💬 Chat Activity by Hour", " chat", "chat requests");
-  const weeklyTrendSection = buildWeeklyTrendSection(stats);
   const warningSection = buildWarningSection(stats.logFilesFound);
   const errorSection = stats.totalErrors > 0 ? buildSimpleBarChart(stats.errorsByType, "⚠️ Errors by Type", "red") : "";
   const latencyDistSection = buildLatencyDistSection(stats);
   const sessionSection = buildSessionSection(stats.bySession);
-
-  const insightsSection = buildInsightsSection(stats);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
 
   return `<!DOCTYPE html>
@@ -228,8 +225,8 @@ export function getHtmlContent(
 
     <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
       <div id="db-summary-cards" class="stats-grid"></div>
-      ${insightsSection}
-      ${weeklyTrendSection}
+      <div id="db-insights-container"></div>
+      <div id="db-weekly-trend-container"></div>
       ${dashboardPayload ? '<h2>🌐 Language Breakdown</h2><div id="db-language-table"></div>' : languageSection}
     </div>
 
