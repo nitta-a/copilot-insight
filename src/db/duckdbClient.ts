@@ -91,6 +91,50 @@ export class InMemoryAnalyticsDb implements DuckDbClient {
     return [];
   }
 
+  /**
+   * Compute the mean and standard deviation of daily accepted-completion
+   * counts over the last `windowDays` days of stored data.
+   *
+   * This provides the statistical baseline for anomaly detection: callers
+   * can compare any single day's count against `mean ± ANOMALY_Z_THRESHOLD *
+   * stdDev` to decide whether that day is an outlier.
+   *
+   * Edge cases:
+   * - Returns `{ mean: 0, stdDev: 0, sampleSize: 0 }` when the database is
+   *   closed or contains no `completionAccept` events.
+   * - When only one day of data is available `stdDev` will be `0`, which
+   *   means no anomaly can be detected — callers should skip detection when
+   *   `sampleSize < 2`.
+   */
+  calculateBaselines(windowDays = 14): { mean: number; stdDev: number; sampleSize: number } {
+    if (this._closed) {
+      return { mean: 0, stdDev: 0, sampleSize: 0 };
+    }
+
+    // Aggregate accepted-completion events by calendar date (UTC).
+    const dailyCounts = new Map<string, number>();
+    for (const event of this._events) {
+      if (event.eventType !== "completionAccept") {
+        continue;
+      }
+      const date = event.timestamp.slice(0, 10); // "YYYY-MM-DD"
+      dailyCounts.set(date, (dailyCounts.get(date) ?? 0) + 1);
+    }
+
+    const sortedDates = [...dailyCounts.keys()].sort().slice(-windowDays);
+    const counts = sortedDates.map((d) => dailyCounts.get(d) ?? 0);
+
+    if (counts.length === 0) {
+      return { mean: 0, stdDev: 0, sampleSize: 0 };
+    }
+
+    const mean = counts.reduce((s, v) => s + v, 0) / counts.length;
+    const variance = counts.reduce((s, v) => s + (v - mean) ** 2, 0) / counts.length;
+    const stdDev = Math.sqrt(variance);
+
+    return { mean, stdDev, sampleSize: counts.length };
+  }
+
   async close(): Promise<void> {
     this._closed = true;
     this._events = [];

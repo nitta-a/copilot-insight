@@ -33,6 +33,10 @@ export interface TimelineEntry {
   trueAccepted: number | null;
   /** Acceptance rate as percentage 0–100. */
   rate: number;
+  /** True when this day's acceptance rate is a statistical anomaly (|z| > threshold). */
+  isAnomaly: boolean;
+  /** Human-readable explanation of why this day is anomalous, or null when not anomalous. */
+  anomalyReason: string | null;
 }
 
 export interface VelocityPoint {

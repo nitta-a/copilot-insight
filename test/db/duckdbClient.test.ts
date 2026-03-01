@@ -211,3 +211,84 @@ suite("InMemoryAnalyticsDb", () => {
     await db.close();
   });
 });
+
+suite("InMemoryAnalyticsDb – calculateBaselines", () => {
+  function makeAcceptEvent(date: string, sessionId = "s1"): CompletionAcceptEvent {
+    return {
+      sessionId,
+      timestamp: `${date}T10:00:00Z`,
+      eventType: "completionAccept",
+      languageId: "typescript",
+      modelName: "gpt-4o",
+      latencyMs: 100,
+      isPartialAccept: false,
+      acceptedCharacters: 50,
+      openEditorPaths: [],
+    } as CompletionAcceptEvent;
+  }
+
+  test("returns zero baselines when db is empty", () => {
+    const db = new InMemoryAnalyticsDb();
+    const result = db.calculateBaselines();
+    assert.strictEqual(result.mean, 0);
+    assert.strictEqual(result.stdDev, 0);
+    assert.strictEqual(result.sampleSize, 0);
+  });
+
+  test("returns zero baselines when db is closed", async () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([makeAcceptEvent("2026-02-28")]);
+    await db.close();
+    const result = db.calculateBaselines();
+    assert.strictEqual(result.sampleSize, 0);
+  });
+
+  test("computes mean and stdDev from daily completion counts", () => {
+    const db = new InMemoryAnalyticsDb();
+    // 3 events on day1, 1 event on day2 → daily counts [3, 1]
+    db.ingest([
+      makeAcceptEvent("2026-02-27"),
+      makeAcceptEvent("2026-02-27"),
+      makeAcceptEvent("2026-02-27"),
+      makeAcceptEvent("2026-02-28"),
+    ]);
+    const result = db.calculateBaselines();
+    assert.strictEqual(result.sampleSize, 2);
+    // mean = (3 + 1) / 2 = 2
+    assert.ok(Math.abs(result.mean - 2) < 0.001, `expected mean ≈ 2, got ${result.mean}`);
+    // variance = ((3-2)^2 + (1-2)^2) / 2 = 1, stdDev = 1
+    assert.ok(Math.abs(result.stdDev - 1) < 0.001, `expected stdDev ≈ 1, got ${result.stdDev}`);
+  });
+
+  test("respects windowDays parameter and uses only the N most recent days", () => {
+    const db = new InMemoryAnalyticsDb();
+    // 5 days of data, windowDays = 2 → only last 2 days used
+    for (let day = 1; day <= 5; day++) {
+      db.ingest([
+        makeAcceptEvent(`2026-02-${String(day).padStart(2, "0")}`),
+        makeAcceptEvent(`2026-02-${String(day).padStart(2, "0")}`),
+      ]);
+    }
+    const result = db.calculateBaselines(2);
+    assert.strictEqual(result.sampleSize, 2);
+    // Both days have 2 events → mean = 2, stdDev = 0
+    assert.ok(Math.abs(result.mean - 2) < 0.001);
+    assert.ok(Math.abs(result.stdDev - 0) < 0.001);
+  });
+
+  test("ignores non-completionAccept events", () => {
+    const db = new InMemoryAnalyticsDb();
+    db.ingest([
+      {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:00:00Z",
+        eventType: "textChange",
+        languageId: "typescript",
+        charsAdded: 10,
+        charsDeleted: 0,
+      } as TextChangeEvent,
+    ]);
+    const result = db.calculateBaselines();
+    assert.strictEqual(result.sampleSize, 0);
+  });
+});

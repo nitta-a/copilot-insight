@@ -157,6 +157,53 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Anomaly warning banner
+// ---------------------------------------------------------------------------
+
+function renderAnomalyBanner(timeline: TimelineEntry[]): void {
+  const bannerId = "db-anomaly-banner";
+  let banner = document.getElementById(bannerId);
+
+  // Find the most recent anomaly in the timeline
+  const recentAnomalies = timeline.filter((e) => e.isAnomaly);
+  const latestAnomaly = recentAnomalies.at(-1);
+
+  if (!latestAnomaly) {
+    if (banner) {
+      banner.style.display = "none";
+    }
+    return;
+  }
+
+  // Insert the banner before the summary cards section if not present yet
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = bannerId;
+    banner.style.cssText =
+      "background:var(--vscode-inputValidation-warningBackground,#6c4f00);border:1px solid var(--vscode-inputValidation-warningBorder,#cca700);border-radius:4px;padding:10px 14px;margin-bottom:12px;font-size:13px;";
+    const summaryCards = document.getElementById("db-summary-cards");
+    if (summaryCards?.parentNode) {
+      summaryCards.parentNode.insertBefore(banner, summaryCards);
+    } else {
+      document.body.prepend(banner);
+    }
+  }
+
+  const count = recentAnomalies.length;
+  const label = count === 1 ? "anomaly" : "anomalies";
+  banner.style.display = "";
+
+  // Build the banner content via DOM APIs to avoid mixing escaping strategies.
+  banner.textContent = "";
+  const strong = document.createElement("strong");
+  strong.textContent = `⚠️ ${count} statistical ${label} detected in the current period.`;
+  const latestSpan = document.createElement("span");
+  latestSpan.textContent = ` Latest: ${latestAnomaly.date} — ${latestAnomaly.anomalyReason ?? ""}`;
+  banner.appendChild(strong);
+  banner.appendChild(latestSpan);
+}
+
+// ---------------------------------------------------------------------------
 // Timeline chart (bar + line)
 // ---------------------------------------------------------------------------
 
@@ -175,6 +222,10 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
     e.trueAccepted !== null ? (e.trueAccepted / Math.max(e.shown, 1)) * 100 : null,
   );
   const hasTrueRates = trueRates.some((r) => r !== null);
+
+  // Per-point styling for anomaly detection
+  const pointColors = timeline.map((e) => (e.isAnomaly ? c.red : c.orange));
+  const pointRadii = timeline.map((e) => (e.isAnomaly ? 8 : 3));
 
   if (timelineChart) {
     timelineChart.destroy();
@@ -231,7 +282,8 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
           // biome-ignore lint/style/useNamingConvention: Chart.js API property
           yAxisID: "yRate",
           borderWidth: 2,
-          pointRadius: 3,
+          pointBackgroundColor: pointColors,
+          pointRadius: pointRadii,
           tension: 0.3,
           order: 1,
         },
@@ -251,7 +303,15 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
                 return "";
               }
               const isRate = item.dataset.label?.includes("Rate") ?? false;
-              return `${item.dataset.label}: ${val.toFixed(isRate ? 1 : 0)}${isRate ? "%" : ""}`;
+              const base = `${item.dataset.label}: ${val.toFixed(isRate ? 1 : 0)}${isRate ? "%" : ""}`;
+              // Append anomaly reason when hovering the acceptance rate line
+              if (item.dataset.label === "Acceptance Rate (%)") {
+                const entry = timeline[item.dataIndex];
+                if (entry?.isAnomaly && entry.anomalyReason) {
+                  return [base, `⚠️ ${entry.anomalyReason}`];
+                }
+              }
+              return base;
             },
           },
         },
@@ -459,6 +519,7 @@ function setupExportButtons(): void {
 
 function render(payload: DashboardPayload): void {
   currentDays = payload.days;
+  renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
