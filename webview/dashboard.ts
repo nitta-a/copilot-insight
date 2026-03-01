@@ -62,8 +62,8 @@ Chart.register(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare function acquireVsCodeApi(): {
   postMessage(msg: WebviewToHostMessage): void;
-  getState(): { days?: number } | undefined;
-  setState(state: { days?: number }): void;
+  getState(): { days?: number; currentTab?: string } | undefined;
+  setState(state: { days?: number; currentTab?: string }): void;
 };
 
 interface DashboardWindow extends Window {
@@ -81,6 +81,7 @@ const vscode = acquireVsCodeApi();
 let timelineChart: Chart | null = null;
 let velocityChart: Chart | null = null;
 let currentDays = 14;
+let currentTab = "overview";
 
 // ---------------------------------------------------------------------------
 // Theme helpers — read VS Code CSS variables for chart colours
@@ -183,15 +184,15 @@ function renderAnomalyBanner(timeline: TimelineEntry[]): void {
     return;
   }
 
-  // Insert the banner before the summary cards section if not present yet
+  // Insert the banner at the top of the Health tab pane if not present yet
   if (!banner) {
     banner = document.createElement("div");
     banner.id = bannerId;
     banner.style.cssText =
       "background:var(--vscode-inputValidation-warningBackground,#6c4f00);border:1px solid var(--vscode-inputValidation-warningBorder,#cca700);border-radius:4px;padding:10px 14px;margin-bottom:12px;font-size:13px;";
-    const summaryCards = document.getElementById("db-summary-cards");
-    if (summaryCards?.parentNode) {
-      summaryCards.parentNode.insertBefore(banner, summaryCards);
+    const healthPane = document.getElementById("db-tab-health");
+    if (healthPane) {
+      healthPane.prepend(banner);
     } else {
       document.body.prepend(banner);
     }
@@ -507,7 +508,7 @@ function renderPeriodSelector(activeDays: number): void {
     btn.addEventListener("click", () => {
       const days = Number(btn.dataset.days);
       currentDays = days;
-      vscode.setState({ days });
+      vscode.setState({ days, currentTab });
       vscode.postMessage({ type: "changePeriod", payload: { days } } satisfies WebviewToHostMessage);
     });
   });
@@ -526,6 +527,45 @@ function setupExportButtons(): void {
     const canvas = document.getElementById("db-timeline-chart") as HTMLCanvasElement | null;
     const imageData = canvas?.toDataURL("image/png") ?? "";
     vscode.postMessage({ type: "exportPng", payload: { imageData } } satisfies WebviewToHostMessage);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------------------
+
+const VALID_TABS = new Set(["overview", "health", "flow"]);
+
+function switchTab(tabId: string): void {
+  currentTab = tabId;
+  vscode.setState({ days: currentDays, currentTab: tabId });
+
+  document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
+    const isActive = btn.dataset.tab === tabId;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  document.querySelectorAll<HTMLElement>(".db-tab-pane").forEach((pane) => {
+    pane.classList.toggle("active", pane.id === `db-tab-${tabId}`);
+  });
+
+  // Trigger resize so Chart.js renders correctly after becoming visible.
+  if (tabId === "health" && timelineChart) {
+    timelineChart.resize();
+  } else if (tabId === "flow" && velocityChart) {
+    velocityChart.resize();
+  }
+}
+
+function setupTabs(): void {
+  document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tabId = btn.dataset.tab ?? "";
+      if (VALID_TABS.has(tabId)) {
+        switchTab(tabId);
+      }
+    });
   });
 }
 
@@ -583,6 +623,7 @@ function fmtDate(dateStr: string): string {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupExportButtons();
+  setupTabs();
 
   if (window.__dashboardData) {
     const initData = window.__dashboardData;
@@ -598,6 +639,10 @@ document.addEventListener("DOMContentLoaded", () => {
       render({ ...initData, days: saved.days });
     } else {
       render(initData);
+    }
+    // Restore the last active tab after rendering.
+    if (saved?.currentTab && VALID_TABS.has(saved.currentTab)) {
+      switchTab(saved.currentTab);
     }
   }
 });

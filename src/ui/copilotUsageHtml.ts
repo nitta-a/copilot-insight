@@ -195,6 +195,28 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
+    /* ── Tab bar ──────────────────────────────────────────────────────── */
+    .db-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-editor-inactiveSelectionBackground)); margin-bottom: 16px; }
+    .db-tab-btn {
+      background: transparent;
+      color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.88em;
+      font-family: var(--vscode-font-family);
+      opacity: 0.75;
+    }
+    .db-tab-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
+    .db-tab-btn.active {
+      color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+      border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-charts-blue));
+      opacity: 1;
+      font-weight: 600;
+    }
+    .db-tab-pane { display: none; }
+    .db-tab-pane.active { display: block; }
   </style>
 </head>
 <body>
@@ -678,23 +700,34 @@ function buildDashboardSection(payload?: DashboardPayload): string {
     return "";
   }
   return `<section id="db-interactive">
-  <div id="db-summary-cards" class="stats-grid"></div>
-  <div id="db-period-selector" style="margin: 10px 0 16px;"></div>
+  <div class="db-tabs" role="tablist">
+    <button class="db-tab-btn active" data-tab="overview" role="tab" aria-selected="true">📊 Overview (ROI)</button>
+    <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
+    <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
+  </div>
+  <div id="db-period-selector" style="margin: 0 0 16px;"></div>
 
-  <h2>📈 True Acceptance Rate Timeline</h2>
-  <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
-
-  <div id="db-velocity-section">
-    <h2>🌊 Flow &amp; Velocity Correlation</h2>
-    <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
-      Scatter of typing speed (KPM) vs relative completion activity.
-      Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
-    </p>
-    <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
+  <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
+    <div id="db-summary-cards" class="stats-grid"></div>
+    <h2>🌐 Language Breakdown</h2>
+    <div id="db-language-table"></div>
   </div>
 
-  <h2>🌐 Language Breakdown</h2>
-  <div id="db-language-table"></div>
+  <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
+    <h2>📈 True Acceptance Rate Timeline</h2>
+    <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+  </div>
+
+  <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
+    <div id="db-velocity-section">
+      <h2>🌊 Flow &amp; Velocity Correlation</h2>
+      <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
+        Scatter of typing speed (KPM) vs relative completion activity.
+        Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
+      </p>
+      <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
+    </div>
+  </div>
 
   <div style="margin:16px 0 8px">
     <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
