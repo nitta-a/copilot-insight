@@ -1,17 +1,17 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
+import * as path from "node:path";
+import { EventTracker } from "./events/eventTracker";
+import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
+import { exportAsCsv, exportAsJson } from "./export/exportStats";
+import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
+import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
+import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
-import { EventTracker } from "./events/eventTracker";
-import { exportAsCsv, exportAsJson } from "./export/exportStats";
-import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
-import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
-import { generateMarkdownReport } from "./export/reportGenerator";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
-import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
-import type { CopilotUsageStats } from "./types";
+import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 
 let cachedStats: CopilotUsageStats | undefined;
 
