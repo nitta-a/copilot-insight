@@ -30,7 +30,7 @@ suite("EventStorage", () => {
     rmrf(tmpDir);
   });
 
-  test("append creates events directory and writes JSONL file", () => {
+  test("append creates events directory and writes JSONL file", async () => {
     const storage = new EventStorage(tmpDir);
     const event: TextChangeEvent = {
       sessionId: "s1",
@@ -40,7 +40,7 @@ suite("EventStorage", () => {
       charsAdded: 10,
       charsDeleted: 2,
     };
-    storage.append(event);
+    await storage.append(event);
 
     const filePath = path.join(tmpDir, "events", "2024-06-15.jsonl");
     assert.ok(fs.existsSync(filePath));
@@ -51,10 +51,10 @@ suite("EventStorage", () => {
     assert.strictEqual(parsed.charsAdded, 10);
   });
 
-  test("append adds multiple events to the same date file", () => {
+  test("append adds multiple events to the same date file", async () => {
     const storage = new EventStorage(tmpDir);
     for (let i = 0; i < 3; i++) {
-      storage.append({
+      await storage.append({
         sessionId: "s1",
         timestamp: "2024-06-15T10:00:00.000Z",
         eventType: "textChange",
@@ -72,9 +72,9 @@ suite("EventStorage", () => {
     assert.strictEqual(lines.length, 3);
   });
 
-  test("readByDate returns stored events", () => {
+  test("readByDate returns stored events", async () => {
     const storage = new EventStorage(tmpDir);
-    storage.append({
+    await storage.append({
       sessionId: "s1",
       timestamp: "2024-06-20T08:00:00.000Z",
       eventType: "textChange",
@@ -108,9 +108,9 @@ suite("EventStorage", () => {
     assert.strictEqual(events.length, 1);
   });
 
-  test("listDates returns sorted date strings", () => {
+  test("listDates returns sorted date strings", async () => {
     const storage = new EventStorage(tmpDir);
-    storage.append({
+    await storage.append({
       sessionId: "s",
       timestamp: "2024-06-20T00:00:00Z",
       eventType: "textChange",
@@ -118,7 +118,7 @@ suite("EventStorage", () => {
       charsAdded: 1,
       charsDeleted: 0,
     } as TextChangeEvent);
-    storage.append({
+    await storage.append({
       sessionId: "s",
       timestamp: "2024-06-18T00:00:00Z",
       eventType: "textChange",
@@ -136,10 +136,10 @@ suite("EventStorage", () => {
     assert.deepStrictEqual(storage.listDates(), []);
   });
 
-  test("dispose prevents further writes", () => {
+  test("dispose prevents further writes", async () => {
     const storage = new EventStorage(tmpDir);
     storage.dispose();
-    storage.append({
+    await storage.append({
       sessionId: "s",
       timestamp: "2024-06-30T00:00:00Z",
       eventType: "textChange",
@@ -152,11 +152,11 @@ suite("EventStorage", () => {
     assert.strictEqual(events.length, 0);
   });
 
-  test("append handles events with different dates into separate files", () => {
+  test("append handles events with different dates into separate files", async () => {
     const storage = new EventStorage(tmpDir);
     const dates = ["2024-06-10", "2024-06-11", "2024-06-12"];
     for (const d of dates) {
-      storage.append({
+      await storage.append({
         sessionId: "s",
         timestamp: `${d}T12:00:00Z`,
         eventType: "editorSwitch",
