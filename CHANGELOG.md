@@ -4,6 +4,18 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.4] - 2026-03-01
+
+### Added
+- 📊 **Tab-based dashboard** — dashboard is now split into three focused tabs:
+  - **Overview (ROI)**: summary cards (true acceptance rate, estimated minutes saved, best model), dynamic Insights section, and dynamic Weekly Trend comparison
+  - **Health (Diagnostics)**: True Acceptance Rate Timeline (Chart.js bar + line combo with anomaly highlighting), daily usage, model breakdown, latency distribution, session table
+  - **Flow (Velocity)**: Flow & Velocity Correlation scatter plot (KPM vs completions accepted, red dots for flow-disruption windows), activity heatmaps, context-source insights
+- 🖼️ **Export Chart (PNG)** — one-click export of the current Chart.js chart to a PNG file via the dashboard toolbar
+- ⚡ **Dynamic period updates** — changing the display period (7 / 14 / 30 days) updates only the relevant chart data via `postMessage` without a full WebView reload
+- 🧠 **ROI estimation** — summary card shows estimated developer minutes saved based on accepted completions
+- 🏆 **Best model card** — highlights the best-performing inline completion model derived from cross-language model-performance data
+
 ## [1.0.3] - 2026-03-01
 
 ### Added

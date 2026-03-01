@@ -14,15 +14,20 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
 
 - **Usage Dashboard** — opens a detailed panel showing:
   - Total suggestions shown / accepted / declined
-  - Overall acceptance rate
+  - Overall acceptance rate, **True Acceptance Rate**, and estimated **minutes saved (ROI)**
+  - **Best model** highlight derived from cross-language model performance
   - Breakdown by programming language (top N languages configurable)
   - Daily usage chart with acceptance rate trendline (last 7 / 14 / 30 days)
   - Weekly trend comparison (this week vs. last week)
   - AI model usage breakdown — Chat vs. Inline Completion, with per-model acceptance rate
   - Activity heatmap by hour of day
   - Auto-generated **Insights** summary (best language, peak hour, weekly trend, chat/inline ratio)
+- **Three-tab dashboard** — content is organised into focused tabs:
+  - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
+  - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown
+  - 🌊 **Flow (Velocity)**: KPM vs completions scatter plot, activity heatmaps, context-source insights
 - **Activity Bar** — dedicated sidebar view with quick-access buttons
-- **Export** — export your statistics as CSV, JSON, or a Markdown report
+- **Export** — export your statistics as CSV, JSON, Markdown report, or **PNG chart screenshot**
 - **Refresh** — re-parse logs at any time with a single click
 
 ### How to Use
@@ -40,6 +45,7 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 | `copilot-insight.maxSessionDirs` | `5` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
 | `copilot-insight.defaultDisplayDays` | `14` | Default date range for the Daily Usage chart (`7`, `14`, or `30` days) |
 | `copilot-insight.topLanguagesCount` | `10` | Number of top languages shown in the Language chart (3–30) |
+| `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance) |
 
 ### Requirements
 
@@ -65,6 +71,17 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+#### 1.0.4
+- 📊 Three-tab dashboard: Overview (ROI), Health (Diagnostics), Flow (Velocity)
+- 🖼️ Export Chart as PNG from the dashboard toolbar
+- ⚡ Dynamic period updates via postMessage (no full page reload)
+- 🧠 ROI estimation (estimated minutes saved) and Best Model summary card
+
+#### 1.0.3
+- 🔌 MCP server integration
+- ⚡ Event batching in EventTracker
+- 🗜️ Data retention & aggregation in InMemoryAnalyticsDb
+
 #### 1.0.1
 - 💡 Insights section with auto-generated summary observations
 - 📅 Daily acceptance rate trendline
@@ -86,15 +103,20 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 
 - **使用状況ダッシュボード** — 以下を含む詳細パネルを表示:
   - 提案の表示回数 / 受け入れ回数 / 拒否回数
-  - 全体の受け入れ率 (Acceptance Rate)
+  - 全体の受け入れ率・**真の受け入れ率 (True Acceptance Rate)**・推定**節約時間 (ROI)**
+  - クロス言語モデル性能から導出した**ベストモデル**ハイライト
   - プログラミング言語別の内訳 (表示言語数は設定で変更可能)
   - 日次使用チャートと受け入れ率のトレンドライン (直近 7 / 14 / 30 日)
   - 週次トレンド比較 (今週 vs 先週)
   - AIモデル別の使用状況 — Chat vs. インライン補完、モデルごとの受け入れ率
   - 時間帯別のアクティビティヒートマップ
   - 自動生成される **Insights** サマリー (最も受け入れ率が高い言語・ピーク時間帯・週次トレンド・Chat/Inline 比率)
+- **3タブダッシュボード** — コンテンツを目的別の3タブに整理:
+  - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
+  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳
+  - 🌊 **Flow (Velocity)**: KPM vs 補完受け入れ数の散布図・アクティビティヒートマップ・コンテキストソースインサイト
 - **アクティビティバー** — サイドバーに専用ビューとクイックアクセスボタン
-- **エクスポート** — 統計を CSV・JSON・Markdown レポートとして書き出し
+- **エクスポート** — 統計を CSV・JSON・Markdown レポート・**PNG チャートスクリーンショット**として書き出し
 - **更新** — ワンクリックでログを再解析
 
 ### 使い方
@@ -112,6 +134,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 | `copilot-insight.maxSessionDirs` | `5` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
 | `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (`7`・`14`・`30` 日) |
 | `copilot-insight.topLanguagesCount` | `10` | 言語チャートに表示するトップ言語数 (3〜30) |
+| `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする (真の受け入れ率・速度・モデル性能)。無効にするとイベントログは継続されるが、メトリクスダッシュボードは利用不可 |
 
 ### 要件
 
@@ -136,6 +159,17 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 ### リリースノート
 
 完全な履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
+
+#### 1.0.4
+- 📊 3タブダッシュボード: Overview (ROI)・Health (Diagnostics)・Flow (Velocity)
+- 🖼️ ダッシュボードツールバーからのチャート PNG エクスポート
+- ⚡ postMessage による動的な表示期間更新 (フルページリロードなし)
+- 🧠 ROI 推定 (節約時間) とベストモデルサマリーカード
+
+#### 1.0.3
+- 🔌 MCP サーバー統合
+- ⚡ EventTracker でのイベントバッチ処理
+- 🗜️ InMemoryAnalyticsDb のデータ保持と集計
 
 #### 1.0.1
 - 💡 自動生成される Insights セクション
