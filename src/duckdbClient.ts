@@ -1,3 +1,7 @@
+import type { EventRecord } from "./dbSchema";
+import { buildFileMetadataRecords, buildSessionRecords, normaliseEvent } from "./dbSchema";
+import type { TrackedEvent } from "./eventSchema";
+
 /** A single row returned from a DuckDB query. */
 export type DuckDbRow = Record<string, unknown>;
 
@@ -19,4 +23,75 @@ export interface DuckDbClient {
  */
 export async function createDuckDbClient(): Promise<DuckDbClient> {
   throw new Error("DuckDB is not yet available: the @duckdb/duckdb-wasm package has an open security advisory.");
+}
+
+/**
+ * In-memory analytics database that implements the {@link DuckDbClient}
+ * interface using normalised event data.
+ *
+ * This is a lightweight alternative to DuckDB (Wasm) that can be used while
+ * the `@duckdb/duckdb-wasm` package has an open security advisory.  It stores
+ * events in typed arrays and supports a small set of well-known analytical
+ * queries by name (passed as the `sql` argument to {@link query}).
+ *
+ * Supported query names:
+ * - `sessions`      → all session records
+ * - `events`        → all event records
+ * - `file_metadata` → aggregated per-file statistics
+ * - `events_by_type:<type>` → events filtered by eventType
+ */
+export class InMemoryAnalyticsDb implements DuckDbClient {
+  private _events: EventRecord[] = [];
+  private _closed = false;
+
+  /** Number of events currently stored. */
+  get size(): number {
+    return this._events.length;
+  }
+
+  /** Insert raw tracked events into the normalised store. */
+  ingest(rawEvents: TrackedEvent[]): void {
+    if (this._closed) {
+      return;
+    }
+    const baseId = this._events.length;
+    for (let i = 0; i < rawEvents.length; i++) {
+      this._events.push(normaliseEvent(rawEvents[i], baseId + i));
+    }
+  }
+
+  /** Insert pre-normalised event records. */
+  ingestRecords(records: EventRecord[]): void {
+    if (this._closed) {
+      return;
+    }
+    this._events.push(...records);
+  }
+
+  async query<T extends DuckDbRow = DuckDbRow>(sql: string): Promise<T[]> {
+    if (this._closed) {
+      return [];
+    }
+    const trimmed = sql.trim().toLowerCase();
+
+    if (trimmed === "sessions") {
+      return buildSessionRecords(this._events) as unknown as T[];
+    }
+    if (trimmed === "events") {
+      return this._events as unknown as T[];
+    }
+    if (trimmed === "file_metadata") {
+      return buildFileMetadataRecords(this._events) as unknown as T[];
+    }
+    if (trimmed.startsWith("events_by_type:")) {
+      const eventType = trimmed.slice("events_by_type:".length).trim();
+      return this._events.filter((e) => e.eventType === eventType) as unknown as T[];
+    }
+    return [];
+  }
+
+  async close(): Promise<void> {
+    this._closed = true;
+    this._events = [];
+  }
 }

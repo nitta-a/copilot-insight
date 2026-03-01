@@ -65,6 +65,11 @@
         "command": "copilot-insight.exportJson",
         "title": "Copilot Insight: Export JSON",
         "icon": "$(json)"
+      },
+      {
+        "command": "copilot-insight.exportReport",
+        "title": "Copilot Insight: Export Report (Markdown)",
+        "icon": "$(markdown)"
       }
     ],
     "menus": {
@@ -86,6 +91,11 @@
         },
         {
           "command": "copilot-insight.exportJson",
+          "when": "view == copilotUsageView",
+          "group": "export"
+        },
+        {
+          "command": "copilot-insight.exportReport",
           "when": "view == copilotUsageView",
           "group": "export"
         }
