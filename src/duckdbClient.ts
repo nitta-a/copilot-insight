@@ -72,18 +72,19 @@ export class InMemoryAnalyticsDb implements DuckDbClient {
     if (this._closed) {
       return [];
     }
-    const trimmed = sql.trim().toLowerCase();
+    const trimmed = sql.trim();
+    const lower = trimmed.toLowerCase();
 
-    if (trimmed === "sessions") {
+    if (lower === "sessions") {
       return buildSessionRecords(this._events) as unknown as T[];
     }
-    if (trimmed === "events") {
+    if (lower === "events") {
       return this._events as unknown as T[];
     }
-    if (trimmed === "file_metadata") {
+    if (lower === "file_metadata") {
       return buildFileMetadataRecords(this._events) as unknown as T[];
     }
-    if (trimmed.startsWith("events_by_type:")) {
+    if (lower.startsWith("events_by_type:")) {
       const eventType = trimmed.slice("events_by_type:".length).trim();
       return this._events.filter((e) => e.eventType === eventType) as unknown as T[];
     }
