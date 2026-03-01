@@ -42,27 +42,32 @@ copilot-insight/
 │   ├── db/
 │   │   ├── dbSchema.ts
 │   │   └── duckdbClient.ts       # Placeholder DuckDB client interface (not yet wired)
-│   └── test/                     # Mocha/vscode-test test files (*.test.ts)
-│       ├── extension.test.ts
-│       ├── log/
-│       │   └── logContentParser.test.ts
-│       ├── ui/
-│       │   ├── copilotUsageTreeProvider.test.ts
-│       │   └── statusBarIndicator.test.ts
-│       ├── events/
-│       │   ├── eventSchema.test.ts
-│       │   ├── eventStorage.test.ts
-│       │   ├── eventTracker.test.ts
-│       │   └── inlineCompletionWrapper.test.ts
-│       ├── metrics/
-│       │   ├── metricsEngine.test.ts
-│       │   └── weeklyTrend.test.ts
-│       ├── export/
-│       │   ├── exportStats.test.ts
-│       │   └── reportGenerator.test.ts
-│       └── db/
-│           ├── dbSchema.test.ts
-│           └── duckdbClient.test.ts
+│   └── worker/
+│       ├── dbWorker.ts
+│       └── dbWorkerClient.ts
+├── test/                         # Mocha/vscode-test test files (*.test.ts)
+│   ├── extension.test.ts
+│   ├── log/
+│   │   └── logContentParser.test.ts
+│   ├── ui/
+│   │   ├── copilotUsageTreeProvider.test.ts
+│   │   └── statusBarIndicator.test.ts
+│   ├── events/
+│   │   ├── eventSchema.test.ts
+│   │   ├── eventStorage.test.ts
+│   │   ├── eventTracker.test.ts
+│   │   └── inlineCompletionWrapper.test.ts
+│   ├── metrics/
+│   │   ├── metricsEngine.test.ts
+│   │   └── weeklyTrend.test.ts
+│   ├── export/
+│   │   ├── exportStats.test.ts
+│   │   └── reportGenerator.test.ts
+│   ├── db/
+│   │   ├── dbSchema.test.ts
+│   │   └── duckdbClient.test.ts
+│   └── worker/
+│       └── dbWorkerClient.test.ts
 ├── dist/                         # Build output — extension.js (CJS bundle, git-ignored)
 ├── biome.json                    # Biome linter + formatter config
 ├── esbuild.js                    # esbuild bundler script (dev and production modes)
