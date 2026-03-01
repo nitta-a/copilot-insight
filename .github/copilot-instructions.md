@@ -17,17 +17,52 @@ copilot-insight/
 ├── src/
 │   ├── extension.ts              # Activation entry point; registers all commands and wires the pipeline
 │   ├── types.ts                  # Shared TypeScript interfaces (CopilotUsageStats, ParsingContext, …)
-│   ├── copilotLogParser.ts       # Orchestrates log discovery and delegates to logFileReader / logContentParser
-│   ├── logFileReader.ts          # File-system utilities: session dir sorting, .log file reading
-│   ├── logContentParser.ts       # Line-by-line parser for both JSON-embedded and plain-text log formats
-│   ├── copilotUsagePanel.ts      # Singleton WebviewPanel (createOrShow pattern)
-│   ├── copilotUsageHtml.ts       # Generates the HTML string rendered in the WebviewPanel
-│   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Copilot Usage" sidebar view
-│   ├── inlineCompletionWrapper.ts   # Real-time inline-completion tracking via provider interception
-│   ├── exportStats.ts            # Serializes CopilotUsageStats to CSV or JSON
-│   ├── weeklyTrend.ts            # Compares this-week vs last-week acceptance rates
-│   ├── duckdbClient.ts           # Placeholder DuckDB client interface (not yet wired)
+│   ├── log/
+│   │   ├── copilotLogParser.ts   # Orchestrates log discovery and delegates to logFileReader / logContentParser
+│   │   ├── logFileReader.ts      # File-system utilities: session dir sorting, .log file reading
+│   │   └── logContentParser.ts  # Line-by-line parser for both JSON-embedded and plain-text log formats
+│   ├── ui/
+│   │   ├── copilotUsagePanel.ts  # Singleton WebviewPanel (createOrShow pattern)
+│   │   ├── copilotUsageHtml.ts   # Generates the HTML string rendered in the WebviewPanel
+│   │   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Copilot Usage" sidebar view
+│   │   └── statusBarIndicator.ts
+│   ├── events/
+│   │   ├── eventSchema.ts
+│   │   ├── eventStorage.ts
+│   │   ├── eventTracker.ts
+│   │   └── inlineCompletionWrapper.ts   # Real-time inline-completion tracking via provider interception
+│   ├── metrics/
+│   │   ├── metricsEngine.ts
+│   │   ├── metricsWorker.ts
+│   │   ├── metricsWorkerClient.ts
+│   │   └── weeklyTrend.ts        # Compares this-week vs last-week acceptance rates
+│   ├── export/
+│   │   ├── exportStats.ts        # Serializes CopilotUsageStats to CSV or JSON
+│   │   └── reportGenerator.ts
+│   ├── db/
+│   │   ├── dbSchema.ts
+│   │   └── duckdbClient.ts       # Placeholder DuckDB client interface (not yet wired)
 │   └── test/                     # Mocha/vscode-test test files (*.test.ts)
+│       ├── extension.test.ts
+│       ├── log/
+│       │   └── logContentParser.test.ts
+│       ├── ui/
+│       │   ├── copilotUsageTreeProvider.test.ts
+│       │   └── statusBarIndicator.test.ts
+│       ├── events/
+│       │   ├── eventSchema.test.ts
+│       │   ├── eventStorage.test.ts
+│       │   ├── eventTracker.test.ts
+│       │   └── inlineCompletionWrapper.test.ts
+│       ├── metrics/
+│       │   ├── metricsEngine.test.ts
+│       │   └── weeklyTrend.test.ts
+│       ├── export/
+│       │   ├── exportStats.test.ts
+│       │   └── reportGenerator.test.ts
+│       └── db/
+│           ├── dbSchema.test.ts
+│           └── duckdbClient.test.ts
 ├── dist/                         # Build output — extension.js (CJS bundle, git-ignored)
 ├── biome.json                    # Biome linter + formatter config
 ├── esbuild.js                    # esbuild bundler script (dev and production modes)
@@ -39,9 +74,9 @@ copilot-insight/
 
 Three-layer pipeline:
 
-1. **`src/copilotLogParser.ts`** — reads `.log` files from VS Code's extension host log directory, parses both JSON-embedded lines (matching `/\{.*\}/`) and plain-text lines, and accumulates `CopilotUsageStats`.
-2. **`src/copilotUsagePanel.ts`** — singleton `WebviewPanel` via `createOrShow` pattern; holds `static currentPanel` reference; `enableScripts: false` (no JS in webview).
-3. **`src/copilotUsageHtml.ts`** — generates the HTML string directly (no templating library); uses VS Code CSS variables (`var(--vscode-foreground)`, `var(--vscode-charts-blue)`, etc.) for automatic theme support.
+1. **`src/log/copilotLogParser.ts`** — reads `.log` files from VS Code's extension host log directory, parses both JSON-embedded lines (matching `/\{.*\}/`) and plain-text lines, and accumulates `CopilotUsageStats`.
+2. **`src/ui/copilotUsagePanel.ts`** — singleton `WebviewPanel` via `createOrShow` pattern; holds `static currentPanel` reference; `enableScripts: false` (no JS in webview).
+3. **`src/ui/copilotUsageHtml.ts`** — generates the HTML string directly (no templating library); uses VS Code CSS variables (`var(--vscode-foreground)`, `var(--vscode-charts-blue)`, etc.) for automatic theme support.
 
 `extension.ts` wires commands to the pipeline using `vscode.window.withProgress` for the parsing step.
 
@@ -67,7 +102,7 @@ Output goes to `dist/extension.js` (CJS, `vscode` external).
 - **Type-checking is separate from bundling.** `esbuild.js` never invokes `tsc`; type errors surface only via `check-types` / `watch:tsc`.
 - **WebviewPanel CSP:** `default-src 'none'; style-src 'unsafe-inline'` — no external resources, no scripts, inline styles only.
 - **Error handling in parser:** every `fs` call is wrapped in `try/catch` that silently skips unreadable files/dirs — preserve this pattern.
-- **HTML generation:** build the HTML string in `copilotUsageHtml.ts`, not in `copilotUsagePanel.ts`. Call `escapeHtml()` for any user-derived data inserted into HTML.
+- **HTML generation:** build the HTML string in `src/ui/copilotUsageHtml.ts`, not in `src/ui/copilotUsagePanel.ts`. Call `escapeHtml()` for any user-derived data inserted into HTML.
 
 ## Adding New Commands
 
