@@ -135,6 +135,16 @@
           "description": "Number of top languages to display in the Usage by Language chart."
         }
       }
+    },
+    "mcpServers": {
+      "copilot-insight": {
+        "command": "node",
+        "args": [
+          "${extensionPath}/bin/mcp-server.js",
+          "--storage",
+          "${globalStoragePath}"
+        ]
+      }
     }
   },
   "scripts": {
@@ -172,6 +182,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chart.js": "^4.5.1"
   }
 }

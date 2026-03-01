@@ -29,6 +29,7 @@ async function main() {
 		entryPoints: [
 			'src/extension.ts'
 		],
+
 		bundle: true,
 		format: 'cjs',
 		minify: production,
@@ -42,6 +43,20 @@ async function main() {
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
 		],
+	});
+
+	// Separate bundle for the MCP server (standalone Node.js process, CJS format).
+	const mcpCtx = await esbuild.context({
+		entryPoints: ['src/mcp/server.ts'],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'node',
+		outfile: 'dist/mcp-server.js',
+		logLevel: 'silent',
+		plugins: [esbuildProblemMatcherPlugin],
 	});
 
 	// Separate bundle for the WebView frontend (browser context, IIFE format).
@@ -60,10 +75,13 @@ async function main() {
 
 	if (watch) {
 		await ctx.watch();
+		await mcpCtx.watch();
 		await webviewCtx.watch();
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+		await mcpCtx.rebuild();
+		await mcpCtx.dispose();
 		await webviewCtx.rebuild();
 		await webviewCtx.dispose();
 	}
