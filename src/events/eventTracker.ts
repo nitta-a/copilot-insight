@@ -8,6 +8,8 @@ import type { DbWorkerClient } from "../worker/dbWorkerClient";
 const BATCH_SIZE = 10;
 /** Interval (ms) for the periodic timer-based batch flush. */
 const FLUSH_INTERVAL_MS = 5_000;
+/** Interval (ms) for the periodic background compaction (1 hour). */
+const COMPACT_INTERVAL_MS = 3_600_000;
 
 /** Sliding-window duration for active-completion tracking (5 minutes in ms). */
 const ACTIVE_WINDOW_MS = 5 * 60 * 1_000;
@@ -57,6 +59,7 @@ export class EventTracker implements vscode.Disposable {
   private readonly _dbWorker: DbWorkerClient | undefined;
   private _buffer: TrackedEvent[] = [];
   private _flushTimer: ReturnType<typeof setInterval> | undefined;
+  private _compactTimer: ReturnType<typeof setInterval> | undefined;
   private _isFlushing = false;
 
   /**
@@ -78,6 +81,11 @@ export class EventTracker implements vscode.Disposable {
       this._flushTimer = setInterval(() => {
         void this._flushBuffer();
       }, FLUSH_INTERVAL_MS);
+      this._compactTimer = setInterval(() => {
+        void this._dbWorker!.compact().catch(() => {
+          // Compaction errors are non-fatal; silently ignore.
+        });
+      }, COMPACT_INTERVAL_MS);
     }
 
     // --- onDidChangeTextDocument ---
@@ -267,6 +275,10 @@ export class EventTracker implements vscode.Disposable {
     if (this._flushTimer !== undefined) {
       clearInterval(this._flushTimer);
       this._flushTimer = undefined;
+    }
+    if (this._compactTimer !== undefined) {
+      clearInterval(this._compactTimer);
+      this._compactTimer = undefined;
     }
     // Best-effort flush on deactivation; do not await to keep dispose() sync.
     if (this._buffer.length > 0 && this._dbWorker) {

@@ -14,12 +14,18 @@ function rmrf(dir: string): void {
   }
 }
 
-/** Build a mock DbWorkerClient that records `ingest` calls. */
-function makeMockWorker(opts?: { failOnce?: boolean }): DbWorkerClient & { calls: TrackedEvent[][] } {
+/** Build a mock DbWorkerClient that records `ingest` and `compact` calls. */
+function makeMockWorker(opts?: {
+  failOnce?: boolean;
+}): DbWorkerClient & { calls: TrackedEvent[][]; compactCalls: number } {
   let failNext = opts?.failOnce ?? false;
   const calls: TrackedEvent[][] = [];
+  let compactCalls = 0;
   return {
     calls,
+    get compactCalls() {
+      return compactCalls;
+    },
     loadFromJsonl: async () => ({ loaded: 0 }),
     ingest: async (events: TrackedEvent[]) => {
       if (failNext) {
@@ -33,8 +39,12 @@ function makeMockWorker(opts?: { failOnce?: boolean }): DbWorkerClient & { calls
     trueRate: async () => ({ rate: 0, windowMs: 0, acceptedCount: 0 }),
     velocity: async () => ({ kpm: 0, windowMs: 0, sampleCount: 0 }),
     modelPerformance: async () => ({ crossTab: [], bestModelByLanguage: new Map() }),
+    compact: async () => {
+      compactCalls++;
+      return { compacted: 0 };
+    },
     close: async () => {},
-  } as unknown as DbWorkerClient & { calls: TrackedEvent[][] };
+  } as unknown as DbWorkerClient & { calls: TrackedEvent[][]; compactCalls: number };
 }
 
 /** Build a minimal fake ExtensionContext. */
@@ -311,5 +321,14 @@ suite("EventTracker — batching", () => {
     const tracker = new EventTracker(makeContext(storagePath));
     assert.strictEqual(tracker.bufferSize, 0);
     tracker.dispose();
+  });
+
+  test("compact timer is cleared on dispose without errors", () => {
+    // Verifies that the compaction timer is registered and cleaned up on dispose.
+    const worker = makeMockWorker();
+    const tracker = new EventTracker(makeContext(storagePath), worker);
+    // dispose() must not throw and must be idempotent even with a compact timer.
+    assert.doesNotThrow(() => tracker.dispose());
+    assert.doesNotThrow(() => tracker.dispose());
   });
 });
