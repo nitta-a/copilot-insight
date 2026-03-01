@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
-import { parseCopilotLogs } from "./copilotLogParser";
-import { CopilotUsagePanel } from "./copilotUsagePanel";
-import { CopilotUsageTreeProvider } from "./copilotUsageTreeProvider";
-import { EventTracker } from "./eventTracker";
-import { exportAsCsv, exportAsJson } from "./exportStats";
-import { InlineCompletionTracker } from "./inlineCompletionWrapper";
-import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metricsEngine";
-import { generateMarkdownReport } from "./reportGenerator";
-import { StatusBarIndicator } from "./statusBarIndicator";
+import { parseCopilotLogs } from "./log/copilotLogParser";
+import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
+import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
+import { EventTracker } from "./events/eventTracker";
+import { exportAsCsv, exportAsJson } from "./export/exportStats";
+import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
+import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
+import { generateMarkdownReport } from "./export/reportGenerator";
+import { StatusBarIndicator } from "./ui/statusBarIndicator";
 import type { CopilotUsageStats } from "./types";
 
 let cachedStats: CopilotUsageStats | undefined;
