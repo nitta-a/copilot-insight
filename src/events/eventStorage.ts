@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as fsp from "fs/promises";
 import * as path from "path";
 import type { TrackedEvent } from "./eventSchema";
 
@@ -31,20 +32,24 @@ export class EventStorage {
     this._eventsDir = path.join(globalStoragePath, "events");
   }
 
-  /** Persist a single event.  Silently ignores write errors to avoid
-   *  disrupting the user's editing session. */
-  append(event: TrackedEvent): void {
+  /** Persist a single event asynchronously (fire-and-forget).  Silently ignores
+   *  write errors to avoid disrupting the user's editing session.
+   *
+   *  Returns a `Promise<void>` that resolves when the write completes, which
+   *  callers may `await` when ordering guarantees are needed (e.g. in tests).
+   */
+  append(event: TrackedEvent): Promise<void> {
     if (this._disposed) {
-      return;
+      return Promise.resolve();
     }
-    try {
-      fs.mkdirSync(this._eventsDir, { recursive: true });
-      const dateKey = event.timestamp.substring(0, 10) || "unknown";
-      const filePath = path.join(this._eventsDir, `${dateKey}.jsonl`);
-      fs.appendFileSync(filePath, `${JSON.stringify(event)}\n`, "utf-8");
-    } catch {
-      // Silently skip — preserve the extension's error-handling convention.
-    }
+    const dateKey = event.timestamp.substring(0, 10) || "unknown";
+    const filePath = path.join(this._eventsDir, `${dateKey}.jsonl`);
+    return fsp
+      .mkdir(this._eventsDir, { recursive: true })
+      .then(() => fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf-8"))
+      .catch(() => {
+        // Silently skip — preserve the extension's error-handling convention.
+      });
   }
 
   /**

@@ -55,7 +55,7 @@ export class EventTracker implements vscode.Disposable {
           charsAdded,
           charsDeleted,
         };
-        this._storage.append(event);
+        void this._storage.append(event);
       }),
     );
 
@@ -69,7 +69,7 @@ export class EventTracker implements vscode.Disposable {
           languageId: editor?.document.languageId ?? "",
           filePath: editor?.document.uri.fsPath ?? "",
         };
-        this._storage.append(event);
+        void this._storage.append(event);
       }),
     );
   }
@@ -80,6 +80,9 @@ export class EventTracker implements vscode.Disposable {
    * Call this from the acceptance-tracking command in `extension.ts` (or from
    * `InlineCompletionTracker`) so that the accepted completion is persisted
    * alongside contextual metadata.
+   *
+   * Returns a `Promise<void>` that resolves when the event has been written to
+   * disk, allowing callers to await it when ordering guarantees are needed.
    */
   recordCompletionAccept(options: {
     languageId: string;
@@ -87,7 +90,7 @@ export class EventTracker implements vscode.Disposable {
     modelName?: string;
     latencyMs?: number;
     isPartialAccept?: boolean;
-  }): void {
+  }): Promise<void> {
     const openPaths = vscode.window.visibleTextEditors.map((e) => e.document.uri.fsPath).filter(Boolean);
 
     const event: CompletionAcceptEvent = {
@@ -101,7 +104,7 @@ export class EventTracker implements vscode.Disposable {
       acceptedCharacters: options.acceptedText.length,
       openEditorPaths: openPaths,
     };
-    this._storage.append(event);
+    return this._storage.append(event);
   }
 
   /** Access the underlying storage (e.g. for queries). */

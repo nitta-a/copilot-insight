@@ -36,8 +36,8 @@ suite("EventTracker", () => {
     assert.ok(tracker.storage);
   });
 
-  test("recordCompletionAccept writes an event", () => {
-    tracker.recordCompletionAccept({
+  test("recordCompletionAccept writes an event", async () => {
+    await tracker.recordCompletionAccept({
       languageId: "typescript",
       acceptedText: "console.log('hello');",
       modelName: "gpt-4o",
@@ -60,8 +60,8 @@ suite("EventTracker", () => {
     }
   });
 
-  test("recordCompletionAccept uses defaults for optional fields", () => {
-    tracker.recordCompletionAccept({
+  test("recordCompletionAccept uses defaults for optional fields", async () => {
+    await tracker.recordCompletionAccept({
       languageId: "python",
       acceptedText: "pass",
     });
@@ -76,8 +76,8 @@ suite("EventTracker", () => {
     }
   });
 
-  test("recordCompletionAccept with partial accept flag", () => {
-    tracker.recordCompletionAccept({
+  test("recordCompletionAccept with partial accept flag", async () => {
+    await tracker.recordCompletionAccept({
       languageId: "go",
       acceptedText: "fmt.Println",
       isPartialAccept: true,
@@ -96,8 +96,8 @@ suite("EventTracker", () => {
     assert.doesNotThrow(() => tracker.dispose());
   });
 
-  test("sessionId is derived from logUri", () => {
-    tracker.recordCompletionAccept({
+  test("sessionId is derived from logUri", async () => {
+    await tracker.recordCompletionAccept({
       languageId: "rust",
       acceptedText: "let x = 1;",
     });
