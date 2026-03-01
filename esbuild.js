@@ -26,26 +26,26 @@ console.log('[watch] build finished');
 };
 
 async function main() {
-const ctx = await esbuild.context({
-entryPoints: [
-'src/extension.ts',
-'src/worker/dbWorker.ts',
-],
-bundle: true,
-format: 'cjs',
-minify: production,
-sourcemap: !production,
-sourcesContent: false,
-platform: 'node',
-outdir: 'dist',
-outbase: 'src',
-external: ['vscode'],
-logLevel: 'silent',
-plugins: [
-/* add to the end of plugins array */
-esbuildProblemMatcherPlugin,
-],
-});
+	const ctx = await esbuild.context({
+		entryPoints: [
+			'src/extension.ts',
+			'src/worker/dbWorker.ts',
+		],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'node',
+		outdir: 'dist',
+		outbase: 'src',
+		external: ['vscode'],
+		logLevel: 'silent',
+		plugins: [
+			/* add to the end of plugins array */
+			esbuildProblemMatcherPlugin,
+		],
+	});
 
 // Separate bundle for the MCP server (standalone Node.js process, CJS format).
 const mcpCtx = await esbuild.context({
