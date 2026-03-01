@@ -81,7 +81,8 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         const events = loadJsonlDirectory(storagePath);
         cachedEvents = events;
         db.ingest(events);
-        parentPort?.postMessage({ type: "loadFromJsonl", id: msg.id, result: { loaded: events.length } });
+        const baselines = db.calculateBaselines();
+        parentPort?.postMessage({ type: "loadFromJsonl", id: msg.id, result: { loaded: events.length, baselines } });
         break;
       }
 
@@ -122,6 +123,13 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
           bestModelByLanguage: Object.fromEntries(result.bestModelByLanguage),
         };
         parentPort?.postMessage({ type: "modelPerf", id: msg.id, result: serialisable });
+        break;
+      }
+
+      case "baselines": {
+        const opts = (msg.payload ?? {}) as { windowDays?: number };
+        const result = db.calculateBaselines(opts.windowDays);
+        parentPort?.postMessage({ type: "baselines", id: msg.id, result });
         break;
       }
 

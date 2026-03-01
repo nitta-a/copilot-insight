@@ -156,6 +156,86 @@ suite("buildDashboardPayload", () => {
     });
   });
 
+  suite("anomaly detection", () => {
+    test("isAnomaly and anomalyReason are false/null when fewer than 2 qualifying baseline days", () => {
+      // Only 1 day with shown >= 10 → no anomaly possible
+      const stats = makeStats({
+        byDate: new Map([["2026-02-27", { shown: 50, accepted: 30 }]]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      for (const entry of payload.timeline) {
+        assert.strictEqual(entry.isAnomaly, false);
+        assert.strictEqual(entry.anomalyReason, null);
+      }
+    });
+
+    test("isAnomaly is false when stdDev is zero (all days have same rate)", () => {
+      // All 4 days have exactly 60% acceptance rate → stdDev = 0 → no anomaly
+      const payload = buildDashboardPayload(makeStats(), 14);
+      for (const entry of payload.timeline) {
+        assert.strictEqual(entry.isAnomaly, false);
+        assert.strictEqual(entry.anomalyReason, null);
+      }
+    });
+
+    test("isAnomaly is true for a day whose rate deviates by more than 2 stdDevs", () => {
+      // 13 days at 60% rate, 1 day at 5% rate (extreme outlier)
+      const byDate = new Map<string, { shown: number; accepted: number }>();
+      for (let i = 1; i <= 13; i++) {
+        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
+      }
+      // Outlier day: shown=50, accepted=3 → 6% — far from 60%
+      byDate.set("2026-02-14", { shown: 50, accepted: 3 });
+
+      const stats = makeStats({ byDate });
+      const payload = buildDashboardPayload(stats, 14);
+      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
+      assert.ok(outlier, "Outlier day should exist in timeline");
+      assert.strictEqual(outlier.isAnomaly, true);
+      assert.ok(outlier.anomalyReason !== null, "anomalyReason should be set for anomalous day");
+      assert.ok(outlier.anomalyReason?.includes("z-score"), "anomalyReason should mention z-score");
+    });
+
+    test("days with shown < 10 are excluded from anomaly detection and are not flagged as anomalies", () => {
+      // Baseline: 13 days at 60%, 1 day with shown=5 (below threshold)
+      const byDate = new Map<string, { shown: number; accepted: number }>();
+      for (let i = 1; i <= 13; i++) {
+        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
+      }
+      byDate.set("2026-02-14", { shown: 5, accepted: 0 }); // below MIN_SHOWN threshold
+      const stats = makeStats({ byDate });
+      const payload = buildDashboardPayload(stats, 14);
+      const lowShownEntry = payload.timeline.find((e) => e.date === "2026-02-14");
+      assert.ok(lowShownEntry);
+      assert.strictEqual(lowShownEntry.isAnomaly, false);
+      assert.strictEqual(lowShownEntry.anomalyReason, null);
+    });
+
+    test("anomalyReason contains direction word 'lower' for below-average anomaly", () => {
+      const byDate = new Map<string, { shown: number; accepted: number }>();
+      for (let i = 1; i <= 13; i++) {
+        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
+      }
+      byDate.set("2026-02-14", { shown: 50, accepted: 3 }); // 6% — well below average
+      const stats = makeStats({ byDate });
+      const payload = buildDashboardPayload(stats, 14);
+      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
+      assert.ok(outlier?.anomalyReason?.includes("lower"), `Expected 'lower' in reason: ${outlier?.anomalyReason}`);
+    });
+
+    test("anomalyReason contains direction word 'higher' for above-average anomaly", () => {
+      const byDate = new Map<string, { shown: number; accepted: number }>();
+      for (let i = 1; i <= 13; i++) {
+        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 10 }); // 20%
+      }
+      byDate.set("2026-02-14", { shown: 50, accepted: 48 }); // 96% — well above average
+      const stats = makeStats({ byDate });
+      const payload = buildDashboardPayload(stats, 14);
+      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
+      assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
+    });
+  });
+
   suite("languageBreakdown", () => {
     test("language breakdown is sorted by shown descending", () => {
       const payload = buildDashboardPayload(makeStats(), 14);
