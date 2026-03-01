@@ -38,6 +38,26 @@ export interface FileMetadataRecord {
   totalAcceptedCharacters: number;
 }
 
+/**
+ * Daily aggregated statistics — produced by {@link InMemoryAnalyticsDb.compact}
+ * when raw `EventRecord` objects older than the TTL are collapsed into a single
+ * per-day summary to reduce memory consumption.
+ */
+export interface AggregatedDailyStats {
+  /** Calendar date in "YYYY-MM-DD" format (UTC). */
+  date: string;
+  /** Number of `completionAccept` events on this day. */
+  totalAccepted: number;
+  /** Total characters inserted across all `textChange` events on this day. */
+  totalCharsAdded: number;
+  /** Total characters deleted across all `textChange` events on this day. */
+  totalCharsDeleted: number;
+  /** Total accepted characters across all `completionAccept` events on this day. */
+  totalAcceptedCharacters: number;
+  /** Index signature required for {@link DuckDbRow} compatibility. */
+  [key: string]: unknown;
+}
+
 /** SQL DDL statements (for documentation / future DuckDB integration). */
 export const TABLE_DDL = {
   sessions: `CREATE TABLE IF NOT EXISTS sessions (

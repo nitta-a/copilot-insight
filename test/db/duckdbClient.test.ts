@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import type { DuckDbClient, DuckDbRow } from "../../src/db/duckdbClient";
 import { InMemoryAnalyticsDb, createDuckDbClient } from "../../src/db/duckdbClient";
+import type { AggregatedDailyStats } from "../../src/db/dbSchema";
 import type { TextChangeEvent, CompletionAcceptEvent } from "../../src/events/eventSchema";
 
 suite("duckdbClient – interface contract", () => {
@@ -290,5 +291,141 @@ suite("InMemoryAnalyticsDb – calculateBaselines", () => {
     ]);
     const result = db.calculateBaselines();
     assert.strictEqual(result.sampleSize, 0);
+  });
+});
+
+suite("InMemoryAnalyticsDb – compact", () => {
+  function makeAcceptEvent(timestamp: string): CompletionAcceptEvent {
+    return {
+      sessionId: "s1",
+      timestamp,
+      eventType: "completionAccept",
+      languageId: "typescript",
+      modelName: "gpt-4o",
+      latencyMs: 100,
+      isPartialAccept: false,
+      acceptedCharacters: 50,
+      openEditorPaths: [],
+    } as CompletionAcceptEvent;
+  }
+
+  function makeTextChangeEvent(timestamp: string): TextChangeEvent {
+    return {
+      sessionId: "s1",
+      timestamp,
+      eventType: "textChange",
+      languageId: "typescript",
+      charsAdded: 10,
+      charsDeleted: 2,
+    } as TextChangeEvent;
+  }
+
+  test("returns 0 when no events are older than ttl", () => {
+    const db = new InMemoryAnalyticsDb();
+    // Ingest a very recent event (timestamp = now)
+    db.ingest([makeAcceptEvent(new Date().toISOString())]);
+    const compacted = db.compact(); // default 24h TTL
+    assert.strictEqual(compacted, 0);
+    assert.strictEqual(db.size, 1);
+  });
+
+  test("compacts events older than ttl and removes them from raw store", () => {
+    const db = new InMemoryAnalyticsDb();
+    // 2 old events (2 days ago) + 1 recent event
+    const old1 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const old2 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 1000).toISOString();
+    const recent = new Date().toISOString();
+    db.ingest([makeAcceptEvent(old1), makeAcceptEvent(old2), makeAcceptEvent(recent)]);
+    assert.strictEqual(db.size, 3);
+
+    const compacted = db.compact(); // default 24h TTL
+    assert.strictEqual(compacted, 2, "two old events should be compacted");
+    assert.strictEqual(db.size, 1, "only the recent event should remain");
+  });
+
+  test("returns 0 when db is closed", async () => {
+    const db = new InMemoryAnalyticsDb();
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    db.ingest([makeAcceptEvent(old)]);
+    await db.close();
+    const compacted = db.compact();
+    assert.strictEqual(compacted, 0);
+  });
+
+  test("query('aggregated_stats') returns compacted daily summaries", async () => {
+    const db = new InMemoryAnalyticsDb();
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    db.ingest([makeAcceptEvent(old), makeTextChangeEvent(old)]);
+    db.compact();
+
+    const rows = await db.query<AggregatedDailyStats>("aggregated_stats");
+    assert.strictEqual(rows.length, 1);
+    const row = rows[0];
+    assert.ok(row);
+    assert.strictEqual(row.totalAccepted, 1);
+    assert.strictEqual(row.totalCharsAdded, 10);
+    assert.strictEqual(row.totalCharsDeleted, 2);
+    assert.strictEqual(row.totalAcceptedCharacters, 50);
+  });
+
+  test("compact merges multiple rounds into the same date bucket", async () => {
+    // Use ttl=1ms so every event is immediately considered stale.
+    const db = new InMemoryAnalyticsDb();
+    const ts1 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const ts2 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 500).toISOString();
+
+    // First round: 2 events → compact → both land in the same date bucket.
+    db.ingest([makeAcceptEvent(ts1), makeAcceptEvent(ts2)]);
+    db.compact(1); // ttl=1ms: both events are stale immediately
+
+    // Second round: 1 more event for the same UTC date → compact → merges.
+    db.ingest([makeAcceptEvent(ts1)]);
+    db.compact(1);
+
+    // All three accepts should accumulate into the same date bucket.
+    const date = ts1.slice(0, 10);
+    const rows = await db.query<AggregatedDailyStats>("aggregated_stats");
+    const row = rows.find((r) => r.date === date);
+    assert.ok(row, `expected a row for date ${date}`);
+    assert.strictEqual(row.totalAccepted, 3);
+  });
+
+  test("calculateBaselines uses aggregated data after compaction", () => {
+    const db = new InMemoryAnalyticsDb();
+    // 3 old accept events spread over two dates → after compact, only aggregated data remains
+    const day1 = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(); // 3 days ago
+    const day2 = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(); // 2 days ago
+    db.ingest([makeAcceptEvent(day1), makeAcceptEvent(day1), makeAcceptEvent(day2)]);
+    db.compact(); // compact all: no recent events
+
+    // After compaction, raw events are gone but baselines must still reflect history
+    const result = db.calculateBaselines();
+    assert.strictEqual(result.sampleSize, 2);
+    // daily counts: day1=2, day2=1 → mean = 1.5
+    assert.ok(Math.abs(result.mean - 1.5) < 0.001, `expected mean ≈ 1.5, got ${result.mean}`);
+  });
+
+  test("calculateBaselines combines aggregated and raw events", () => {
+    const db = new InMemoryAnalyticsDb();
+    const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date().toISOString();
+    // Ingest old + recent, then compact only old events
+    db.ingest([makeAcceptEvent(old), makeAcceptEvent(recent)]);
+    db.compact(); // old event → aggregate; recent event stays raw
+
+    const result = db.calculateBaselines();
+    // We should have 2 date buckets: one old, one today
+    assert.strictEqual(result.sampleSize, 2);
+  });
+
+  test("close clears aggregated stats", async () => {
+    const db = new InMemoryAnalyticsDb();
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    db.ingest([makeAcceptEvent(old)]);
+    db.compact();
+    await db.close();
+
+    const rows = await db.query<AggregatedDailyStats>("aggregated_stats");
+    assert.deepStrictEqual(rows, []);
   });
 });
