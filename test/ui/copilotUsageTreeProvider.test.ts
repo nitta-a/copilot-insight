@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { CopilotUsageTreeProvider } from "../../ui/copilotUsageTreeProvider";
-import type { CopilotUsageStats } from "../../types";
+import { CopilotUsageTreeProvider } from "../../src/ui/copilotUsageTreeProvider";
+import type { CopilotUsageStats } from "../../src/types";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {

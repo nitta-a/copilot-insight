@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import type { DateStat } from "../../types";
-import { calculateWeeklyTrend } from "../../metrics/weeklyTrend";
+import type { DateStat } from "../../src/types";
+import { calculateWeeklyTrend } from "../../src/metrics/weeklyTrend";
 
 /** Helper: format a Date to YYYY-MM-DD. */
 function fmt(date: Date): string {

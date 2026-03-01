@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import { StatusBarIndicator } from "../../ui/statusBarIndicator";
-import type { RealtimeInlineStats } from "../../events/inlineCompletionWrapper";
+import { StatusBarIndicator } from "../../src/ui/statusBarIndicator";
+import type { RealtimeInlineStats } from "../../src/events/inlineCompletionWrapper";
 
 suite("StatusBarIndicator", () => {
   let indicator: StatusBarIndicator;

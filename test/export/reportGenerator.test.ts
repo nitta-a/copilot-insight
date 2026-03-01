@@ -1,7 +1,11 @@
 import * as assert from "assert";
-import type { CopilotUsageStats } from "../../types";
-import type { TrueAcceptanceResult, VelocityAnalysisResult, ModelPerformanceResult } from "../../metrics/metricsEngine";
-import { generateMarkdownReport } from "../../export/reportGenerator";
+import type { CopilotUsageStats } from "../../src/types";
+import type {
+  TrueAcceptanceResult,
+  VelocityAnalysisResult,
+  ModelPerformanceResult,
+} from "../../src/metrics/metricsEngine";
+import { generateMarkdownReport } from "../../src/export/reportGenerator";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {

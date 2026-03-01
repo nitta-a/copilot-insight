@@ -1,6 +1,11 @@
 import * as assert from "assert";
-import type { CompletionAcceptEvent, EditorSwitchEvent, TextChangeEvent, TrackedEvent } from "../../events/eventSchema";
-import { calculateEfficiency } from "../../events/eventSchema";
+import type {
+  CompletionAcceptEvent,
+  EditorSwitchEvent,
+  TextChangeEvent,
+  TrackedEvent,
+} from "../../src/events/eventSchema";
+import { calculateEfficiency } from "../../src/events/eventSchema";
 
 suite("eventSchema", () => {
   suite("calculateEfficiency", () => {

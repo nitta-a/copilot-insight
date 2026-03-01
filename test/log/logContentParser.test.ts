@@ -6,8 +6,8 @@ import {
   parseTextLogLine,
   processJsonEntry,
   tryParseJsonLogLine,
-} from "../../log/logContentParser";
-import type { ParsingContext } from "../../types";
+} from "../../src/log/logContentParser";
+import type { ParsingContext } from "../../src/types";
 
 function makeEmptyStats(): ParsingContext {
   return {

@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
-import { InlineCompletionTracker, wrapInlineCompletionProvider } from "../../events/inlineCompletionWrapper";
+import { InlineCompletionTracker, wrapInlineCompletionProvider } from "../../src/events/inlineCompletionWrapper";
 
 // ---------------------------------------------------------------------------
 // Minimal document / position / context stubs used by provideInlineCompletionItems
