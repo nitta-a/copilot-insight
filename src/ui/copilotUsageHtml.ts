@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { CopilotUsageStats, LanguageStat } from "../types";
+import type { DashboardPayload } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
@@ -7,7 +8,13 @@ const HOUR_CELL_BASE_OPACITY = 0.15;
 const HOUR_CELL_SCALE = 0.85;
 const SESSION_ID_MAX_LENGTH = 20;
 
-export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
+export function getHtmlContent(
+  stats: CopilotUsageStats,
+  days = 14,
+  nonce = "",
+  scriptUri = "",
+  dashboardPayload?: DashboardPayload,
+): string {
   const topCount = vscode.workspace.getConfiguration("copilot-insight").get<number>("topLanguagesCount", 10);
   const languageData = Array.from(stats.byLanguage.entries())
     .sort((a, b) => b[1].shown - a[1].shown)
@@ -42,7 +49,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:;">
   <title>GitHub Copilot Usage</title>
   <style>
     body {
@@ -154,10 +161,49 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
     }
     .insight-icon { margin-right: 6px; }
     .rate-bar-track { height: 8px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 2px; overflow: hidden; margin-bottom: 2px; }
+    /* ── Dashboard interactive section ───────────────────────────────── */
+    .db-highlight { border: 1px solid var(--vscode-charts-blue); }
+    .db-accent { color: var(--vscode-charts-blue); }
+    .db-model { font-size: 1.1em; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .db-period-btn {
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border: 1px solid transparent;
+      color: var(--vscode-foreground);
+      border-radius: 4px;
+      padding: 4px 12px;
+      margin-right: 6px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .db-period-btn.active { border-color: var(--vscode-charts-blue); color: var(--vscode-charts-blue); font-weight: bold; }
+    .db-period-btn:hover { background: var(--vscode-list-hoverBackground); }
+    .db-export-btn {
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, #fff);
+      border: none;
+      border-radius: 4px;
+      padding: 6px 14px;
+      margin-right: 8px;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .db-export-btn:hover { opacity: 0.85; }
+    .db-rate-cell { display: flex; align-items: center; gap: 6px; }
+    .db-rate-bar { height: 8px; background: var(--vscode-charts-green); border-radius: 2px; min-width: 2px; }
+    .db-vol-bar { height: 8px; background: var(--vscode-charts-blue); border-radius: 2px; min-width: 2px; opacity: 0.7; }
+    .db-lang-table { width: 100%; border-collapse: collapse; font-size: 0.85em; margin-bottom: 16px; }
+    .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
+    .db-lang-table th { opacity: 0.7; font-weight: normal; }
+    .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
   </style>
 </head>
 <body>
   <h1>🤖 GitHub Copilot Usage Dashboard</h1>
+
+  ${buildDashboardSection(dashboardPayload)}
+
+  <hr class="db-section-sep">
+  <h2 style="margin-top:0">📋 Detailed Statistics</h2>
   <div class="stats-grid">
     <div class="stat-card">
       <div class="stat-value">${stats.totalShown}</div>
@@ -212,6 +258,7 @@ export function getHtmlContent(stats: CopilotUsageStats, days = 14): string {
   ${errorSection}
   ${sessionSection}
   ${warningSection}
+  ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
 </html>`;
 }
@@ -620,4 +667,51 @@ function buildModelBarChart(data: Map<string, LanguageStat>, title: string): str
     <span><span class="dot green"></span>Accepted</span>
   </div>
   ${renderBarChartWithRate(sorted)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard interactive section (Chart.js canvases + controls)
+// ---------------------------------------------------------------------------
+
+function buildDashboardSection(payload?: DashboardPayload): string {
+  if (!payload) {
+    return "";
+  }
+  return `<section id="db-interactive">
+  <div id="db-summary-cards" class="stats-grid"></div>
+  <div id="db-period-selector" style="margin: 10px 0 16px;"></div>
+
+  <h2>📈 True Acceptance Rate Timeline</h2>
+  <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+
+  <div id="db-velocity-section">
+    <h2>🌊 Flow &amp; Velocity Correlation</h2>
+    <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
+      Scatter of typing speed (KPM) vs relative completion activity.
+      Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
+    </p>
+    <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
+  </div>
+
+  <h2>🌐 Language Breakdown</h2>
+  <div id="db-language-table"></div>
+
+  <div style="margin:16px 0 8px">
+    <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
+    <button id="db-btn-export-png" class="db-export-btn">🖼️ Export Chart (PNG)</button>
+  </div>
+</section>`;
+}
+
+/** Emit the nonce-protected data + script tags for the dashboard WebView. */
+function buildScriptTags(nonce: string, scriptUri: string, payload?: DashboardPayload): string {
+  if (!nonce || !scriptUri || !payload) {
+    return "";
+  }
+  // Escape sequences that could break out of a <script> block:
+  // - `</` → `<\/`  (prevent premature </script>)
+  // - `<!--` → `<\!--`  (prevent HTML comment injection)
+  const json = JSON.stringify(payload).replace(/<\//g, "<\\/").replace(/<!--/g, "<\\!--");
+  return `<script nonce="${nonce}">window.__dashboardData=${json};</script>
+<script nonce="${nonce}" src="${scriptUri}"></script>`;
 }

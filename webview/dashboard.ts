@@ -1,0 +1,526 @@
+/**
+ * Dashboard WebView frontend — runs inside VS Code's WebviewPanel.
+ *
+ * Responsibilities:
+ * - Render three Chart.js visualisations:
+ *   1. True Acceptance Rate Timeline (bar + line combo)
+ *   2. Flow & Velocity Correlation scatter plot
+ *   3. Language breakdown table (HTML, no canvas needed)
+ * - Handle period-change and export button interactions.
+ * - Persist UI state (selected period) across tab switches via
+ *   `vscode.getState()` / `vscode.setState()`.
+ *
+ * Communication:
+ * - Listens for `dashboardData` messages from the extension host.
+ * - Posts `changePeriod`, `exportMarkdown`, and `exportPng` messages back.
+ */
+
+import {
+  BarController,
+  BarElement,
+  CategoryScale,
+  Chart,
+  Legend,
+  LinearScale,
+  LineController,
+  LineElement,
+  PointElement,
+  ScatterController,
+  Title,
+  Tooltip,
+  type TooltipItem,
+} from "chart.js";
+
+import type {
+  DashboardPayload,
+  HostToWebviewMessage,
+  LanguageEntry,
+  TimelineEntry,
+  VelocityPoint,
+  WebviewToHostMessage,
+} from "../src/ui/dashboardMessages";
+
+// Register only the Chart.js components we actually use (tree-shaking).
+Chart.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  BarController,
+  LineController,
+  ScatterController,
+  Title,
+  Tooltip,
+  Legend,
+);
+
+// ---------------------------------------------------------------------------
+// VS Code WebView API (injected as a global by VS Code)
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare function acquireVsCodeApi(): {
+  postMessage(msg: WebviewToHostMessage): void;
+  getState(): { days?: number } | undefined;
+  setState(state: { days?: number }): void;
+};
+
+interface DashboardWindow extends Window {
+  __dashboardData?: DashboardPayload;
+}
+
+declare const window: DashboardWindow;
+
+const vscode = acquireVsCodeApi();
+
+// ---------------------------------------------------------------------------
+// Mutable state
+// ---------------------------------------------------------------------------
+
+let timelineChart: Chart | null = null;
+let velocityChart: Chart | null = null;
+let currentDays = 14;
+
+// ---------------------------------------------------------------------------
+// Theme helpers — read VS Code CSS variables for chart colours
+// ---------------------------------------------------------------------------
+
+function getCssVar(name: string): string {
+  return getComputedStyle(document.body).getPropertyValue(name).trim();
+}
+
+interface ChartColors {
+  blue: string;
+  green: string;
+  orange: string;
+  red: string;
+  purple: string;
+  foreground: string;
+  grid: string;
+}
+
+function getColors(): ChartColors {
+  return {
+    blue: getCssVar("--vscode-charts-blue") || "#0078d4",
+    green: getCssVar("--vscode-charts-green") || "#16825d",
+    orange: getCssVar("--vscode-charts-orange") || "#cca700",
+    red: getCssVar("--vscode-charts-red") || "#f14c4c",
+    purple: getCssVar("--vscode-charts-purple") || "#b180d7",
+    foreground: getCssVar("--vscode-foreground") || "#cccccc",
+    grid: "rgba(128,128,128,0.15)",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Summary cards
+// ---------------------------------------------------------------------------
+
+function renderSummaryCards(summary: DashboardPayload["summary"]): void {
+  const el = document.getElementById("db-summary-cards");
+  if (!el) {
+    return;
+  }
+
+  const trueRateStr = summary.trueAcceptanceRate !== null ? `${summary.trueAcceptanceRate.toFixed(1)}%` : "—";
+  const hours = (summary.estimatedMinutesSaved / 60).toFixed(1);
+  const bestModelStr = summary.bestModel ?? "—";
+
+  el.innerHTML = `
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-accent">${trueRateStr}</div>
+      <div class="stat-label">True Acceptance Rate</div>
+      <div class="stat-detail">vs ${summary.acceptanceRate.toFixed(1)}% raw</div>
+    </div>
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-accent">${summary.estimatedMinutesSaved.toFixed(0)} min</div>
+      <div class="stat-label">Estimated Time Saved</div>
+      <div class="stat-detail">${hours} hours (ROI)</div>
+    </div>
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-model" title="${escHtml(bestModelStr)}">${escHtml(trunc(bestModelStr, 18))}</div>
+      <div class="stat-label">Best Model</div>
+      <div class="stat-detail">highest acceptance</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${summary.totalShown}</div>
+      <div class="stat-label">Suggestions Shown</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${summary.totalAccepted}</div>
+      <div class="stat-label">Suggestions Accepted</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${summary.acceptanceRate.toFixed(1)}%</div>
+      <div class="stat-label">Raw Acceptance Rate</div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Timeline chart (bar + line)
+// ---------------------------------------------------------------------------
+
+function renderTimelineChart(timeline: TimelineEntry[]): void {
+  const canvas = document.getElementById("db-timeline-chart") as HTMLCanvasElement | null;
+  if (!canvas) {
+    return;
+  }
+
+  const c = getColors();
+  const labels = timeline.map((e) => fmtDate(e.date));
+  const shown = timeline.map((e) => e.shown);
+  const accepted = timeline.map((e) => e.accepted);
+  const rates = timeline.map((e) => e.rate);
+  const trueRates = timeline.map((e) =>
+    e.trueAccepted !== null ? (e.trueAccepted / Math.max(e.shown, 1)) * 100 : null,
+  );
+  const hasTrueRates = trueRates.some((r) => r !== null);
+
+  if (timelineChart) {
+    timelineChart.destroy();
+  }
+
+  const extraDatasets = hasTrueRates
+    ? [
+        {
+          type: "line" as const,
+          label: "True Acceptance Rate (%)",
+          data: trueRates as (number | null)[],
+          borderColor: c.purple,
+          backgroundColor: "transparent",
+          // biome-ignore lint/style/useNamingConvention: Chart.js API property
+          yAxisID: "yRate",
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.3,
+          borderDash: [5, 5],
+          order: 1,
+        },
+      ]
+    : [];
+
+  timelineChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar" as const,
+          label: "Shown",
+          data: shown,
+          backgroundColor: `${c.blue}80`,
+          // biome-ignore lint/style/useNamingConvention: Chart.js API property
+          yAxisID: "yCount",
+          order: 2,
+        },
+        {
+          type: "bar" as const,
+          label: "Accepted",
+          data: accepted,
+          backgroundColor: `${c.green}80`,
+          // biome-ignore lint/style/useNamingConvention: Chart.js API property
+          yAxisID: "yCount",
+          order: 2,
+        },
+        {
+          type: "line" as const,
+          label: "Acceptance Rate (%)",
+          data: rates,
+          borderColor: c.orange,
+          backgroundColor: "transparent",
+          // biome-ignore lint/style/useNamingConvention: Chart.js API property
+          yAxisID: "yRate",
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.3,
+          order: 1,
+        },
+        ...extraDatasets,
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: c.foreground } },
+        tooltip: {
+          callbacks: {
+            label: (item: TooltipItem<"bar" | "line">) => {
+              const val = item.raw as number | null;
+              if (val === null) {
+                return "";
+              }
+              const isRate = item.dataset.label?.includes("Rate") ?? false;
+              return `${item.dataset.label}: ${val.toFixed(isRate ? 1 : 0)}${isRate ? "%" : ""}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: c.foreground }, grid: { color: c.grid } },
+        yCount: {
+          type: "linear" as const,
+          position: "left" as const,
+          beginAtZero: true,
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+          title: { display: true, text: "Count", color: c.foreground },
+        },
+        yRate: {
+          type: "linear" as const,
+          position: "right" as const,
+          beginAtZero: true,
+          max: 100,
+          ticks: { color: c.foreground, callback: (v) => `${v}%` },
+          grid: { display: false },
+          title: { display: true, text: "Rate (%)", color: c.foreground },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Velocity / flow correlation scatter chart
+// ---------------------------------------------------------------------------
+
+function renderVelocityChart(points: VelocityPoint[]): void {
+  const section = document.getElementById("db-velocity-section");
+  const canvas = document.getElementById("db-velocity-chart") as HTMLCanvasElement | null;
+
+  if (points.length === 0) {
+    if (section) {
+      section.style.display = "none";
+    }
+    return;
+  }
+
+  if (section) {
+    section.style.display = "";
+  }
+  if (!canvas) {
+    return;
+  }
+
+  const c = getColors();
+  const maxComp = Math.max(...points.map((p) => p.completionsAccepted), 1);
+  const normal = points.filter((p) => !p.flowDisrupted);
+  const disrupted = points.filter((p) => p.flowDisrupted);
+
+  if (velocityChart) {
+    velocityChart.destroy();
+  }
+
+  velocityChart = new Chart(canvas, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Normal Flow",
+          data: normal.map((p) => ({ x: p.kpm, y: (p.completionsAccepted / maxComp) * 100 })),
+          backgroundColor: `${c.blue}cc`,
+          pointRadius: 5,
+        },
+        {
+          label: "Flow Disrupted",
+          data: disrupted.map((p) => ({ x: p.kpm, y: (p.completionsAccepted / maxComp) * 100 })),
+          backgroundColor: `${c.red}cc`,
+          pointRadius: 5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: c.foreground } },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const pt = item.raw as { x: number; y: number };
+              const src = item.datasetIndex === 0 ? normal : disrupted;
+              const srcPt = src[item.dataIndex];
+              const timeStr = srcPt ? new Date(srcPt.windowStart).toLocaleTimeString() : "";
+              const lines = [`KPM: ${pt.x.toFixed(0)}`, `Completions: ${srcPt?.completionsAccepted ?? 0}`];
+              if (timeStr) {
+                lines.push(`Time: ${timeStr}`);
+              }
+              return lines;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: "Keystrokes Per Minute (KPM)", color: c.foreground },
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+        },
+        y: {
+          title: { display: true, text: "Relative Completion Activity (%)", color: c.foreground },
+          beginAtZero: true,
+          max: 100,
+          ticks: { color: c.foreground, callback: (v) => `${v}%` },
+          grid: { color: c.grid },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Language breakdown table
+// ---------------------------------------------------------------------------
+
+function renderLanguageTable(entries: LanguageEntry[]): void {
+  const el = document.getElementById("db-language-table");
+  if (!el) {
+    return;
+  }
+
+  if (entries.length === 0) {
+    el.innerHTML = '<p class="no-data">No language data available.</p>';
+    return;
+  }
+
+  const maxShown = Math.max(...entries.map((e) => e.shown), 1);
+  const rows = entries
+    .map((e) => {
+      const barPct = ((e.shown / maxShown) * 100).toFixed(1);
+      return `<tr>
+      <td>${escHtml(e.language)}</td>
+      <td>${e.shown}</td>
+      <td>${e.accepted}</td>
+      <td>
+        <div class="db-rate-cell">
+          <div class="db-rate-bar" style="width:${e.rate.toFixed(1)}%"></div>
+          <span>${e.rate.toFixed(1)}%</span>
+        </div>
+      </td>
+      <td><div class="db-vol-bar" style="width:${barPct}%"></div></td>
+    </tr>`;
+    })
+    .join("");
+
+  el.innerHTML = `<table class="db-lang-table">
+    <thead><tr>
+      <th>Language</th><th>Shown</th><th>Accepted</th>
+      <th>Rate</th><th>Volume</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ---------------------------------------------------------------------------
+// Period selector
+// ---------------------------------------------------------------------------
+
+function renderPeriodSelector(activeDays: number): void {
+  const el = document.getElementById("db-period-selector");
+  if (!el) {
+    return;
+  }
+
+  el.innerHTML = [7, 14, 30]
+    .map((d) => {
+      const cls = d === activeDays ? "db-period-btn active" : "db-period-btn";
+      return `<button class="${cls}" data-days="${d}">${d} days</button>`;
+    })
+    .join("");
+
+  el.querySelectorAll<HTMLButtonElement>(".db-period-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const days = Number(btn.dataset.days);
+      currentDays = days;
+      vscode.setState({ days });
+      vscode.postMessage({ type: "changePeriod", payload: { days } } satisfies WebviewToHostMessage);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Export buttons
+// ---------------------------------------------------------------------------
+
+function setupExportButtons(): void {
+  document.getElementById("db-btn-export-md")?.addEventListener("click", () => {
+    vscode.postMessage({ type: "exportMarkdown" } satisfies WebviewToHostMessage);
+  });
+
+  document.getElementById("db-btn-export-png")?.addEventListener("click", () => {
+    const canvas = document.getElementById("db-timeline-chart") as HTMLCanvasElement | null;
+    const imageData = canvas?.toDataURL("image/png") ?? "";
+    vscode.postMessage({ type: "exportPng", payload: { imageData } } satisfies WebviewToHostMessage);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Full render
+// ---------------------------------------------------------------------------
+
+function render(payload: DashboardPayload): void {
+  currentDays = payload.days;
+  renderSummaryCards(payload.summary);
+  renderTimelineChart(payload.timeline);
+  renderVelocityChart(payload.velocityPoints);
+  renderLanguageTable(payload.languageBreakdown);
+  renderPeriodSelector(payload.days);
+}
+
+// ---------------------------------------------------------------------------
+// Message handler (host → webview updates)
+// ---------------------------------------------------------------------------
+
+window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) => {
+  const msg = event.data;
+  if (msg.type === "dashboardData") {
+    render(msg.payload);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function trunc(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+function fmtDate(dateStr: string): string {
+  try {
+    // Append 'T00:00:00Z' to force UTC parsing so the display date is
+    // timezone-independent (YYYY-MM-DD strings represent whole days).
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Initialisation — render from embedded data immediately (fast first paint)
+// ---------------------------------------------------------------------------
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupExportButtons();
+
+  if (window.__dashboardData) {
+    const initData = window.__dashboardData;
+    // Restore persisted period and substitute it directly into the initial
+    // data to avoid a flash of incorrectly-filtered content.
+    const saved = vscode.getState();
+    if (saved?.days && saved.days !== initData.days) {
+      currentDays = saved.days;
+      // Request updated data from the host in the background.
+      vscode.postMessage({ type: "changePeriod", payload: { days: saved.days } } satisfies WebviewToHostMessage);
+      // Render immediately with the saved-days label so the period buttons
+      // already reflect the correct selection while waiting for the update.
+      render({ ...initData, days: saved.days });
+    } else {
+      render(initData);
+    }
+  }
+});
