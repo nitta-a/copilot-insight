@@ -332,3 +332,73 @@ suite("EventTracker — batching", () => {
     assert.doesNotThrow(() => tracker.dispose());
   });
 });
+
+suite("EventTracker — enableAdvancedAnalysis toggle", () => {
+  const storagePath = "/tmp/event-tracker-toggle-test-storage";
+
+  setup(() => {
+    rmrf(storagePath);
+  });
+
+  teardown(async () => {
+    // Restore the default setting after each test.
+    await vscode.workspace
+      .getConfiguration("copilot-insight")
+      .update("enableAdvancedAnalysis", undefined, vscode.ConfigurationTarget.Global);
+    rmrf(storagePath);
+  });
+
+  test("worker ingest is skipped when enableAdvancedAnalysis is false", async () => {
+    // Disable advanced analysis.
+    await vscode.workspace
+      .getConfiguration("copilot-insight")
+      .update("enableAdvancedAnalysis", false, vscode.ConfigurationTarget.Global);
+
+    const worker = makeMockWorker();
+    const tracker = new EventTracker(makeContext(storagePath), worker);
+
+    // Even with 10+ events, the worker must never receive them.
+    for (let i = 0; i < 10; i++) {
+      await tracker.recordCompletionAccept({ languageId: "typescript", acceptedText: "x" });
+    }
+
+    assert.strictEqual(worker.calls.length, 0, "worker must not be called when analysis is disabled");
+    assert.strictEqual(tracker.bufferSize, 0, "buffer must not accumulate when analysis is disabled");
+    tracker.dispose();
+  });
+
+  test("JSONL storage always receives events even when analysis is disabled", async () => {
+    // Disable advanced analysis.
+    await vscode.workspace
+      .getConfiguration("copilot-insight")
+      .update("enableAdvancedAnalysis", false, vscode.ConfigurationTarget.Global);
+
+    const worker = makeMockWorker();
+    const tracker = new EventTracker(makeContext(storagePath), worker);
+
+    await tracker.recordCompletionAccept({ languageId: "python", acceptedText: "pass" });
+
+    const today = new Date().toISOString().substring(0, 10);
+    const events = tracker.storage.readByDate(today);
+    assert.ok(events.length >= 1, "JSONL storage must always record events");
+    tracker.dispose();
+  });
+
+  test("worker ingest runs normally when enableAdvancedAnalysis is true (default)", async () => {
+    // Explicitly set to true (same as default) to confirm normal behavior.
+    await vscode.workspace
+      .getConfiguration("copilot-insight")
+      .update("enableAdvancedAnalysis", true, vscode.ConfigurationTarget.Global);
+
+    const worker = makeMockWorker();
+    const tracker = new EventTracker(makeContext(storagePath), worker);
+
+    for (let i = 0; i < 10; i++) {
+      await tracker.recordCompletionAccept({ languageId: "typescript", acceptedText: "x" });
+    }
+
+    assert.strictEqual(worker.calls.length, 1, "worker must be called when analysis is enabled");
+    assert.strictEqual(worker.calls[0].length, 10);
+    tracker.dispose();
+  });
+});

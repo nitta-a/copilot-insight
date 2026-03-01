@@ -133,6 +133,11 @@
           "minimum": 3,
           "maximum": 30,
           "description": "Number of top languages to display in the Usage by Language chart."
+        },
+        "copilot-insight.enableAdvancedAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance). When disabled, raw JSONL event logging continues but the metrics dashboard is unavailable."
         }
       }
     }

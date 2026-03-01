@@ -56,7 +56,7 @@ export class EventTracker implements vscode.Disposable {
    */
   private readonly _activeCompletions = new Map<string, ActiveCompletion>();
 
-  private readonly _dbWorker: DbWorkerClient | undefined;
+  private _dbWorker: DbWorkerClient | undefined;
   private _buffer: TrackedEvent[] = [];
   private _flushTimer: ReturnType<typeof setInterval> | undefined;
   private _compactTimer: ReturnType<typeof setInterval> | undefined;
@@ -138,12 +138,22 @@ export class EventTracker implements vscode.Disposable {
   }
 
   /**
-   * Persist an event to storage and, when a worker is configured, add it to
-   * the IPC buffer.  Triggers an immediate flush when the buffer is full.
+   * Persist an event to storage and, when a worker is configured and advanced
+   * analysis is enabled, add it to the IPC buffer.  Triggers an immediate
+   * flush when the buffer is full.
+   *
+   * Raw JSONL logging via {@link EventStorage} always runs regardless of the
+   * `enableAdvancedAnalysis` setting.
    */
   private async _trackEvent(event: TrackedEvent): Promise<void> {
     await this._storage.append(event);
     if (!this._dbWorker) {
+      return;
+    }
+    const analysisEnabled = vscode.workspace
+      .getConfiguration("copilot-insight")
+      .get<boolean>("enableAdvancedAnalysis", true);
+    if (!analysisEnabled) {
       return;
     }
     this._buffer.push(event);
@@ -216,6 +226,23 @@ export class EventTracker implements vscode.Disposable {
   /** Number of events currently waiting in the IPC buffer. */
   get bufferSize(): number {
     return this._buffer.length;
+  }
+
+  /**
+   * Update the worker reference at runtime (e.g. when the master toggle is
+   * re-enabled after being disabled).  Starts the flush timer if it has not
+   * been started yet and a new worker is provided.
+   */
+  setDbWorker(worker: DbWorkerClient | undefined): void {
+    this._dbWorker = worker;
+    if (worker && this._flushTimer === undefined) {
+      this._flushTimer = setInterval(() => {
+        void this._flushBuffer();
+      }, FLUSH_INTERVAL_MS);
+    } else if (!worker && this._flushTimer !== undefined) {
+      clearInterval(this._flushTimer);
+      this._flushTimer = undefined;
+    }
   }
 
   /** Flush any remaining buffered events and release all resources. */

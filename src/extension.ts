@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
@@ -8,9 +9,15 @@ import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
 import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
+import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
+import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import type { CopilotUsageStats } from "./types";
 
 let cachedStats: CopilotUsageStats | undefined;
+
+function isAdvancedAnalysisEnabled(): boolean {
+  return vscode.workspace.getConfiguration("copilot-insight").get<boolean>("enableAdvancedAnalysis", true);
+}
 
 export function activate(context: vscode.ExtensionContext) {
   // Install the inline-completion wrapper as early as possible so that any
@@ -18,9 +25,29 @@ export function activate(context: vscode.ExtensionContext) {
   // intercepted and its show/accept events are counted in real-time.
   const inlineTracker = new InlineCompletionTracker(context);
 
+  // Conditionally start the DB worker based on the master-toggle setting.
+  const workerPath = path.join(context.extensionUri.fsPath, "dist", "worker", "dbWorker.js");
+  let dbWorker: DbWorkerClient | undefined = isAdvancedAnalysisEnabled()
+    ? new DbWorkerClientImpl(workerPath)
+    : undefined;
+
   // Phase 1: Event instrumentation — capture text-change, editor-switch, and
   // completion-accept events and persist them to structured storage.
-  const eventTracker = new EventTracker(context);
+  const eventTracker = new EventTracker(context, dbWorker);
+
+  // Watch for runtime changes to the enableAdvancedAnalysis toggle.
+  const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration("copilot-insight.enableAdvancedAnalysis")) {
+      if (!isAdvancedAnalysisEnabled() && dbWorker) {
+        void dbWorker.close();
+        dbWorker = undefined;
+        eventTracker.setDbWorker(undefined);
+      } else if (isAdvancedAnalysisEnabled() && !dbWorker) {
+        dbWorker = new DbWorkerClientImpl(workerPath);
+        eventTracker.setDbWorker(dbWorker);
+      }
+    }
+  });
 
   // Phase 3: Real-time status bar indicator showing current-session
   // Copilot contribution (acceptance rate + counts).
@@ -61,6 +88,12 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   const showCopilotUsageDisposable = vscode.commands.registerCommand("copilot-insight.showCopilotUsage", async () => {
+    if (!isAdvancedAnalysisEnabled()) {
+      vscode.window.showInformationMessage(
+        "Advanced analysis is disabled. Please enable it in settings to view metrics.",
+      );
+      return;
+    }
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -170,6 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
     copilotUsageTreeView,
     eventTracker,
     statusBar,
+    configWatcher,
     { dispose: () => clearInterval(statusBarTimer) },
     showCopilotUsageDisposable,
     changeDailyUsagePeriodDisposable,
