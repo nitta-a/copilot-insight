@@ -22,6 +22,9 @@ function createMockClient(overrides?: Partial<DbWorkerClient>): DbWorkerClient {
     async modelPerformance() {
       return { crossTab: [], bestModelByLanguage: new Map() };
     },
+    async compact(_ttlMs?: number) {
+      return { compacted: 0 };
+    },
     async close() {},
     ...overrides,
   };
@@ -36,6 +39,7 @@ suite("DbWorkerClient – interface contract", () => {
       "trueRate",
       "velocity",
       "modelPerformance",
+      "compact",
       "close",
     ];
 
