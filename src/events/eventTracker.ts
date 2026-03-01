@@ -2,6 +2,21 @@ import * as vscode from "vscode";
 import type { CompletionAcceptEvent, EditorSwitchEvent, TextChangeEvent } from "./eventSchema";
 import { EventStorage } from "./eventStorage";
 
+/** Sliding-window duration for active-completion tracking (5 minutes in ms). */
+const ACTIVE_WINDOW_MS = 5 * 60 * 1_000;
+
+/**
+ * An accepted inline completion held in the in-memory sliding-window map.
+ * Keyed by `"${uri}:${lineNumber}"` for O(1) lookup during document changes.
+ */
+export interface ActiveCompletion {
+  uri: string;
+  lineNumber: number;
+  /** `Date.now()` value at the time of acceptance, used for pruning. */
+  acceptedAt: number;
+  languageId: string;
+}
+
 /**
  * Phase 1 of the implementation roadmap: VS Code event listeners that capture
  * raw editing activity and persist structured events via {@link EventStorage}.
@@ -19,6 +34,12 @@ export class EventTracker implements vscode.Disposable {
   private readonly _storage: EventStorage;
   private readonly _sessionId: string;
   private readonly _disposables: vscode.Disposable[] = [];
+  /**
+   * Sliding-window map of recently accepted completions.
+   * Key: `"${uri}:${lineNumber}"` — enables O(1) lookup and invalidation in
+   * the `onDidChangeTextDocument` hot path.
+   */
+  private readonly _activeCompletions = new Map<string, ActiveCompletion>();
 
   /**
    * @param context  The extension context, used for `globalStorageUri` and
@@ -38,9 +59,15 @@ export class EventTracker implements vscode.Disposable {
         if (e.document.uri.scheme !== "file" && e.document.uri.scheme !== "untitled") {
           return;
         }
+        // Hot path: single pass over content changes.
+        // O(1) map invalidation (survival check) is merged with char counting
+        // so there is no extra iteration cost.
+        const docUri = e.document.uri.toString();
         let charsAdded = 0;
         let charsDeleted = 0;
         for (const change of e.contentChanges) {
+          // Invalidate any active completion whose line was just modified.
+          this._activeCompletions.delete(`${docUri}:${change.range.start.line}`);
           charsAdded += change.text.length;
           charsDeleted += change.rangeLength;
         }
@@ -110,6 +137,58 @@ export class EventTracker implements vscode.Disposable {
   /** Access the underlying storage (e.g. for queries). */
   get storage(): EventStorage {
     return this._storage;
+  }
+
+  /**
+   * Register a just-accepted inline completion in the sliding-window map.
+   *
+   * Should be called (e.g. from `extension.ts`) immediately after an inline
+   * completion acceptance is confirmed, supplying the document URI and the
+   * line where the completion was inserted.
+   *
+   * @param uri         String form of the document URI (e.g. `document.uri.toString()`).
+   * @param lineNumber  Zero-based line index of the accepted completion.
+   * @param languageId  VS Code language ID of the document.
+   * @param nowMs       Current time in milliseconds; defaults to `Date.now()`.
+   *                    Supply an explicit value in tests to avoid wall-clock dependency.
+   */
+  trackActiveCompletion(uri: string, lineNumber: number, languageId: string, nowMs = Date.now()): void {
+    const key = `${uri}:${lineNumber}`;
+    this._activeCompletions.set(key, { uri, lineNumber, acceptedAt: nowMs, languageId });
+    this.pruneActiveCompletions(nowMs);
+  }
+
+  /**
+   * Remove completions older than 5 minutes from the sliding-window map.
+   *
+   * Called automatically by {@link trackActiveCompletion}.  May also be
+   * invoked by an external periodic timer to keep the map lean even when no
+   * new completions are accepted.
+   *
+   * @param nowMs  Current time in milliseconds; defaults to `Date.now()`.
+   */
+  pruneActiveCompletions(nowMs = Date.now()): void {
+    const cutoff = nowMs - ACTIVE_WINDOW_MS;
+    const staleKeys: string[] = [];
+    for (const [key, completion] of this._activeCompletions) {
+      if (completion.acceptedAt < cutoff) {
+        staleKeys.push(key);
+      }
+    }
+    for (const key of staleKeys) {
+      this._activeCompletions.delete(key);
+    }
+  }
+
+  /**
+   * O(1) lookup of an active completion by document URI and line number.
+   *
+   * Returns `undefined` when no completion is currently tracked at that
+   * location (either because none was accepted there, or because it was
+   * invalidated by a subsequent edit or pruned by the sliding window).
+   */
+  lookupActiveCompletion(uri: string, lineNumber: number): ActiveCompletion | undefined {
+    return this._activeCompletions.get(`${uri}:${lineNumber}`);
   }
 
   dispose(): void {
