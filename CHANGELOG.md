@@ -4,6 +4,12 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.2] - 2026-03-01
+
+### Changed
+- 🔴 Anomaly points in the Acceptance Rate timeline chart now use a hardcoded bright red (`#FF4B4B`) instead of the theme-derived `--vscode-charts-red`, ensuring they remain visually distinct in all VS Code themes (light, dark, high-contrast)
+- Anomaly points now have a border width of `2` (normal points `1`) for additional emphasis
+
 ## [1.0.1] - 2026-03-01
 
 ### Added
