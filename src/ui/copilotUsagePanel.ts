@@ -5,6 +5,7 @@ import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResu
 import type { WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload } from "./dashboardPayload";
 import { getHtmlContent } from "./copilotUsageHtml";
+import { todayDateString } from "../utils";
 
 function getDefaultDisplayDays(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("defaultDisplayDays", 14);
@@ -115,9 +116,12 @@ export class CopilotUsagePanel {
   }
 
   private _savePng(dataUri: string): void {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     vscode.window
       .showSaveDialog({
-        defaultUri: vscode.Uri.file("copilot-dashboard.png"),
+        defaultUri: workspaceFolder
+          ? vscode.Uri.joinPath(workspaceFolder, `copilot-dashboard-${todayDateString()}.png`)
+          : vscode.Uri.file(`copilot-dashboard-${todayDateString()}.png`),
         filters: { png: ["png"] },
       })
       .then((uri) => {
