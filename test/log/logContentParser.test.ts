@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import {
+  extractLanguageFromLine,
   incrementStatCount,
   normalizeContextSource,
   parseLogContent,
@@ -47,6 +48,53 @@ function makeEmptyStats(): ParsingContext {
 }
 
 suite("logContentParser", () => {
+  suite("extractLanguageFromLine", () => {
+    test("extracts languageId with double quotes", () => {
+      assert.strictEqual(extractLanguageFromLine('languageId: "typescript"'), "typescript");
+    });
+
+    test("extracts languageId with single quotes", () => {
+      assert.strictEqual(extractLanguageFromLine("languageId: 'python'"), "python");
+    });
+
+    test("extracts languageId without quotes", () => {
+      assert.strictEqual(extractLanguageFromLine("languageId: rust"), "rust");
+    });
+
+    test("extracts language: (colon) format", () => {
+      assert.strictEqual(extractLanguageFromLine("language: javascript"), "javascript");
+    });
+
+    test("extracts language (space) format", () => {
+      assert.strictEqual(extractLanguageFromLine("language typescript"), "typescript");
+    });
+
+    test("extracts lang: format", () => {
+      assert.strictEqual(extractLanguageFromLine("lang: go"), "go");
+    });
+
+    test("normalizes to lowercase", () => {
+      assert.strictEqual(extractLanguageFromLine('languageId: "TypeScript"'), "typescript");
+    });
+
+    test("returns empty string when no language found", () => {
+      assert.strictEqual(extractLanguageFromLine("some unrelated log line"), "");
+    });
+
+    test("handles languageId embedded in fetchCompletions line", () => {
+      assert.strictEqual(
+        extractLanguageFromLine(
+          '2024-01-15 INFO [fetchCompletions] languageId: "typescript" finished with 200 status after 150ms',
+        ),
+        "typescript",
+      );
+    });
+
+    test("extracts typescriptreact as a language id with hyphen-like characters", () => {
+      assert.strictEqual(extractLanguageFromLine('languageId: "typescriptreact"'), "typescriptreact");
+    });
+  });
+
   suite("incrementStatCount", () => {
     test("increments shown count for new key", () => {
       const map = new Map();
@@ -385,6 +433,77 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalChat, 3);
       assert.strictEqual(stats.byChatModel.get("gpt-4o"), 2);
       assert.strictEqual(stats.byChatModel.get("claude-3.5-sonnet"), 1);
+    });
+  });
+
+  suite("parseTextLogLine – fetchCompletions language extraction", () => {
+    test("extracts languageId with double quotes from fetchCompletions line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        '2024-06-01 [fetchCompletions] languageId: "typescript" finished with 200 status after 150ms',
+        stats,
+      );
+      assert.strictEqual(stats.totalShown, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 1, accepted: 0 });
+    });
+
+    test("extracts languageId without quotes from fetchCompletions line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 [fetchCompletions] languageId: python finished with 200 status after 200ms", stats);
+      assert.strictEqual(stats.totalShown, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 1, accepted: 0 });
+    });
+
+    test("no language entry when fetchCompletions line has no languageId", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [fetchCompletions] Request to /v1/engines/gpt-4o/completions finished with 200 status after 200ms",
+        stats,
+      );
+      assert.strictEqual(stats.totalShown, 1);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+
+    test("fetchCompletions non-200 does not add to byLanguage", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        '2024-06-01 [fetchCompletions] languageId: "typescript" finished with 429 status after 50ms',
+        stats,
+      );
+      assert.strictEqual(stats.totalShown, 0);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+
+    test("accumulates byLanguage across multiple fetchCompletions lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        '2024-06-01 [fetchCompletions] languageId: "typescript" finished with 200 status after 100ms',
+        stats,
+      );
+      parseTextLogLine(
+        '2024-06-01 [fetchCompletions] languageId: "typescript" finished with 200 status after 120ms',
+        stats,
+      );
+      parseTextLogLine('2024-06-01 [fetchCompletions] languageId: "python" finished with 200 status after 90ms', stats);
+      assert.strictEqual(stats.totalShown, 3);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 2, accepted: 0 });
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 1, accepted: 0 });
+    });
+  });
+
+  suite("parseTextLogLine – legacy keyword languageId format", () => {
+    test("extracts languageId with quotes from suggestion shown line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine('2024-06-01 suggestion shown languageId: "typescript"', stats);
+      assert.strictEqual(stats.totalShown, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 1, accepted: 0 });
+    });
+
+    test("extracts languageId without quotes from suggestion accepted line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 suggestion accepted languageId: python", stats);
+      assert.strictEqual(stats.totalAccepted, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 0, accepted: 1 });
     });
   });
 

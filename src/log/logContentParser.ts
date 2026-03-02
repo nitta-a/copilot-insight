@@ -160,6 +160,23 @@ export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean 
 // --- Sub-parsers for parseTextLogLine ---
 
 /**
+ * Extract a language identifier from a log line.
+ *
+ * Handles both the modern `languageId: "typescript"` (with optional quotes)
+ * and the legacy `language: typescript` / `lang: typescript` formats.
+ */
+export function extractLanguageFromLine(line: string): string {
+  const match =
+    line.match(/languageId:\s*"([^"]+)"/i) ??
+    line.match(/languageId:\s*'([^']+)'/i) ??
+    line.match(/languageId:\s*([a-zA-Z][a-zA-Z0-9_-]*)/i) ??
+    line.match(/language:\s*"([^"]+)"/i) ??
+    line.match(/language[:\s]+([a-zA-Z][a-zA-Z0-9_-]*)/i) ??
+    line.match(/lang:\s*([a-zA-Z][a-zA-Z0-9_-]*)/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+/**
  * Parse "[fetchCompletions] ... finished with NNN status after NNNms" lines.
  * Returns true if the line was handled.
  */
@@ -176,6 +193,7 @@ function parseFetchCompletionsLine(
   const statusCode = statusMatch ? Number.parseInt(statusMatch[1], 10) : 0;
   const latencyMatch = line.match(/after ([\d.]+)ms/);
   const latencyMs = latencyMatch ? Number.parseFloat(latencyMatch[1]) : 0;
+  const language = extractLanguageFromLine(line);
 
   if (statusCode === 200) {
     ctx.totalShown++;
@@ -184,6 +202,9 @@ function parseFetchCompletionsLine(
     }
     if (hourKey) {
       incrementCount(ctx.byHour, hourKey);
+    }
+    if (language) {
+      incrementStatCount(ctx.byLanguage, language, "shown");
     }
     const engineMatch = line.match(/\/v1\/engines\/([\w.-]+)\/completions/);
     if (engineMatch) {
@@ -322,8 +343,7 @@ function recordChatRequest(
  * Parse legacy/generic keyword lines for older log formats.
  */
 function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ctx: ParsingContext): void {
-  const langMatch = line.match(/language[:\s]+([a-zA-Z]+)/i) ?? line.match(/lang[:\s]+([a-zA-Z]+)/i);
-  const language = langMatch ? langMatch[1].toLowerCase() : "";
+  const language = extractLanguageFromLine(line);
 
   if (lower.includes("suggestion shown") || lower.includes("completion shown") || lower.includes("shown suggestion")) {
     ctx.totalShown++;

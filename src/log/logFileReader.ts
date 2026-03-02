@@ -36,12 +36,17 @@ export async function getSortedSessionDirs(logBaseDir: string, fallback: string)
   }
 }
 
-export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Promise<void> {
+export async function parseLogDirectory(
+  logDir: string,
+  ctx: ParsingContext,
+  log?: (msg: string) => void,
+): Promise<void> {
   try {
     const entries = await fs.readdir(logDir);
     const files = entries.filter((f) => f.endsWith(".log"));
     for (const file of files) {
       const filePath = path.join(logDir, file);
+      log?.(`Parsing: ${filePath}`);
       try {
         const content = await fs.readFile(filePath, "utf-8");
         parseLogContent(content, ctx);

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import { getSortedSessionDirs, isDirectory, parseLogDirectory } from "./logFileReader";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 
@@ -16,6 +16,15 @@ const COPILOT_DIR_NAMES = [
 
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
 const MAX_LATENCY_SAMPLES = 10_000;
+
+let _outputChannel: vscode.OutputChannel | undefined;
+
+function getOutputChannel(): vscode.OutputChannel {
+  if (!_outputChannel) {
+    _outputChannel = vscode.window.createOutputChannel("Copilot Insight");
+  }
+  return _outputChannel;
+}
 
 export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsageStats> {
   const ctx: ParsingContext = {
@@ -53,12 +62,17 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     currentSessionId: "",
   };
 
+  const ch = getOutputChannel();
+
   try {
     // logUri.fsPath is like: .../logs/<session>/<exthost>/copilot-insight/
     const extHostDir = path.dirname(logUri.fsPath);
     const sessionDir = path.dirname(extHostDir);
     const logBaseDir = path.dirname(sessionDir);
 
+    ch.appendLine(`[Copilot Insight] Searching for Copilot logs under: ${logBaseDir}`);
+
+    const log = (msg: string) => ch.appendLine(msg);
     const sessionDirs = await getSortedSessionDirs(logBaseDir, sessionDir);
 
     for (const sessDir of sessionDirs) {
@@ -77,7 +91,7 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
           for (const dirName of COPILOT_DIR_NAMES) {
             const copilotLogDir = path.join(extHostDir, dirName);
             if (await isDirectory(copilotLogDir)) {
-              await parseLogDirectory(copilotLogDir, ctx);
+              await parseLogDirectory(copilotLogDir, ctx, log);
             }
           }
         }
@@ -88,6 +102,10 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }
+
+  ch.appendLine(
+    `[Copilot Insight] Parsed ${ctx.logFilesFound} log file(s). Languages detected: ${[...ctx.byLanguage.keys()].join(", ") || "(none)"}`,
+  );
 
   if (ctx.totalShown > 0) {
     ctx.acceptanceRate = (ctx.totalAccepted / ctx.totalShown) * 100;
