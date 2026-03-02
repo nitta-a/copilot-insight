@@ -71,6 +71,10 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 
 See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
+#### 1.0.5
+- 💾 Workspace-aware export: Save dialogs default to the first workspace folder
+- 📅 Date-stamped export filenames (e.g., `copilot-usage-2026-03-02.csv`)
+
 #### 1.0.4
 - 📊 Three-tab dashboard: Overview (ROI), Health (Diagnostics), Flow (Velocity)
 - 🖼️ Export Chart as PNG from the dashboard toolbar
@@ -78,7 +82,6 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 - 🧠 ROI estimation (estimated minutes saved) and Best Model summary card
 
 #### 1.0.3
-- 🔌 MCP server integration
 - ⚡ Event batching in EventTracker
 - 🗜️ Data retention & aggregation in InMemoryAnalyticsDb
 
@@ -160,6 +163,10 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 
 完全な履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
+#### 1.0.5
+- 💾 ワークスペースフォルダをデフォルト保存先に使用
+- 📅 エクスポートファイル名に日付スタンプを追加 (例: `copilot-usage-2026-03-02.csv`)
+
 #### 1.0.4
 - 📊 3タブダッシュボード: Overview (ROI)・Health (Diagnostics)・Flow (Velocity)
 - 🖼️ ダッシュボードツールバーからのチャート PNG エクスポート
@@ -167,7 +174,6 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 - 🧠 ROI 推定 (節約時間) とベストモデルサマリーカード
 
 #### 1.0.3
-- 🔌 MCP サーバー統合
 - ⚡ EventTracker でのイベントバッチ処理
 - 🗜️ InMemoryAnalyticsDb のデータ保持と集計
 
