@@ -133,8 +133,11 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
       return;
     }
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file("copilot-usage.csv"),
+      defaultUri: workspaceFolder
+        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage.csv")
+        : vscode.Uri.file("copilot-usage.csv"),
       filters: { csv: ["csv"] },
     });
     if (uri) {
@@ -149,8 +152,11 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
       return;
     }
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file("copilot-usage.json"),
+      defaultUri: workspaceFolder
+        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage.json")
+        : vscode.Uri.file("copilot-usage.json"),
       filters: { json: ["json"] },
     });
     if (uri) {
@@ -188,8 +194,11 @@ export function activate(context: vscode.ExtensionContext) {
       modelPerformance,
     });
 
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
-      defaultUri: vscode.Uri.file("copilot-usage-report.md"),
+      defaultUri: workspaceFolder
+        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage-report.md")
+        : vscode.Uri.file("copilot-usage-report.md"),
       filters: { markdown: ["md"] },
     });
     if (uri) {

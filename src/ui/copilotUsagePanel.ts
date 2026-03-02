@@ -115,9 +115,12 @@ export class CopilotUsagePanel {
   }
 
   private _savePng(dataUri: string): void {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     vscode.window
       .showSaveDialog({
-        defaultUri: vscode.Uri.file("copilot-dashboard.png"),
+        defaultUri: workspaceFolder
+          ? vscode.Uri.joinPath(workspaceFolder, "copilot-dashboard.png")
+          : vscode.Uri.file("copilot-dashboard.png"),
         filters: { png: ["png"] },
       })
       .then((uri) => {
