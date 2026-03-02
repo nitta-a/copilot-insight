@@ -4,6 +4,12 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.5] - 2026-03-02
+
+### Changed
+- 💾 **Workspace-aware export** — all Save dialogs (CSV, JSON, Markdown report, PNG screenshot) now default to the first workspace folder instead of the current working directory
+- 📅 **Date-stamped filenames** — exported files now include today's date in the filename (e.g., `copilot-usage-2026-03-02.csv`) so exports from different sessions never overwrite each other
+
 ## [1.0.4] - 2026-03-01
 
 ### Added
