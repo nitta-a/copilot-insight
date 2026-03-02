@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { todayDateString } from "../../src/utils";
+import { todayDateString } from "../src/utils";
 
 suite("utils", () => {
   suite("todayDateString", () => {
