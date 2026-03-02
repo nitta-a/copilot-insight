@@ -67,33 +67,6 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
    code --install-extension copilot-insight-<version>.vsix
    ```
 
-### Release Notes
-
-See [CHANGELOG.md](CHANGELOG.md) for the full history.
-
-#### 1.0.5
-- 💾 Workspace-aware export: Save dialogs default to the first workspace folder
-- 📅 Date-stamped export filenames (e.g., `copilot-usage-2026-03-02.csv`)
-
-#### 1.0.4
-- 📊 Three-tab dashboard: Overview (ROI), Health (Diagnostics), Flow (Velocity)
-- 🖼️ Export Chart as PNG from the dashboard toolbar
-- ⚡ Dynamic period updates via postMessage (no full page reload)
-- 🧠 ROI estimation (estimated minutes saved) and Best Model summary card
-
-#### 1.0.3
-- ⚡ Event batching in EventTracker
-- 🗜️ Data retention & aggregation in InMemoryAnalyticsDb
-
-#### 1.0.1
-- 💡 Insights section with auto-generated summary observations
-- 📅 Daily acceptance rate trendline
-- 🤖 Per-model acceptance rate in the Inline Completion Model chart
-- Enhanced CSV/JSON export
-
-#### 1.0.0
-- Initial stable release with full usage dashboard, language/date breakdown, weekly trend, Activity Bar view, and CSV/JSON export
-
 ---
 
 <a name="japanese"></a>
@@ -158,30 +131,3 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
    ```bash
    code --install-extension copilot-insight-<version>.vsix
    ```
-
-### リリースノート
-
-完全な履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
-
-#### 1.0.5
-- 💾 ワークスペースフォルダをデフォルト保存先に使用
-- 📅 エクスポートファイル名に日付スタンプを追加 (例: `copilot-usage-2026-03-02.csv`)
-
-#### 1.0.4
-- 📊 3タブダッシュボード: Overview (ROI)・Health (Diagnostics)・Flow (Velocity)
-- 🖼️ ダッシュボードツールバーからのチャート PNG エクスポート
-- ⚡ postMessage による動的な表示期間更新 (フルページリロードなし)
-- 🧠 ROI 推定 (節約時間) とベストモデルサマリーカード
-
-#### 1.0.3
-- ⚡ EventTracker でのイベントバッチ処理
-- 🗜️ InMemoryAnalyticsDb のデータ保持と集計
-
-#### 1.0.1
-- 💡 自動生成される Insights セクション
-- 📅 日次受け入れ率トレンドライン
-- 🤖 インライン補完モデルチャートにモデルごとの受け入れ率を追加
-- CSV / JSON エクスポートの強化
-
-#### 1.0.0
-- フル機能の使用状況ダッシュボード、言語/日付別内訳、週次トレンド、アクティビティバービュー、CSV/JSON エクスポートを含む初期安定版リリース
