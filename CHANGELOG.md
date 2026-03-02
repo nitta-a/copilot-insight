@@ -4,6 +4,11 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.6] - 2026-03-02
+
+### Changed
+- 🔧 Lowered VS Code engine requirement to `^1.105.0` for broader compatibility
+
 ## [1.0.5] - 2026-03-02
 
 ### Changed
