@@ -7,6 +7,7 @@ import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
+import { todayDateString } from "./utils";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
@@ -136,8 +137,8 @@ export function activate(context: vscode.ExtensionContext) {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: workspaceFolder
-        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage.csv")
-        : vscode.Uri.file("copilot-usage.csv"),
+        ? vscode.Uri.joinPath(workspaceFolder, `copilot-usage-${todayDateString()}.csv`)
+        : vscode.Uri.file(`copilot-usage-${todayDateString()}.csv`),
       filters: { csv: ["csv"] },
     });
     if (uri) {
@@ -155,8 +156,8 @@ export function activate(context: vscode.ExtensionContext) {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: workspaceFolder
-        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage.json")
-        : vscode.Uri.file("copilot-usage.json"),
+        ? vscode.Uri.joinPath(workspaceFolder, `copilot-usage-${todayDateString()}.json`)
+        : vscode.Uri.file(`copilot-usage-${todayDateString()}.json`),
       filters: { json: ["json"] },
     });
     if (uri) {
@@ -197,8 +198,8 @@ export function activate(context: vscode.ExtensionContext) {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: workspaceFolder
-        ? vscode.Uri.joinPath(workspaceFolder, "copilot-usage-report.md")
-        : vscode.Uri.file("copilot-usage-report.md"),
+        ? vscode.Uri.joinPath(workspaceFolder, `copilot-usage-report-${todayDateString()}.md`)
+        : vscode.Uri.file(`copilot-usage-report-${todayDateString()}.md`),
       filters: { markdown: ["md"] },
     });
     if (uri) {
