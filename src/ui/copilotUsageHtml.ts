@@ -602,7 +602,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
 function buildContextInsightsSection(byContextSource: Map<string, number>): string {
   if (byContextSource.size === 0) {
     return `<h2>🔍 Context Window Insights</h2>
-<p class="no-data">No context data found in current logs.</p>`;
+<p class="no-data">No context data found. Try loading the &#39;GitHub Copilot&#39; (not Chat) output log for better detail.</p>`;
   }
   const sorted = Array.from(byContextSource.entries()).sort((a, b) => b[1] - a[1]);
   const total = sorted.reduce((sum, [, v]) => sum + v, 0);

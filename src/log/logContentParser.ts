@@ -96,7 +96,7 @@ export function normalizeContextSource(raw: string): string {
   if (lower.includes("opentab")) {
     return "Open Tabs";
   }
-  if (lower.includes("workspace") || lower.includes("reposearch")) {
+  if (lower.includes("workspace") || lower.includes("reposearch") || lower.includes("embedding")) {
     return "Workspace";
   }
   if (lower.includes("mcp") || lower.includes("externaldoc")) {
@@ -476,26 +476,32 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
 
 /**
  * Parse context provider log lines that record which context sources were used.
+ * Detects lines containing the word "context" or known context-service keywords
+ * (e.g. WorkspaceChunkSearchService, GithubAvailableEmbeddingTypesManager, reposearch)
+ * even when the exact word "context" is absent.
  * Returns true if the line was handled as a context event.
  */
 function parseContextProviderLine(line: string, lower: string, ctx: ParsingContext): boolean {
-  if (!lower.includes("context")) {
-    return false;
-  }
-  // Fast pre-filter: skip lines that contain none of the known source keywords.
-  if (
-    !lower.includes("opentab") &&
-    !lower.includes("workspace") &&
-    !lower.includes("mcp") &&
-    !lower.includes("externaldoc") &&
-    !lower.includes("currentfile") &&
-    !lower.includes("snippet")
-  ) {
+  // Accept lines that mention "context" or any known context source keyword.
+  const hasContext = lower.includes("context");
+  const hasServiceKeyword =
+    lower.includes("workspacechunk") ||
+    lower.includes("embedding") ||
+    lower.includes("reposearch") ||
+    lower.includes("opentab") ||
+    lower.includes("workspace") ||
+    lower.includes("mcp") ||
+    lower.includes("externaldoc") ||
+    lower.includes("currentfile") ||
+    lower.includes("snippet");
+  if (!hasContext && !hasServiceKeyword) {
     return false;
   }
   const sourcePatterns: [RegExp, string][] = [
     [/opentab/i, "Open Tabs"],
     [/workspace/i, "Workspace"],
+    [/reposearch/i, "Workspace"],
+    [/embedding/i, "Workspace"],
     [/\bmcp\b/i, "MCP / External Docs"],
     [/externaldoc/i, "MCP / External Docs"],
     [/currentfile/i, "Current File"],
@@ -506,6 +512,11 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
       incrementCount(ctx.byContextSource, source);
       return true;
     }
+  }
+  // "context" is present but no known source pattern matched — count as unknown.
+  if (hasContext) {
+    incrementCount(ctx.byContextSource, "Unknown Context");
+    return true;
   }
   return false;
 }

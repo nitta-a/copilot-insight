@@ -578,6 +578,9 @@ suite("logContentParser", () => {
       assert.strictEqual(normalizeContextSource("workspaceFile"), "Workspace");
       assert.strictEqual(normalizeContextSource("workspaceIndex"), "Workspace");
       assert.strictEqual(normalizeContextSource("repoSearch"), "Workspace");
+      assert.strictEqual(normalizeContextSource("WorkspaceChunkSearchService"), "Workspace");
+      assert.strictEqual(normalizeContextSource("GithubAvailableEmbeddingTypesManager"), "Workspace");
+      assert.strictEqual(normalizeContextSource("embedding"), "Workspace");
     });
 
     test("maps mcp/external variants to 'MCP / External Docs'", () => {
@@ -696,10 +699,10 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byContextSource.get("Current File"), 1);
     });
 
-    test("unrelated context line not recorded", () => {
+    test("context line with no known source keyword is counted as 'Unknown Context'", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 some unrelated log context", stats);
-      assert.strictEqual(stats.byContextSource.size, 0);
+      assert.strictEqual(stats.byContextSource.get("Unknown Context"), 1);
     });
 
     test("accumulates multiple context source mentions", () => {
@@ -709,6 +712,30 @@ suite("logContentParser", () => {
       parseTextLogLine("2024-06-01 [ContextProvider] workspace context loaded", stats);
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 2);
       assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("WorkspaceChunkSearchService line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 WorkspaceChunkSearchService queried 5 chunks", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("GithubAvailableEmbeddingTypesManager line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 GithubAvailableEmbeddingTypesManager: type=code initialized", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("reposearch line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 running reposearch query for symbols", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("line with 'context' but no source keyword counted as 'Unknown Context'", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 preparing context window for request", stats);
+      assert.strictEqual(stats.byContextSource.get("Unknown Context"), 1);
     });
   });
 
