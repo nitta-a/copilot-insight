@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import {
+  extractLanguageFromEncodedPath,
   incrementStatCount,
   normalizeContextSource,
   parseLogContent,
@@ -652,6 +653,115 @@ suite("logContentParser", () => {
       parseTextLogLine("2024-06-01 [ContextProvider] workspace context loaded", stats);
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 2);
       assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+  });
+
+  suite("extractLanguageFromEncodedPath", () => {
+    test("extracts typescript from .ts extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("GET /completions?doc=%2Fsrc%2Fapp.ts"), "typescript");
+    });
+
+    test("extracts typescriptreact from .tsx extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("doc=%2Fsrc%2FApp.tsx"), "typescriptreact");
+    });
+
+    test("extracts javascript from .js extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("file=%2Flib%2Findex.js"), "javascript");
+    });
+
+    test("extracts javascriptreact from .jsx extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("file=%2Flib%2FApp.jsx"), "javascriptreact");
+    });
+
+    test("extracts python from .py extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("path=%2Fscripts%2Frun.py"), "python");
+    });
+
+    test("extracts go from .go extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("path=%2Fmain.go"), "go");
+    });
+
+    test("extracts rust from .rs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("src=%2Fmain.rs"), "rust");
+    });
+
+    test("extracts java from .java extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FMain.java"), "java");
+    });
+
+    test("extracts csharp from .cs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2FProgram.cs"), "csharp");
+    });
+
+    test("extracts cpp from .cpp extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fmain.cpp"), "cpp");
+    });
+
+    test("extracts c from .c extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fmain.c "), "c");
+    });
+
+    test("extracts php from .php extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Findex.php"), "php");
+    });
+
+    test("extracts ruby from .rb extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fapp.rb"), "ruby");
+    });
+
+    test("is case-insensitive for extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2FApp.TS"), "typescript");
+    });
+
+    test("returns empty string for unknown extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Ffile.xyz"), "");
+    });
+
+    test("returns empty string when no %2F-prefixed path present", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("some random log line"), "");
+    });
+  });
+
+  suite("parseTextLogLine – URL-encoded path language fallback", () => {
+    test("fetchCompletions 200 extracts language from encoded path", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [fetchCompletions] Request to /v1/engines/gpt-4o/completions?doc=%2Fsrc%2Fapp.ts finished with 200 status after 150ms",
+        stats,
+      );
+      assert.strictEqual(stats.totalShown, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 1, accepted: 0 });
+    });
+
+    test("fetchCompletions 200 extracts typescriptreact from .tsx path", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [fetchCompletions] Request to /v1/engines/gpt-4o/completions?doc=%2Fsrc%2FApp.tsx finished with 200 status after 100ms",
+        stats,
+      );
+      assert.deepStrictEqual(stats.byLanguage.get("typescriptreact"), { shown: 1, accepted: 0 });
+    });
+
+    test("fetchCompletions 200 without encoded path leaves byLanguage empty", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [fetchCompletions] Request to /v1/engines/gpt-4o/completions finished with 200 status after 100ms",
+        stats,
+      );
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+
+    test("legacy keyword line uses encoded path when no language tag present", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 suggestion shown %2Fsrc%2Futils.py", stats);
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 1, accepted: 0 });
+    });
+
+    test("legacy keyword line prefers explicit language tag over encoded path", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 suggestion shown language: go %2Fsrc%2Futils.py", stats);
+      assert.deepStrictEqual(stats.byLanguage.get("go"), { shown: 1, accepted: 0 });
+      assert.strictEqual(stats.byLanguage.get("python"), undefined);
     });
   });
 });

@@ -1,5 +1,36 @@
 import type { LanguageStat, ParsingContext } from "../types";
 
+/** Map file extensions to VS Code language IDs. */
+const EXT_TO_LANGUAGE_ID: Record<string, string> = {
+  ts: "typescript",
+  tsx: "typescriptreact",
+  js: "javascript",
+  jsx: "javascriptreact",
+  py: "python",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  cs: "csharp",
+  cpp: "cpp",
+  c: "c",
+  php: "php",
+  rb: "ruby",
+};
+
+/**
+ * Extract a VS Code language ID from a URL-encoded file path embedded in a log line.
+ * Matches patterns like `%2Fsrc%2Fapp.ts` and returns "typescript".
+ * Returns "" when no recognizable extension is found.
+ */
+export function extractLanguageFromEncodedPath(line: string): string {
+  const match = line.match(/%2F[^&?\s]+\.([a-zA-Z]+)\b/i);
+  if (!match) {
+    return "";
+  }
+  const ext = match[1].toLowerCase();
+  return EXT_TO_LANGUAGE_ID[ext] ?? "";
+}
+
 /** Intent tag → human-readable display name for known chat intents. */
 const INTENT_DISPLAY_NAMES: Record<string, string> = {
   "panel/editAgent": "Agent",
@@ -194,6 +225,10 @@ function parseFetchCompletionsLine(
       ctx.latencyCount++;
       ctx.latencies.push(latencyMs);
     }
+    const language = extractLanguageFromEncodedPath(line);
+    if (language) {
+      incrementStatCount(ctx.byLanguage, language, "shown");
+    }
   } else if (statusCode > 0) {
     ctx.totalErrors++;
     incrementCount(ctx.errorsByType, `HTTP ${statusCode}`);
@@ -323,7 +358,7 @@ function recordChatRequest(
  */
 function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ctx: ParsingContext): void {
   const langMatch = line.match(/language[:\s]+([a-zA-Z]+)/i) ?? line.match(/lang[:\s]+([a-zA-Z]+)/i);
-  const language = langMatch ? langMatch[1].toLowerCase() : "";
+  const language = (langMatch ? langMatch[1].toLowerCase() : "") || extractLanguageFromEncodedPath(line);
 
   if (lower.includes("suggestion shown") || lower.includes("completion shown") || lower.includes("shown suggestion")) {
     ctx.totalShown++;
