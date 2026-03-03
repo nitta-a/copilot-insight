@@ -14,6 +14,7 @@ import type {
   VelocityPoint,
   WeeklyTrendData,
   AgenticStats,
+  AgentIntelligenceOverview,
 } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
@@ -164,11 +165,37 @@ export function buildDashboardPayload(
     .map(([intent, count]) => ({ intent, count }))
     .sort((a, b) => b.count - a.count);
 
+  // ── Agent Intelligence Overview ───────────────────────────────────────────
+  // Semantic mapping: all fine-grained subagent intents → "Autonomous Action"
+  const autonomousActionCount = stats.subagentRequests;
+  const agenticLoopCount = stats.subagentLoops;
+  const avgCallsPerLoop = agenticLoopCount > 0 ? autonomousActionCount / agenticLoopCount : 0;
+
+  // Per-model autonomous ratio: only include models that have at least one subagent call.
+  const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
+  for (const [model, totalCount] of stats.byChatModel) {
+    const subagentCount = stats.subagentByModel.get(model) ?? 0;
+    if (subagentCount === 0) {
+      continue;
+    }
+    const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
+    autonomousRatioByModel.push({ model, subagentCount, totalCount, ratio });
+  }
+  autonomousRatioByModel.sort((a, b) => b.ratio - a.ratio);
+
+  const agentIntelligenceOverview: AgentIntelligenceOverview = {
+    autonomousActionCount,
+    agenticLoopCount,
+    avgCallsPerLoop,
+    autonomousRatioByModel,
+  };
+
   const agenticStats: AgenticStats = {
     subagentRequests: stats.subagentRequests,
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats,
+    agentIntelligenceOverview,
   };
 
   return { days, summary, timeline, velocityPoints, insights, weeklyTrend, agenticStats };

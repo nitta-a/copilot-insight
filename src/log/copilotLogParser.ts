@@ -49,6 +49,8 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
+    subagentLoops: 0,
+    subagentByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,

@@ -246,6 +246,14 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
   trackChatIntent(line, ctx);
 
+  // Track per-model subagent calls for autonomous ratio calculation.
+  if (model) {
+    const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
+    if (intentMatch && SUBAGENT_INTENTS.has(intentMatch[1])) {
+      incrementCount(ctx.subagentByModel, model);
+    }
+  }
+
   const isNes = lower.includes("[xtabprovider]") || lower.includes("[nes.");
   if (isNes) {
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
@@ -396,6 +404,7 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   if (!lower.includes("[toolcallingloop]") || !lower.includes("shouldcontinue=false")) {
     return false;
   }
+  ctx.subagentLoops++;
   if (ctx.activeSubagentLoop !== null) {
     const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
     if (tsMatch) {

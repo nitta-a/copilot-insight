@@ -44,6 +44,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
+    subagentLoops: 0,
+    subagentByModel: new Map(),
     ...overrides,
   };
 }
@@ -277,6 +279,67 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(sorted[1].count, 2);
       assert.strictEqual(sorted[2].intent, "searchSubagentTool");
       assert.strictEqual(sorted[2].count, 1);
+    });
+
+    test("agentIntelligenceOverview is zero when no subagent data", () => {
+      const payload = buildDashboardPayload(makeStats(), 14);
+      const ov = payload.agenticStats.agentIntelligenceOverview;
+      assert.strictEqual(ov.autonomousActionCount, 0);
+      assert.strictEqual(ov.agenticLoopCount, 0);
+      assert.strictEqual(ov.avgCallsPerLoop, 0);
+      assert.deepStrictEqual(ov.autonomousRatioByModel, []);
+    });
+
+    test("agentIntelligenceOverview.autonomousActionCount equals subagentRequests", () => {
+      const stats = makeStats({ subagentRequests: 7, subagentLoops: 2 });
+      const payload = buildDashboardPayload(stats, 14);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.autonomousActionCount, 7);
+    });
+
+    test("agentIntelligenceOverview.avgCallsPerLoop is ratio of requests to loops", () => {
+      const stats = makeStats({ subagentRequests: 6, subagentLoops: 2 });
+      const payload = buildDashboardPayload(stats, 14);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 3);
+    });
+
+    test("agentIntelligenceOverview.avgCallsPerLoop is 0 when no loops", () => {
+      const stats = makeStats({ subagentRequests: 4, subagentLoops: 0 });
+      const payload = buildDashboardPayload(stats, 14);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 0);
+    });
+
+    test("agentIntelligenceOverview.autonomousRatioByModel excludes models with no subagent calls", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o", 10],
+          ["claude-3", 5],
+        ]),
+        subagentByModel: new Map([["gpt-4o", 3]]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.strictEqual(byModel[0].model, "gpt-4o");
+      assert.strictEqual(byModel[0].subagentCount, 3);
+      assert.strictEqual(byModel[0].totalCount, 10);
+      assert.ok(Math.abs(byModel[0].ratio - 30) < 0.01);
+    });
+
+    test("agentIntelligenceOverview.autonomousRatioByModel is sorted by ratio descending", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o", 10],
+          ["claude-3", 4],
+        ]),
+        subagentByModel: new Map([
+          ["gpt-4o", 2], // 20%
+          ["claude-3", 2], // 50%
+        ]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel[0].model, "claude-3");
+      assert.strictEqual(byModel[1].model, "gpt-4o");
     });
   });
 });

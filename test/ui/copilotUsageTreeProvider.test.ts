@@ -42,6 +42,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
+    subagentLoops: 0,
+    subagentByModel: new Map(),
     ...overrides,
   };
 }

@@ -63,6 +63,10 @@ export interface CopilotUsageStats {
   autonomousDurationMs: number;
   /** Per-intent execution counts (e.g. "runSubagent", "editAgent"). */
   toolUsageStats: Map<string, number>;
+  /** Number of completed ToolCallingLoop instances (distinct agentic episodes). */
+  subagentLoops: number;
+  /** Per-model count of subagent-initiated requests. */
+  subagentByModel: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

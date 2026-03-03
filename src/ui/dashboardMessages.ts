@@ -75,6 +75,37 @@ export interface AgenticStats {
   autonomousDurationMs: number;
   /** Per-intent execution counts sorted by count descending (e.g. [{intent:"runSubagent",count:5}]). */
   toolUsageStats: Array<{ intent: string; count: number }>;
+  /** High-level "Agent Intelligence Overview" summary. */
+  agentIntelligenceOverview: AgentIntelligenceOverview;
+}
+
+/**
+ * High-level summary of agentic (subagent) activity suitable for the
+ * "Agent Intelligence Overview" dashboard section.
+ *
+ * - All fine-grained intents (runSubagent, editAgent, searchSubagentTool, …)
+ *   are collapsed into a single "Autonomous Action" count.
+ * - Per-model autonomous ratios allow identifying which AI models are driving
+ *   the most agentic behaviour.
+ */
+export interface AgentIntelligenceOverview {
+  /** Total "Autonomous Action" count — all subagent intents merged. */
+  autonomousActionCount: number;
+  /** Number of completed ToolCallingLoop instances (distinct agentic episodes). */
+  agenticLoopCount: number;
+  /** Average subagent calls per completed loop. 0 when no loops have finished. */
+  avgCallsPerLoop: number;
+  /**
+   * Per-model breakdown of autonomous vs total chat requests.
+   * Sorted by `ratio` descending (highest autonomous ratio first).
+   */
+  autonomousRatioByModel: Array<{
+    model: string;
+    subagentCount: number;
+    totalCount: number;
+    /** Percentage 0–100. */
+    ratio: number;
+  }>;
 }
 
 /** Complete payload sent from the extension host to the WebView. */

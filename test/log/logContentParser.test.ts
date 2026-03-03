@@ -41,6 +41,8 @@ function makeEmptyStats(): ParsingContext {
     agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
+    subagentLoops: 0,
+    subagentByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -713,6 +715,51 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.autonomousDurationMs, 0);
     });
 
+    test("ToolCallingLoop stop increments subagentLoops", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      assert.strictEqual(stats.subagentLoops, 1);
+    });
+
+    test("subagentLoops counts distinct completed loop episodes", () => {
+      const stats = makeEmptyStats();
+      // First loop
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      // Second loop
+      parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:01:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      assert.strictEqual(stats.subagentLoops, 2);
+    });
+
+    test("subagentByModel tracks per-model subagent calls", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [panel/editAgent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:02.000 ccreq:c | success | claude-3-sonnet | 800ms | [tool/runSubagent]",
+        stats,
+      );
+      assert.strictEqual(stats.subagentByModel.get("gpt-4o"), 2);
+      assert.strictEqual(stats.subagentByModel.get("claude-3-sonnet"), 1);
+    });
+
+    test("non-subagent intent lines do not appear in subagentByModel", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:x | success | gpt-4o | 500ms | [vscodePrompt]", stats);
+      assert.strictEqual(stats.subagentByModel.size, 0);
+    });
+
     test("parseLogContent processes subagent lines across content", () => {
       const stats = makeEmptyStats();
       const content = [
@@ -721,6 +768,8 @@ suite("logContentParser", () => {
       ].join("\n");
       parseLogContent(content, stats);
       assert.strictEqual(stats.subagentRequests, 1);
+      assert.strictEqual(stats.subagentLoops, 1);
+      assert.strictEqual(stats.subagentByModel.get("gpt-4o"), 1);
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs >= 0);
     });
