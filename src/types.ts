@@ -3,6 +3,39 @@ export interface LanguageStat {
   accepted: number;
 }
 
+/** Histogram buckets for the distribution of action counts per agentic loop. */
+export interface LoopActionBuckets {
+  /** Loops that contained exactly 1 action. */
+  bucket1: number;
+  /** Loops that contained exactly 2 actions. */
+  bucket2: number;
+  /** Loops that contained 3–5 actions. */
+  bucket3to5: number;
+  /** Loops that contained 6–10 actions. */
+  bucket6to10: number;
+  /** Loops that contained 11 or more actions. */
+  bucket11plus: number;
+}
+
+/** Per-model agentic depth statistics for model-comparison analytics. */
+export interface AgenticDepthStat {
+  /** Distribution of completed loop action counts (histogram). */
+  loopDistribution: LoopActionBuckets;
+  /** Average number of actions per completed loop (0 when no completed loops). */
+  avgLoopActions: number;
+  /**
+   * Task completion rate: percentage of started loops that ended with
+   * `shouldContinue=false` (0–100).  0 when no loops were started.
+   */
+  completionRate: number;
+  /**
+   * Average time per action in milliseconds (autonomous duration divided by
+   * actions in completed loops).  Represents the model's "thinking speed".
+   * 0 when no completed loops with duration data exist.
+   */
+  velocityMsPerAction: number;
+}
+
 export interface DateStat {
   shown: number;
   accepted: number;
@@ -73,6 +106,14 @@ export interface CopilotUsageStats {
   subagentByModel: Map<string, number>;
   /** Per-model total autonomous duration (ms). */
   autonomousDurationByModel: Map<string, number>;
+  /**
+   * Per-model agentic depth statistics:
+   * - action-count histogram per loop
+   * - average loop actions
+   * - task completion rate
+   * - velocity (avg ms per action)
+   */
+  agenticDepthByModel: Map<string, AgenticDepthStat>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */
@@ -89,4 +130,14 @@ export interface ParsingContext extends CopilotUsageStats {
   activeSubagentLoop: string | null;
   /** Model name associated with the currently active subagent loop. `null` when no loop is active. */
   activeSubagentLoopModel: string | null;
+  /** Number of subagent actions seen in the currently active loop. */
+  activeSubagentLoopActionCount: number;
+  /** Per-model count of loops that have been started. */
+  loopsStartedByModel: Map<string, number>;
+  /** Per-model count of loops that completed with shouldContinue=false. */
+  loopsCompletedByModel: Map<string, number>;
+  /** Per-model total number of actions across all completed loops. */
+  totalLoopActionsByModel: Map<string, number>;
+  /** Per-model histogram of action counts for completed loops. */
+  loopDistributionByModel: Map<string, LoopActionBuckets>;
 }

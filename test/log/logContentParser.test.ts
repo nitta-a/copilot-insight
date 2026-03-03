@@ -49,6 +49,7 @@ function makeEmptyStats(): ParsingContext {
     completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
+    agenticDepthByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -56,6 +57,11 @@ function makeEmptyStats(): ParsingContext {
     currentSessionId: "",
     activeSubagentLoop: null,
     activeSubagentLoopModel: null,
+    activeSubagentLoopActionCount: 0,
+    loopsStartedByModel: new Map(),
+    loopsCompletedByModel: new Map(),
+    totalLoopActionsByModel: new Map(),
+    loopDistributionByModel: new Map(),
   };
 }
 
@@ -779,6 +785,137 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.subagentByModel.get("gpt-4o"), 1);
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs >= 0);
+    });
+
+    test("loopsStartedByModel is incremented when a new loop starts", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      assert.strictEqual(stats.loopsStartedByModel.get("gpt-4o"), 1);
+    });
+
+    test("activeSubagentLoopActionCount increments for each action in a loop", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      assert.strictEqual(stats.activeSubagentLoopActionCount, 1);
+      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [panel/editAgent]", stats);
+      assert.strictEqual(stats.activeSubagentLoopActionCount, 2);
+      parseTextLogLine("2024-06-01 10:00:02.000 ccreq:c | success | gpt-4o | 800ms | [tool/runSubagent]", stats);
+      assert.strictEqual(stats.activeSubagentLoopActionCount, 3);
+    });
+
+    test("loop stop records action count in loopDistributionByModel (bucket1)", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      const dist = stats.loopDistributionByModel.get("gpt-4o");
+      assert.ok(dist, "distribution should exist for gpt-4o");
+      assert.strictEqual(dist.bucket1, 1);
+      assert.strictEqual(dist.bucket2, 0);
+      assert.strictEqual(dist.bucket3to5, 0);
+    });
+
+    test("loop stop records action count in loopDistributionByModel (bucket3to5)", () => {
+      const stats = makeEmptyStats();
+      // 4 actions in the loop
+      for (let i = 0; i < 4; i++) {
+        parseTextLogLine(
+          `2024-06-01 10:00:0${i}.000 ccreq:${i} | success | claude-3.5 | 1000ms | [tool/runSubagent]`,
+          stats,
+        );
+      }
+      parseTextLogLine(
+        "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      const dist = stats.loopDistributionByModel.get("claude-3.5");
+      assert.ok(dist, "distribution should exist for claude-3.5");
+      assert.strictEqual(dist.bucket3to5, 1);
+      assert.strictEqual(dist.bucket1, 0);
+    });
+
+    test("loop stop records action count in loopDistributionByModel (bucket6to10)", () => {
+      const stats = makeEmptyStats();
+      for (let i = 0; i < 7; i++) {
+        parseTextLogLine(
+          `2024-06-01 10:00:0${i}.000 ccreq:${i} | success | gpt-4o | 1000ms | [tool/runSubagent]`,
+          stats,
+        );
+      }
+      parseTextLogLine(
+        "2024-06-01 10:00:20.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      const dist = stats.loopDistributionByModel.get("gpt-4o");
+      assert.ok(dist);
+      assert.strictEqual(dist.bucket6to10, 1);
+    });
+
+    test("loop stop records action count in loopDistributionByModel (bucket11plus)", () => {
+      const stats = makeEmptyStats();
+      for (let i = 0; i < 12; i++) {
+        parseTextLogLine(
+          `2024-06-01 10:00:${String(i).padStart(2, "0")}.000 ccreq:${i} | success | gpt-4o | 1000ms | [tool/runSubagent]`,
+          stats,
+        );
+      }
+      parseTextLogLine(
+        "2024-06-01 10:01:00.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      const dist = stats.loopDistributionByModel.get("gpt-4o");
+      assert.ok(dist);
+      assert.strictEqual(dist.bucket11plus, 1);
+    });
+
+    test("loopsCompletedByModel and totalLoopActionsByModel are updated on loop stop", () => {
+      const stats = makeEmptyStats();
+      // Loop with 3 actions
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
+      parseTextLogLine("2024-06-01 10:00:02.000 ccreq:c | success | gpt-4o | 800ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      assert.strictEqual(stats.loopsCompletedByModel.get("gpt-4o"), 1);
+      assert.strictEqual(stats.totalLoopActionsByModel.get("gpt-4o"), 3);
+      assert.strictEqual(stats.activeSubagentLoopActionCount, 0);
+    });
+
+    test("activeSubagentLoopActionCount resets to 0 after loop stop", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      assert.strictEqual(stats.activeSubagentLoopActionCount, 0);
+    });
+
+    test("two sequential loops accumulate histogram across loops", () => {
+      const stats = makeEmptyStats();
+      // First loop: 1 action → bucket1
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      // Second loop: 2 actions → bucket2
+      parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine("2024-06-01 10:01:01.000 ccreq:c | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:01:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+      const dist = stats.loopDistributionByModel.get("gpt-4o");
+      assert.ok(dist);
+      assert.strictEqual(dist.bucket1, 1);
+      assert.strictEqual(dist.bucket2, 1);
+      assert.strictEqual(stats.loopsCompletedByModel.get("gpt-4o"), 2);
+      assert.strictEqual(stats.totalLoopActionsByModel.get("gpt-4o"), 3);
     });
   });
 });
