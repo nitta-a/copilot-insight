@@ -65,6 +65,49 @@ export interface WeeklyTrendData {
   rateDiff: number;
 }
 
+/** Agentic (subagent) activity statistics. */
+export interface AgenticStats {
+  /** Number of requests identified as subagent-initiated. */
+  subagentRequests: number;
+  /** Ratio of subagent requests to total requests (0–100). */
+  agenticRatio: number;
+  /** Total time (ms) during which a subagent ToolCallingLoop was active. */
+  autonomousDurationMs: number;
+  /** Per-intent execution counts sorted by count descending (e.g. [{intent:"runSubagent",count:5}]). */
+  toolUsageStats: Array<{ intent: string; count: number }>;
+  /** High-level "Agent Intelligence Overview" summary. */
+  agentIntelligenceOverview: AgentIntelligenceOverview;
+}
+
+/**
+ * High-level summary of agentic (subagent) activity suitable for the
+ * "Agent Intelligence Overview" dashboard section.
+ *
+ * - All fine-grained intents (runSubagent, editAgent, searchSubagentTool, …)
+ *   are collapsed into a single "Autonomous Action" count.
+ * - Per-model autonomous ratios allow identifying which AI models are driving
+ *   the most agentic behaviour.
+ */
+export interface AgentIntelligenceOverview {
+  /** Total "Autonomous Action" count — all subagent intents merged. */
+  autonomousActionCount: number;
+  /** Number of completed ToolCallingLoop instances (distinct agentic episodes). */
+  agenticLoopCount: number;
+  /** Average subagent calls per completed loop. 0 when no loops have finished. */
+  avgCallsPerLoop: number;
+  /**
+   * Per-model breakdown of autonomous vs total chat requests.
+   * Sorted by `ratio` descending (highest autonomous ratio first).
+   */
+  autonomousRatioByModel: Array<{
+    model: string;
+    subagentCount: number;
+    totalCount: number;
+    /** Percentage 0–100. */
+    ratio: number;
+  }>;
+}
+
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline. */
@@ -76,6 +119,8 @@ export interface DashboardPayload {
   insights: string[];
   /** Weekly trend comparison data (null when insufficient data). */
   weeklyTrend: WeeklyTrendData | null;
+  /** Agentic (subagent) activity statistics. */
+  agenticStats: AgenticStats;
 }
 
 // ---------------------------------------------------------------------------

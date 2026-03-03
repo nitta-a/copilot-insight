@@ -11,6 +11,9 @@ const INTENT_DISPLAY_NAMES: Record<string, string> = {
 
 const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 
+/** Intent tags that identify subagent-initiated requests. */
+const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
+
 /** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
 export function normalizeContextSource(raw: string): string {
   const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
@@ -243,6 +246,14 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
   trackChatIntent(line, ctx);
 
+  // Track per-model subagent calls for autonomous ratio calculation.
+  if (model) {
+    const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
+    if (intentMatch && SUBAGENT_INTENTS.has(intentMatch[1])) {
+      incrementCount(ctx.subagentByModel, model);
+    }
+  }
+
   const isNes = lower.includes("[xtabprovider]") || lower.includes("[nes.");
   if (isNes) {
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
@@ -262,6 +273,19 @@ function trackChatIntent(line: string, ctx: ParsingContext): void {
   if (KNOWN_CHAT_INTENTS.has(rawIntent)) {
     const displayName = INTENT_DISPLAY_NAMES[rawIntent] ?? rawIntent;
     incrementCount(ctx.byChatIntent, displayName);
+  }
+  if (SUBAGENT_INTENTS.has(rawIntent)) {
+    ctx.subagentRequests++;
+    // Extract the short intent name (e.g. "tool/runSubagent" → "runSubagent")
+    const shortIntent = rawIntent.split("/").pop() ?? rawIntent;
+    incrementCount(ctx.toolUsageStats, shortIntent);
+    // Mark start of an agentic loop (use first request timestamp as start time)
+    if (ctx.activeSubagentLoop === null) {
+      const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+      if (tsMatch) {
+        ctx.activeSubagentLoop = tsMatch[1];
+      }
+    }
   }
 }
 
@@ -370,9 +394,37 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
   return false;
 }
 
+/**
+ * Detect "[ToolCallingLoop] Subagent stop hook result: shouldContinue=false" lines.
+ * Closes the active subagent loop and accumulates the autonomous duration.
+ * Returns true if the line was handled.
+ */
+function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolean {
+  const lower = line.toLowerCase();
+  if (!lower.includes("[toolcallingloop]") || !lower.includes("shouldcontinue=false")) {
+    return false;
+  }
+  ctx.subagentLoops++;
+  if (ctx.activeSubagentLoop !== null) {
+    const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+    if (tsMatch) {
+      const startMs = new Date(ctx.activeSubagentLoop.replace(/\s+/g, "T")).getTime();
+      const endMs = new Date(tsMatch[1].replace(/\s+/g, "T")).getTime();
+      if (endMs > startMs) {
+        ctx.autonomousDurationMs += endMs - startMs;
+      }
+    }
+    ctx.activeSubagentLoop = null;
+  }
+  return true;
+}
+
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
+  if (parseToolCallingLoopStopLine(line, ctx)) {
+    return;
+  }
   if (parseFetchCompletionsLine(line, lineCtx, ctx)) {
     return;
   }

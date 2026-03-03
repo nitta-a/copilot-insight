@@ -220,6 +220,7 @@ export function getHtmlContent(
       <div id="db-summary-cards" class="stats-grid"></div>
       <div id="db-insights-container"></div>
       <div id="db-weekly-trend-container"></div>
+      <div id="db-agent-intelligence-container"></div>
     </div>
 
     <div id="db-tab-health" class="db-tab-pane" role="tabpanel">

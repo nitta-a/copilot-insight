@@ -31,6 +31,7 @@ import {
 } from "chart.js";
 
 import type {
+  AgentIntelligenceOverview,
   DashboardPayload,
   HostToWebviewMessage,
   TimelineEntry,
@@ -596,6 +597,85 @@ function setupTabs(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Intelligence Overview
+// ---------------------------------------------------------------------------
+
+function formatDuration(ms: number): string {
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) {
+    return `${sec}s`;
+  }
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+
+function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agenticStats"]): void {
+  const el = document.getElementById("db-agent-intelligence-container");
+  if (!el) {
+    return;
+  }
+
+  if (agenticStats.subagentRequests === 0) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const overview: AgentIntelligenceOverview = agenticStats.agentIntelligenceOverview;
+  const ratioStr = agenticStats.agenticRatio.toFixed(1);
+  const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
+  const durationCell =
+    agenticStats.autonomousDurationMs > 0
+      ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
+      : "";
+
+  const modelRows = overview.autonomousRatioByModel
+    .map(
+      ({ model, subagentCount, totalCount, ratio }) =>
+        `<tr>
+          <td>${escHtml(trunc(model, 30))}</td>
+          <td>${subagentCount} / ${totalCount}</td>
+          <td>${ratio.toFixed(1)}%</td>
+        </tr>`,
+    )
+    .join("");
+
+  const modelTable = modelRows
+    ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">Autonomous Ratio by Model</h3>
+       <table class="db-lang-table">
+         <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th></tr>
+         ${modelRows}
+       </table>`
+    : "";
+
+  el.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🤖 Agent Intelligence Overview</h2>
+    <div class="stats-grid">
+      <div class="stat-card db-highlight">
+        <div class="stat-value db-accent">${overview.autonomousActionCount}</div>
+        <div class="stat-label">Autonomous Actions</div>
+        <div class="stat-detail">All agentic activity</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${ratioStr}%</div>
+        <div class="stat-label">Agentic Ratio</div>
+        <div class="stat-detail">of all requests</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${overview.agenticLoopCount}</div>
+        <div class="stat-label">Agentic Loops</div>
+        <div class="stat-detail">completed episodes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${avgStr}</div>
+        <div class="stat-label">Avg Calls / Loop</div>
+        <div class="stat-detail">agentic depth</div>
+      </div>
+      ${durationCell}
+    </div>
+    ${modelTable}`;
+}
+
+// ---------------------------------------------------------------------------
 // Full render
 // ---------------------------------------------------------------------------
 
@@ -605,6 +685,7 @@ function render(payload: DashboardPayload): void {
   renderSummaryCards(payload.summary);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
+  renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
   renderPeriodSelector(payload.days);
