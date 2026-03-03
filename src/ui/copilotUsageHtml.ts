@@ -10,16 +10,17 @@ const SESSION_ID_MAX_LENGTH = 20;
 
 export function getHtmlContent(
   stats: CopilotUsageStats,
-  days = 14,
+  startDate = "",
+  endDate = "",
   nonce = "",
   scriptUri = "",
   dashboardPayload?: DashboardPayload,
 ): string {
   const dateData = Array.from(stats.byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-days);
+    .filter(([date]) => !startDate || !endDate || (date >= startDate && date <= endDate));
 
-  const dateSection = buildDateSection(dateData, days, stats.chatByDate);
+  const dateSection = buildDateSection(dateData, stats.chatByDate);
   const modelSection = buildModelBarChart(mergeStatsByNormalizedModel(stats.byModel), "🤖 Inline Completion Model");
   const chatModelSection = buildSimpleBarChart(
     mergeCountByNormalizedModel(stats.byChatModel),
@@ -156,18 +157,25 @@ export function getHtmlContent(
     .db-highlight { border: 1px solid var(--vscode-charts-blue); }
     .db-accent { color: var(--vscode-charts-blue); }
     .db-model { font-size: 1.1em; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .db-period-btn {
-      background: var(--vscode-editor-inactiveSelectionBackground);
-      border: 1px solid transparent;
-      color: var(--vscode-foreground);
-      border-radius: 4px;
-      padding: 4px 12px;
-      margin-right: 6px;
-      cursor: pointer;
-      font-size: 0.85em;
+    .db-date-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
     }
-    .db-period-btn.active { border-color: var(--vscode-charts-blue); color: var(--vscode-charts-blue); font-weight: bold; }
-    .db-period-btn:hover { background: var(--vscode-list-hoverBackground); }
+    .db-date-range label { font-size: 0.85em; opacity: 0.8; }
+    .db-date-input {
+      background: var(--vscode-input-background, #3c3c3c);
+      color: var(--vscode-input-foreground, #cccccc);
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.85em;
+      font-family: var(--vscode-font-family);
+      cursor: pointer;
+    }
+    .db-date-input:focus { outline: 1px solid var(--vscode-focusBorder, #007fd4); }
     .db-export-btn {
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, #fff);
@@ -264,29 +272,12 @@ export function getHtmlContent(
 </html>`;
 }
 
-function buildDateSection(dateData: [string, LanguageStat][], days: number, chatByDate: Map<string, number>): string {
-  const periodOptions: [number, string][] = [
-    [7, "7 days"],
-    [14, "14 days"],
-    [30, "30 days"],
-  ];
-  const selector = periodOptions
-    .map(([numDays, label]) => {
-      if (numDays === days) {
-        return `<strong>${escapeHtml(label)}</strong>`;
-      }
-      const args = encodeURIComponent(JSON.stringify([numDays]));
-      return `<a href="command:copilot-insight.changeDailyUsagePeriod?${args}">${escapeHtml(label)}</a>`;
-    })
-    .join(" | ");
-
+function buildDateSection(dateData: [string, LanguageStat][], chatByDate: Map<string, number>): string {
   if (dateData.length === 0) {
     return `<h2>📅 Daily Usage</h2>
-  <div class="period-selector">${selector}</div>
   <p class="no-data">No date-specific data found in logs.</p>`;
   }
   return `<h2>📅 Daily Usage</h2>
-  <div class="period-selector">${selector}</div>
   <div class="legend">
     <span><span class="dot blue"></span>Shown</span>
     <span><span class="dot green"></span>Accepted</span>
