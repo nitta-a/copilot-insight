@@ -82,13 +82,21 @@ export function mergeCountByNormalizedModel(source: Map<string, number>): Map<st
   return merged;
 }
 
-/** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
+/**
+ * Normalize a raw context source type string to a canonical display name.
+ * Returns the original `raw` string when no known pattern matches, so that
+ * unknown-but-real sources remain visible instead of being silently dropped.
+ * Returns "" only when `raw` is empty.
+ */
 export function normalizeContextSource(raw: string): string {
+  if (!raw) {
+    return "";
+  }
   const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
   if (lower.includes("opentab")) {
     return "Open Tabs";
   }
-  if (lower.includes("workspace") || lower.includes("reposearch")) {
+  if (lower.includes("workspace") || lower.includes("reposearch") || lower.includes("embedding")) {
     return "Workspace";
   }
   if (lower.includes("mcp") || lower.includes("externaldoc")) {
@@ -100,7 +108,7 @@ export function normalizeContextSource(raw: string): string {
   if (lower.includes("snippet")) {
     return "Snippet";
   }
-  return "";
+  return raw;
 }
 
 /** Increment a Map<string, number> counter by 1 (no-op if key is empty). */
@@ -176,10 +184,13 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
 
   const eventLower = event.toLowerCase();
-  if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
+  const isShown = eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered");
+  const isAccepted = !isShown && eventLower.includes("accepted");
+
+  if (isShown) {
     ctx.totalShown++;
     incrementStatCount(ctx.byDate, dateKey, "shown");
-  } else if (eventLower.includes("accepted")) {
+  } else if (isAccepted) {
     ctx.totalAccepted++;
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   } else if (eventLower.includes("rejected") || eventLower.includes("dismissed")) {
@@ -191,9 +202,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   if (typeof rawModel === "string") {
     const model = normalizeModelName(rawModel);
     if (model) {
-      if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
+      if (isShown) {
         incrementStatCount(ctx.byModel, model, "shown");
-      } else if (eventLower.includes("accepted")) {
+      } else if (isAccepted) {
         incrementStatCount(ctx.byModel, model, "accepted");
       } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
         incrementCount(ctx.byChatModel, model);
@@ -202,6 +213,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Context Window Insights: parse context source references from JSON telemetry
+  const effectivenessType: "shown" | "accepted" | null = isShown ? "shown" : isAccepted ? "accepted" : null;
   const contextItems = data.contextItems ?? data.references ?? data.usedContext;
   if (Array.isArray(contextItems)) {
     for (const item of contextItems) {
@@ -210,6 +222,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
         const source = normalizeContextSource(rawType);
         if (source) {
           incrementCount(ctx.byContextSource, source);
+          if (effectivenessType) {
+            incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
+          }
         }
       }
     }
@@ -219,6 +234,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     const source = normalizeContextSource(directType);
     if (source) {
       incrementCount(ctx.byContextSource, source);
+      if (effectivenessType) {
+        incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
+      }
     }
   }
 }
@@ -458,20 +476,32 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
 
 /**
  * Parse context provider log lines that record which context sources were used.
+ * Detects lines containing the word "context" or known context-service keywords
+ * (e.g. WorkspaceChunkSearchService, GithubAvailableEmbeddingTypesManager, reposearch)
+ * even when the exact word "context" is absent.
  * Returns true if the line was handled as a context event.
  */
 function parseContextProviderLine(line: string, lower: string, ctx: ParsingContext): boolean {
-  if (!lower.includes("context")) {
-    return false;
-  }
-  // Match lines like: "[ContextProvider] added openTab: file.ts"
-  // or "context source: workspace" / "context from mcp"
-  if (!lower.includes("[contextprovider]") && !lower.includes("context source") && !lower.includes("context from")) {
+  // Accept lines that mention "context" or any known context source keyword.
+  const hasContext = lower.includes("context");
+  const hasServiceKeyword =
+    lower.includes("workspacechunk") ||
+    lower.includes("embedding") ||
+    lower.includes("reposearch") ||
+    lower.includes("opentab") ||
+    lower.includes("workspace") ||
+    lower.includes("mcp") ||
+    lower.includes("externaldoc") ||
+    lower.includes("currentfile") ||
+    lower.includes("snippet");
+  if (!hasContext && !hasServiceKeyword) {
     return false;
   }
   const sourcePatterns: [RegExp, string][] = [
     [/opentab/i, "Open Tabs"],
     [/workspace/i, "Workspace"],
+    [/reposearch/i, "Workspace"],
+    [/embedding/i, "Workspace"],
     [/\bmcp\b/i, "MCP / External Docs"],
     [/externaldoc/i, "MCP / External Docs"],
     [/currentfile/i, "Current File"],
@@ -482,6 +512,11 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
       incrementCount(ctx.byContextSource, source);
       return true;
     }
+  }
+  // "context" is present but no known source pattern matched — count as unknown.
+  if (hasContext) {
+    incrementCount(ctx.byContextSource, "Unknown Context");
+    return true;
   }
   return false;
 }

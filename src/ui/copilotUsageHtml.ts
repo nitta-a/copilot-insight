@@ -34,6 +34,7 @@ export function getHtmlContent(
   const latencyDistSection = buildLatencyDistSection(stats);
   const sessionSection = buildSessionSection(stats.bySession);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
+  const contextEffectivenessSection = buildContextEffectivenessSection(stats.byContextEffectiveness);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -150,6 +151,8 @@ export function getHtmlContent(
       margin: 6px 0;
       font-size: 0.9em;
     }
+    .insight-card.positive { border-left-color: var(--vscode-charts-green); }
+    .insight-card.negative { border-left-color: var(--vscode-charts-red, #f14c4c); }
     .insight-icon { margin-right: 6px; }
     .rate-bar-track { height: 8px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 2px; overflow: hidden; margin-bottom: 2px; }
     /* ── Dashboard interactive section ───────────────────────────────── */
@@ -252,6 +255,7 @@ export function getHtmlContent(
       ${hourSection}
       ${chatHourSection}
       ${contextInsightsSection}
+      ${contextEffectivenessSection}
     </div>
 
     <div style="margin:16px 0 8px">
@@ -597,7 +601,8 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
 /** Build the Context Window Insights section showing which context sources Copilot used. */
 function buildContextInsightsSection(byContextSource: Map<string, number>): string {
   if (byContextSource.size === 0) {
-    return "";
+    return `<h2>🔍 Context Window Insights</h2>
+<p class="no-data">No context data found. Try loading the &#39;GitHub Copilot&#39; (not Chat) output log for better detail.</p>`;
   }
   const sorted = Array.from(byContextSource.entries()).sort((a, b) => b[1] - a[1]);
   const total = sorted.reduce((sum, [, v]) => sum + v, 0);
@@ -627,6 +632,47 @@ function buildContextInsightsSection(byContextSource: Map<string, number>): stri
   return `<h2>🔍 Context Window Insights</h2>
 <p style="font-size:0.85em;opacity:0.8;margin:0 0 8px">Context sources referenced in Copilot suggestions — total: ${total}</p>
 ${bars}`;
+}
+
+/** Build the Context Effectiveness Dashboard: acceptance rate per context source. */
+function buildContextEffectivenessSection(byContextEffectiveness: Map<string, LanguageStat>): string {
+  if (byContextEffectiveness.size === 0) {
+    return "";
+  }
+  const sorted = Array.from(byContextEffectiveness.entries()).sort((a, b) => b[1].shown - a[1].shown);
+  const maxShown = Math.max(...sorted.map(([, v]) => v.shown), 1);
+  const sourceColorClass = new Map<string, string>([
+    ["Open Tabs", "blue"],
+    ["Workspace", "green"],
+    ["MCP / External Docs", "purple"],
+    ["Current File", "orange"],
+    ["Snippet", "orange"],
+  ]);
+  const rows = sorted
+    .map(([source, { shown, accepted }]) => {
+      const rate = shown > 0 ? ((accepted / shown) * 100).toFixed(1) : "0.0";
+      const colorClass = sourceColorClass.get(source) ?? "blue";
+      return `<div class="bar-row">
+  <span class="bar-label model-bar-label">${escapeHtml(source)}</span>
+  <div class="bar-group">
+    <div class="bar-track">
+      <div class="bar-fill ${colorClass}" style="width:${(shown / maxShown) * 100}%"></div>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill green" style="width:${(accepted / maxShown) * 100}%"></div>
+    </div>
+  </div>
+  <span class="bar-count">${shown} / ${accepted} (${rate}%)</span>
+</div>`;
+    })
+    .join("\n");
+  return `<h2>🎯 Context Effectiveness Dashboard</h2>
+<p style="font-size:0.85em;opacity:0.8;margin:0 0 8px">Acceptance rate per context source — shown / accepted (rate)</p>
+<div class="legend">
+  <span><span class="dot blue"></span>Shown</span>
+  <span><span class="dot green"></span>Accepted</span>
+</div>
+${rows}`;
 }
 
 /** Render a bar chart with shown/accepted/rate for Map<string, LanguageStat> data (model stats). */

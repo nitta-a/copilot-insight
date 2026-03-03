@@ -62,6 +62,7 @@ function makeEmptyStats(): ParsingContext {
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    byContextEffectiveness: new Map(),
   };
 }
 
@@ -175,6 +176,49 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalShown, 0);
       assert.strictEqual(stats.totalAccepted, 0);
       assert.strictEqual(stats.totalRejected, 0);
+    });
+
+    test("records shown count in byContextEffectiveness for shown event with contextItems", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_shown",
+          contextItems: [{ type: "openTab" }, { type: "workspace" }],
+        },
+        stats,
+      );
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Open Tabs"), { shown: 1, accepted: 0 });
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Workspace"), { shown: 1, accepted: 0 });
+    });
+
+    test("records accepted count in byContextEffectiveness for accepted event with contextItems", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_accepted",
+          contextItems: [{ type: "openTab" }],
+        },
+        stats,
+      );
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Open Tabs"), { shown: 0, accepted: 1 });
+    });
+
+    test("records shown in byContextEffectiveness for shown event with directType contextType", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", contextType: "currentFile" }, stats);
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Current File"), { shown: 1, accepted: 0 });
+    });
+
+    test("does not update byContextEffectiveness for rejected events", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_rejected",
+          contextItems: [{ type: "openTab" }],
+        },
+        stats,
+      );
+      assert.strictEqual(stats.byContextEffectiveness.size, 0);
     });
   });
 
@@ -534,6 +578,9 @@ suite("logContentParser", () => {
       assert.strictEqual(normalizeContextSource("workspaceFile"), "Workspace");
       assert.strictEqual(normalizeContextSource("workspaceIndex"), "Workspace");
       assert.strictEqual(normalizeContextSource("repoSearch"), "Workspace");
+      assert.strictEqual(normalizeContextSource("WorkspaceChunkSearchService"), "Workspace");
+      assert.strictEqual(normalizeContextSource("GithubAvailableEmbeddingTypesManager"), "Workspace");
+      assert.strictEqual(normalizeContextSource("embedding"), "Workspace");
     });
 
     test("maps mcp/external variants to 'MCP / External Docs'", () => {
@@ -550,8 +597,9 @@ suite("logContentParser", () => {
       assert.strictEqual(normalizeContextSource("snippet"), "Snippet");
     });
 
-    test("returns empty string for unknown types", () => {
-      assert.strictEqual(normalizeContextSource("unknown"), "");
+    test("returns raw string for unknown types, empty string for empty input", () => {
+      assert.strictEqual(normalizeContextSource("unknown"), "unknown");
+      assert.strictEqual(normalizeContextSource("myCustomSource"), "myCustomSource");
       assert.strictEqual(normalizeContextSource(""), "");
     });
   });
@@ -601,10 +649,10 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
     });
 
-    test("ignores unknown context types", () => {
+    test("stores unknown context types under their raw name", () => {
       const stats = makeEmptyStats();
       processJsonEntry({ event: "shown", contextItems: [{ type: "unknown_source" }] }, stats);
-      assert.strictEqual(stats.byContextSource.size, 0);
+      assert.strictEqual(stats.byContextSource.get("unknown_source"), 1);
     });
 
     test("ignores non-array contextItems", () => {
@@ -645,10 +693,16 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
     });
 
-    test("unrelated context line not recorded", () => {
+    test("any line with 'context' and a known source keyword is recorded (relaxed prefix)", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 loading context for currentFile", stats);
+      assert.strictEqual(stats.byContextSource.get("Current File"), 1);
+    });
+
+    test("context line with no known source keyword is counted as 'Unknown Context'", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 some unrelated log context", stats);
-      assert.strictEqual(stats.byContextSource.size, 0);
+      assert.strictEqual(stats.byContextSource.get("Unknown Context"), 1);
     });
 
     test("accumulates multiple context source mentions", () => {
@@ -658,6 +712,30 @@ suite("logContentParser", () => {
       parseTextLogLine("2024-06-01 [ContextProvider] workspace context loaded", stats);
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 2);
       assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("WorkspaceChunkSearchService line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 WorkspaceChunkSearchService queried 5 chunks", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("GithubAvailableEmbeddingTypesManager line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 GithubAvailableEmbeddingTypesManager: type=code initialized", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("reposearch line (no 'context' word) recorded as Workspace", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 running reposearch query for symbols", stats);
+      assert.strictEqual(stats.byContextSource.get("Workspace"), 1);
+    });
+
+    test("line with 'context' but no source keyword counted as 'Unknown Context'", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 preparing context window for request", stats);
+      assert.strictEqual(stats.byContextSource.get("Unknown Context"), 1);
     });
   });
 
