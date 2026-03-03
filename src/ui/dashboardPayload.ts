@@ -17,6 +17,7 @@ import type {
   AgentIntelligenceOverview,
 } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
+import { mergeCountByNormalizedModel } from "../log/logContentParser";
 
 /** Average characters per accepted completion (used for ROI estimation). */
 const AVG_CHARS_PER_COMPLETION = 40;
@@ -172,14 +173,20 @@ export function buildDashboardPayload(
   const avgCallsPerLoop = agenticLoopCount > 0 ? autonomousActionCount / agenticLoopCount : 0;
 
   // Per-model autonomous ratio: only include models that have at least one subagent call.
+  // Normalize and merge map entries so that different deployment aliases of the same model
+  // are aggregated into a single row.
+  const normalizedChatModel = mergeCountByNormalizedModel(stats.byChatModel);
+  const normalizedSubagentByModel = mergeCountByNormalizedModel(stats.subagentByModel);
+  const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
+
   const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
-  for (const [model, totalCount] of stats.byChatModel) {
-    const subagentCount = stats.subagentByModel.get(model) ?? 0;
+  for (const [model, totalCount] of normalizedChatModel) {
+    const subagentCount = normalizedSubagentByModel.get(model) ?? 0;
     if (subagentCount === 0) {
       continue;
     }
     const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
-    const durationMs = stats.autonomousDurationByModel.get(model) ?? 0;
+    const durationMs = normalizedDurationByModel.get(model) ?? 0;
     const velocitySecondsPerAction = subagentCount > 0 && durationMs > 0 ? durationMs / 1000 / subagentCount : 0;
     autonomousRatioByModel.push({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction });
   }

@@ -16,14 +16,70 @@ const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/s
 
 /**
  * Normalize a raw model name by stripping deployment paths and internal IDs.
- * Removes everything after ` -> ` (deployment path separator) and trims whitespace.
- * Examples:
- *   "claude-sonnet-4.6 -> azure/some/deployment" → "claude-sonnet-4.6"
- *   "gpt-4o" → "gpt-4o"
+ *
+ * Rules applied in order:
+ *   1. Strip deployment alias: remove everything from ` -> ` onward
+ *      (e.g. "gpt-4o -> gpt-4o-2024-11-20" → "gpt-4o")
+ *   2. Strip colon suffix: remove everything from the first `:` onward
+ *      (e.g. "gpt-5-mini:20241101" → "gpt-5-mini")
+ *   3. Strip hash suffix: remove everything from the first `#` onward
+ *      (e.g. "claude-3.5-sonnet#abc123" → "claude-3.5-sonnet")
+ *   4. Trim surrounding whitespace.
  */
 export function normalizeModelName(model: string): string {
+  // Rule 1: strip deployment path after ' -> '
   const arrowIdx = model.indexOf(" -> ");
-  return (arrowIdx !== -1 ? model.substring(0, arrowIdx) : model).trim();
+  let base = (arrowIdx !== -1 ? model.substring(0, arrowIdx) : model).trim();
+  // Rule 2: strip colon version/date/ID suffix
+  const colonIdx = base.indexOf(":");
+  if (colonIdx > 0) {
+    base = base.substring(0, colonIdx).trim();
+  }
+  // Rule 3: strip hash suffix
+  const hashIdx = base.indexOf("#");
+  if (hashIdx > 0) {
+    base = base.substring(0, hashIdx).trim();
+  }
+  return base;
+}
+
+/**
+ * Merge a `Map<string, LanguageStat>` using normalized model name keys.
+ * Entries whose raw keys normalize to the same string are summed together.
+ * Entries that normalize to an empty string (e.g. raw key was only special
+ * characters or deployment suffixes with no base name) are silently skipped.
+ */
+export function mergeStatsByNormalizedModel(source: Map<string, LanguageStat>): Map<string, LanguageStat> {
+  const merged = new Map<string, LanguageStat>();
+  for (const [rawKey, stat] of source) {
+    const key = normalizeModelName(rawKey);
+    if (!key) {
+      // Skip entries that have no usable base name after normalization.
+      continue;
+    }
+    const existing = merged.get(key) ?? { shown: 0, accepted: 0 };
+    merged.set(key, { shown: existing.shown + stat.shown, accepted: existing.accepted + stat.accepted });
+  }
+  return merged;
+}
+
+/**
+ * Merge a `Map<string, number>` count map using normalized model name keys.
+ * Entries whose raw keys normalize to the same string are summed together.
+ * Entries that normalize to an empty string (e.g. raw key was only special
+ * characters or deployment suffixes with no base name) are silently skipped.
+ */
+export function mergeCountByNormalizedModel(source: Map<string, number>): Map<string, number> {
+  const merged = new Map<string, number>();
+  for (const [rawKey, count] of source) {
+    const key = normalizeModelName(rawKey);
+    if (!key) {
+      // Skip entries that have no usable base name after normalization.
+      continue;
+    }
+    merged.set(key, (merged.get(key) ?? 0) + count);
+  }
+  return merged;
 }
 
 /** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
@@ -128,6 +184,21 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   } else if (eventLower.includes("rejected") || eventLower.includes("dismissed")) {
     ctx.totalRejected++;
+  }
+
+  // Extract and record normalized model name from JSON telemetry.
+  const rawModel = data.model ?? data.modelId ?? data.engineId ?? data.engineName ?? data.engine;
+  if (typeof rawModel === "string") {
+    const model = normalizeModelName(rawModel);
+    if (model) {
+      if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
+        incrementStatCount(ctx.byModel, model, "shown");
+      } else if (eventLower.includes("accepted")) {
+        incrementStatCount(ctx.byModel, model, "accepted");
+      } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
+        incrementCount(ctx.byChatModel, model);
+      }
+    }
   }
 
   // Context Window Insights: parse context source references from JSON telemetry

@@ -1,6 +1,8 @@
 import * as assert from "assert";
 import {
   incrementStatCount,
+  mergeCountByNormalizedModel,
+  mergeStatsByNormalizedModel,
   normalizeContextSource,
   normalizeModelName,
   parseLogContent,
@@ -805,6 +807,27 @@ suite("normalizeModelName", () => {
   test("strips deployment path from model with version", () => {
     assert.strictEqual(normalizeModelName("claude-3.5-sonnet -> gcp/us-east1/v1"), "claude-3.5-sonnet");
   });
+
+  // Rule 2: colon suffix stripping
+  test("strips colon version suffix", () => {
+    assert.strictEqual(normalizeModelName("gpt-5-mini:20241101"), "gpt-5-mini");
+  });
+
+  test("strips colon date suffix after arrow removal", () => {
+    assert.strictEqual(normalizeModelName("gpt-4o -> gpt-4o:2024-11-20"), "gpt-4o");
+  });
+
+  test("strips hash suffix", () => {
+    assert.strictEqual(normalizeModelName("claude-3.5-sonnet#abc123"), "claude-3.5-sonnet");
+  });
+
+  test("does not strip leading colon (edge case)", () => {
+    assert.strictEqual(normalizeModelName(":weird"), ":weird");
+  });
+
+  test("does not strip leading hash (edge case)", () => {
+    assert.strictEqual(normalizeModelName("#weird"), "#weird");
+  });
 });
 
 suite("model name normalization in ccreq parsing", () => {
@@ -887,5 +910,141 @@ suite("autonomousDurationByModel tracking", () => {
       stats,
     );
     assert.strictEqual(stats.autonomousDurationByModel.get("claude-3.5-sonnet"), 30000);
+  });
+});
+
+suite("mergeStatsByNormalizedModel", () => {
+  test("returns an empty map for empty input", () => {
+    const result = mergeStatsByNormalizedModel(new Map());
+    assert.strictEqual(result.size, 0);
+  });
+
+  test("preserves a single entry with a clean key", () => {
+    const source = new Map([["gpt-4o", { shown: 10, accepted: 7 }]]);
+    const result = mergeStatsByNormalizedModel(source);
+    assert.deepStrictEqual(result.get("gpt-4o"), { shown: 10, accepted: 7 });
+  });
+
+  test("merges two entries that normalize to the same key", () => {
+    const source = new Map([
+      ["gpt-4o -> deployment-a", { shown: 10, accepted: 6 }],
+      ["gpt-4o -> deployment-b", { shown: 5, accepted: 3 }],
+    ]);
+    const result = mergeStatsByNormalizedModel(source);
+    assert.strictEqual(result.size, 1);
+    assert.deepStrictEqual(result.get("gpt-4o"), { shown: 15, accepted: 9 });
+  });
+
+  test("strips colon suffix and merges", () => {
+    const source = new Map([
+      ["claude-3.5-sonnet:20241022", { shown: 8, accepted: 5 }],
+      ["claude-3.5-sonnet:20241101", { shown: 4, accepted: 2 }],
+    ]);
+    const result = mergeStatsByNormalizedModel(source);
+    assert.strictEqual(result.size, 1);
+    assert.deepStrictEqual(result.get("claude-3.5-sonnet"), { shown: 12, accepted: 7 });
+  });
+
+  test("keeps distinct entries that normalize to different keys", () => {
+    const source = new Map([
+      ["gpt-4o -> dep", { shown: 10, accepted: 6 }],
+      ["claude-3.5-sonnet -> dep", { shown: 5, accepted: 3 }],
+    ]);
+    const result = mergeStatsByNormalizedModel(source);
+    assert.strictEqual(result.size, 2);
+    assert.ok(result.has("gpt-4o"));
+    assert.ok(result.has("claude-3.5-sonnet"));
+  });
+});
+
+suite("mergeCountByNormalizedModel", () => {
+  test("returns an empty map for empty input", () => {
+    const result = mergeCountByNormalizedModel(new Map());
+    assert.strictEqual(result.size, 0);
+  });
+
+  test("preserves a single entry with a clean key", () => {
+    const source = new Map([["gpt-4o", 20]]);
+    const result = mergeCountByNormalizedModel(source);
+    assert.strictEqual(result.get("gpt-4o"), 20);
+  });
+
+  test("merges counts for entries that normalize to the same key", () => {
+    const source = new Map([
+      ["gpt-4o -> deployment-a", 8],
+      ["gpt-4o -> deployment-b", 5],
+    ]);
+    const result = mergeCountByNormalizedModel(source);
+    assert.strictEqual(result.size, 1);
+    assert.strictEqual(result.get("gpt-4o"), 13);
+  });
+
+  test("strips hash suffix and merges", () => {
+    const source = new Map([
+      ["claude-3#hash1", 3],
+      ["claude-3#hash2", 2],
+    ]);
+    const result = mergeCountByNormalizedModel(source);
+    assert.strictEqual(result.size, 1);
+    assert.strictEqual(result.get("claude-3"), 5);
+  });
+});
+
+suite("processJsonEntry model extraction", () => {
+  test("records model in byModel.shown for a 'shown' event", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "completionShown", model: "gpt-4o", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 1, accepted: 0 });
+  });
+
+  test("records model in byModel.accepted for an 'accepted' event", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "completionAccepted", model: "gpt-4o", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 0, accepted: 1 });
+  });
+
+  test("records model in byChatModel for a non-shown/accepted event", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "chatRequest", model: "claude-3.5-sonnet", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.strictEqual(stats.byChatModel.get("claude-3.5-sonnet"), 1);
+  });
+
+  test("normalizes model name in JSON entry (strips arrow suffix)", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry(
+      { event: "completionShown", model: "gpt-4o -> azure/dep", timestamp: "2024-06-01T10:00:00Z" },
+      stats,
+    );
+    assert.ok(stats.byModel.has("gpt-4o"), "should have normalized key gpt-4o");
+    assert.ok(!stats.byModel.has("gpt-4o -> azure/dep"), "should not have raw key");
+  });
+
+  test("normalizes model name with colon suffix in JSON entry", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry(
+      { event: "completionShown", model: "gpt-5-mini:20241101", timestamp: "2024-06-01T10:00:00Z" },
+      stats,
+    );
+    assert.ok(stats.byModel.has("gpt-5-mini"));
+    assert.ok(!stats.byModel.has("gpt-5-mini:20241101"));
+  });
+
+  test("falls back to modelId when model field is absent", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "completionShown", modelId: "gemini-1.5-pro", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.ok(stats.byModel.has("gemini-1.5-pro"));
+  });
+
+  test("does not record model in byModel when model field is absent from a shown event", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "completionShown", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.strictEqual(stats.byModel.size, 0);
+  });
+
+  test("does not record model in byChatModel for a 'rejected' event", () => {
+    const stats = makeEmptyStats();
+    processJsonEntry({ event: "completionRejected", model: "gpt-4o", timestamp: "2024-06-01T10:00:00Z" }, stats);
+    assert.strictEqual(stats.byChatModel.size, 0);
+    assert.strictEqual(stats.byModel.size, 0);
   });
 });

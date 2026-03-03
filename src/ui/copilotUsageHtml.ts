@@ -1,6 +1,7 @@
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -19,8 +20,12 @@ export function getHtmlContent(
     .slice(-days);
 
   const dateSection = buildDateSection(dateData, days, stats.chatByDate);
-  const modelSection = buildModelBarChart(stats.byModel, "🤖 Inline Completion Model");
-  const chatModelSection = buildSimpleBarChart(stats.byChatModel, "💬 Chat Model", "green");
+  const modelSection = buildModelBarChart(mergeStatsByNormalizedModel(stats.byModel), "🤖 Inline Completion Model");
+  const chatModelSection = buildSimpleBarChart(
+    mergeCountByNormalizedModel(stats.byChatModel),
+    "💬 Chat Model",
+    "green",
+  );
   const intentSection = buildSimpleBarChart(stats.byChatIntent, "🎯 Chat Intent (Agent/Plan/Ask)", "blue");
   const hourSection = buildHourGrid(stats.byHour, "⏰ Activity by Hour", "", "completions");
   const chatHourSection = buildHourGrid(stats.chatByHour, "💬 Chat Activity by Hour", " chat", "chat requests");
