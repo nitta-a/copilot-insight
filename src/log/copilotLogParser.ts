@@ -54,6 +54,7 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
+    agenticDepthByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -61,6 +62,11 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     currentSessionId: "",
     activeSubagentLoop: null,
     activeSubagentLoopModel: null,
+    activeSubagentLoopActionCount: 0,
+    loopsStartedByModel: new Map(),
+    loopsCompletedByModel: new Map(),
+    totalLoopActionsByModel: new Map(),
+    loopDistributionByModel: new Map(),
   };
 
   try {
@@ -116,6 +122,28 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
 
   if (ctx.subagentLoopsStarted > 0) {
     ctx.completionRate = (ctx.subagentLoops / ctx.subagentLoopsStarted) * 100;
+  }
+
+  // Compute per-model agentic depth statistics from accumulated data.
+  const allModelKeys = new Set([...ctx.loopsStartedByModel.keys(), ...ctx.loopsCompletedByModel.keys()]);
+  for (const model of allModelKeys) {
+    const started = ctx.loopsStartedByModel.get(model) ?? 0;
+    const completed = ctx.loopsCompletedByModel.get(model) ?? 0;
+    const totalActions = ctx.totalLoopActionsByModel.get(model) ?? 0;
+    const totalDurationMs = ctx.autonomousDurationByModel.get(model) ?? 0;
+    const dist = ctx.loopDistributionByModel.get(model) ?? {
+      bucket1: 0,
+      bucket2: 0,
+      bucket3to5: 0,
+      bucket6to10: 0,
+      bucket11plus: 0,
+    };
+    ctx.agenticDepthByModel.set(model, {
+      loopDistribution: dist,
+      avgLoopActions: completed > 0 ? totalActions / completed : 0,
+      completionRate: started > 0 ? (completed / started) * 100 : 0,
+      velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+    });
   }
 
   if (ctx.latencies.length > MAX_LATENCY_SAMPLES) {

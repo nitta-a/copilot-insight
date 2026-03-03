@@ -369,7 +369,14 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
         ctx.activeSubagentLoop = tsMatch[1];
         ctx.activeSubagentLoopModel = model ? model : null;
         ctx.subagentLoopsStarted++;
+        ctx.activeSubagentLoopActionCount = 1;
+        if (model) {
+          incrementCount(ctx.loopsStartedByModel, model);
+        }
       }
+    } else {
+      // Subsequent action in the currently active loop.
+      ctx.activeSubagentLoopActionCount++;
     }
   }
 }
@@ -504,8 +511,38 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
         }
       }
     }
+
+    // Record per-model completion and action-count histogram.
+    const model = ctx.activeSubagentLoopModel;
+    if (model) {
+      incrementCount(ctx.loopsCompletedByModel, model);
+      const actionCount = ctx.activeSubagentLoopActionCount;
+      const prev = ctx.totalLoopActionsByModel.get(model) ?? 0;
+      ctx.totalLoopActionsByModel.set(model, prev + actionCount);
+      const dist = ctx.loopDistributionByModel.get(model) ?? {
+        bucket1: 0,
+        bucket2: 0,
+        bucket3to5: 0,
+        bucket6to10: 0,
+        bucket11plus: 0,
+      };
+      if (actionCount === 1) {
+        dist.bucket1++;
+      } else if (actionCount === 2) {
+        dist.bucket2++;
+      } else if (actionCount <= 5) {
+        dist.bucket3to5++;
+      } else if (actionCount <= 10) {
+        dist.bucket6to10++;
+      } else {
+        dist.bucket11plus++;
+      }
+      ctx.loopDistributionByModel.set(model, dist);
+    }
+
     ctx.activeSubagentLoop = null;
     ctx.activeSubagentLoopModel = null;
+    ctx.activeSubagentLoopActionCount = 0;
   }
   return true;
 }
