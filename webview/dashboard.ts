@@ -622,6 +622,8 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   const overview: AgentIntelligenceOverview = agenticStats.agentIntelligenceOverview;
   const ratioStr = agenticStats.agenticRatio.toFixed(1);
   const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
+  const completionStr =
+    overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
   const durationCell =
     agenticStats.autonomousDurationMs > 0
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
@@ -629,19 +631,22 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 
   const modelRows = overview.autonomousRatioByModel
     .map(
-      ({ model, subagentCount, totalCount, ratio }) =>
-        `<tr>
+      ({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
+        const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
+        return `<tr>
           <td>${escHtml(trunc(model, 30))}</td>
           <td>${subagentCount} / ${totalCount}</td>
           <td>${ratio.toFixed(1)}%</td>
-        </tr>`,
+          <td>${velocityStr}</td>
+        </tr>`;
+      },
     )
     .join("");
 
   const modelTable = modelRows
     ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">Autonomous Ratio by Model</h3>
        <table class="db-lang-table">
-         <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th></tr>
+         <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th><th>Avg sec / Action</th></tr>
          ${modelRows}
        </table>`
     : "";
@@ -669,6 +674,11 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
         <div class="stat-value">${avgStr}</div>
         <div class="stat-label">Avg Calls / Loop</div>
         <div class="stat-detail">agentic depth</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${completionStr}</div>
+        <div class="stat-label">Completion Rate</div>
+        <div class="stat-detail">episodes completed</div>
       </div>
       ${durationCell}
     </div>

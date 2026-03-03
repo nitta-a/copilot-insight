@@ -50,13 +50,17 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
     subagentLoops: 0,
+    subagentLoopsStarted: 0,
+    completionRate: 0,
     subagentByModel: new Map(),
+    autonomousDurationByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
     chatLatencyCount: 0,
     currentSessionId: "",
     activeSubagentLoop: null,
+    activeSubagentLoopModel: null,
   };
 
   try {
@@ -108,6 +112,10 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
   const totalRequests = ctx.totalShown + ctx.totalChat;
   if (totalRequests > 0) {
     ctx.agenticRatio = (ctx.subagentRequests / totalRequests) * 100;
+  }
+
+  if (ctx.subagentLoopsStarted > 0) {
+    ctx.completionRate = (ctx.subagentLoops / ctx.subagentLoopsStarted) * 100;
   }
 
   if (ctx.latencies.length > MAX_LATENCY_SAMPLES) {

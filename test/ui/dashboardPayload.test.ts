@@ -45,7 +45,10 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
     subagentLoops: 0,
+    subagentLoopsStarted: 0,
+    completionRate: 0,
     subagentByModel: new Map(),
+    autonomousDurationByModel: new Map(),
     ...overrides,
   };
 }
@@ -340,6 +343,78 @@ suite("buildDashboardPayload", () => {
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel[0].model, "claude-3");
       assert.strictEqual(byModel[1].model, "gpt-4o");
+    });
+
+    test("agentIntelligenceOverview.completionRate is 0 when no loops started", () => {
+      const payload = buildDashboardPayload(makeStats(), 14);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 0);
+    });
+
+    test("agentIntelligenceOverview.completionRate is ratio of completed to started loops * 100", () => {
+      const stats = makeStats({ subagentLoops: 3, subagentLoopsStarted: 4, completionRate: 75 });
+      const payload = buildDashboardPayload(stats, 14);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 75);
+    });
+
+    test("autonomousRatioByModel.velocitySecondsPerAction is 0 when no duration data", () => {
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([["gpt-4o", 5]]),
+        autonomousDurationByModel: new Map(),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.strictEqual(byModel[0].velocitySecondsPerAction, 0);
+    });
+
+    test("autonomousRatioByModel.velocitySecondsPerAction is durationMs / 1000 / subagentCount", () => {
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([["gpt-4o", 4]]),
+        autonomousDurationByModel: new Map([["gpt-4o", 20000]]), // 20s / 4 actions = 5s/action
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.strictEqual(byModel[0].velocitySecondsPerAction, 5);
+    });
+
+    test("autonomousRatioByModel merges entries for same normalized model name", () => {
+      // Two byChatModel entries that normalize to the same key
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o -> deployment-a", 8],
+          ["gpt-4o -> deployment-b", 2],
+        ]),
+        subagentByModel: new Map([
+          ["gpt-4o -> deployment-a", 3],
+          ["gpt-4o -> deployment-b", 1],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1, "should merge two deployments into one row");
+      assert.strictEqual(byModel[0].model, "gpt-4o");
+      assert.strictEqual(byModel[0].totalCount, 10);
+      assert.strictEqual(byModel[0].subagentCount, 4);
+      assert.ok(Math.abs(byModel[0].ratio - 40) < 0.01);
+    });
+
+    test("autonomousRatioByModel strips colon suffix when merging", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["claude-3.5-sonnet:20241022", 6],
+          ["claude-3.5-sonnet:20241101", 4],
+        ]),
+        subagentByModel: new Map([["claude-3.5-sonnet:20241022", 2]]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");
+      assert.strictEqual(byModel[0].totalCount, 10);
+      assert.strictEqual(byModel[0].subagentCount, 2);
     });
   });
 });
