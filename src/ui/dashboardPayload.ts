@@ -7,13 +7,7 @@
 
 import type { CopilotUsageStats } from "../types";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type {
-  DashboardPayload,
-  SummaryData,
-  TimelineEntry,
-  VelocityPoint,
-  WeeklyTrendData,
-} from "./dashboardMessages";
+import type { DashboardPayload, SummaryData, TimelineEntry, VelocityPoint, WeeklyTrendData } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 /** Average characters per accepted completion (used for ROI estimation). */

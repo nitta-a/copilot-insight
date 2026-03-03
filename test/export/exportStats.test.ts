@@ -131,7 +131,6 @@ suite("exportStats", () => {
       const csv = exportAsCsv(makeStats({ byHour: new Map(), chatByHour: new Map() }));
       assert.ok(!csv.includes("# Activity by Hour"));
     });
-
   });
 
   suite("exportAsJson", () => {

@@ -231,5 +231,4 @@ suite("buildDashboardPayload", () => {
       assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
     });
   });
-
 });
