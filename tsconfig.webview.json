@@ -6,7 +6,8 @@
     "strict": true,
     "noEmit": true,
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
   },
-  "include": ["webview/**/*.ts", "src/ui/dashboardMessages.ts"]
+  "include": ["webview/**/*.ts", "webview/**/*.tsx", "src/ui/dashboardMessages.ts"]
 }

@@ -29,6 +29,10 @@ import {
   Tooltip,
   type TooltipItem,
 } from "chart.js";
+import { createRoot, type Root } from "react-dom/client";
+import { createElement } from "react";
+import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
+import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
 
 import type {
   AgentIntelligenceOverview,
@@ -82,6 +86,14 @@ let timelineChart: Chart | null = null;
 let velocityChart: Chart | null = null;
 let currentDays = 14;
 let currentTab = "overview";
+let depthVelocityChartRoot: Root | null = null;
+let scatterPlotRoot: Root | null = null;
+
+/** Unmount a React root and return null, for concise cleanup. */
+function unmountRoot(root: Root | null): null {
+  root?.unmount();
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Theme helpers — read VS Code CSS variables for chart colours
@@ -615,6 +627,8 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   }
 
   if (agenticStats.subagentRequests === 0) {
+    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
+    scatterPlotRoot = unmountRoot(scatterPlotRoot);
     el.innerHTML = "";
     return;
   }
@@ -682,7 +696,26 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
       </div>
       ${durationCell}
     </div>
-    ${modelTable}`;
+    ${modelTable}
+    <div id="db-model-depth-chart" style="margin-top:16px"></div>
+    <div id="db-agentic-scatter" style="margin-top:4px"></div>`;
+
+  // Mount React chart components into the containers just added.
+  const modelData = overview.autonomousRatioByModel;
+
+  const depthEl = document.getElementById("db-model-depth-chart");
+  if (depthEl) {
+    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
+    depthVelocityChartRoot = createRoot(depthEl);
+    depthVelocityChartRoot.render(createElement(ModelDepthVelocityChart, { data: modelData }));
+  }
+
+  const scatterEl = document.getElementById("db-agentic-scatter");
+  if (scatterEl) {
+    scatterPlotRoot = unmountRoot(scatterPlotRoot);
+    scatterPlotRoot = createRoot(scatterEl);
+    scatterPlotRoot.render(createElement(AgenticEfficiencyScatterPlot, { data: modelData }));
+  }
 }
 
 // ---------------------------------------------------------------------------

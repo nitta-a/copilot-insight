@@ -109,6 +109,12 @@ export interface AgentIntelligenceOverview {
     ratio: number;
     /** Average autonomous duration per action in seconds. 0 when no duration data. */
     velocitySecondsPerAction: number;
+    /** Average actions per completed agentic loop ("thinking depth"). 0 when no loops. */
+    avgLoopActions: number;
+    /** Task completion rate 0–100. 0 when no loops started. */
+    completionRate: number;
+    /** Total autonomous duration in milliseconds for this model. */
+    autonomousDurationMs: number;
   }>;
 }
 
