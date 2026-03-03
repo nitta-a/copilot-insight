@@ -188,7 +188,19 @@ export function buildDashboardPayload(
     const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
     const durationMs = normalizedDurationByModel.get(model) ?? 0;
     const velocitySecondsPerAction = subagentCount > 0 && durationMs > 0 ? durationMs / 1000 / subagentCount : 0;
-    autonomousRatioByModel.push({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction });
+    const depthStat = stats.agenticDepthByModel.get(model);
+    const avgLoopActions = depthStat?.avgLoopActions ?? 0;
+    const modelCompletionRate = depthStat?.completionRate ?? 0;
+    autonomousRatioByModel.push({
+      model,
+      subagentCount,
+      totalCount,
+      ratio,
+      velocitySecondsPerAction,
+      avgLoopActions,
+      completionRate: modelCompletionRate,
+      autonomousDurationMs: durationMs,
+    });
   }
   autonomousRatioByModel.sort((a, b) => b.ratio - a.ratio);
 

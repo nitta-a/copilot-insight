@@ -70,6 +70,7 @@ async function main() {
     platform: "browser",
     outfile: "dist/webview/dashboard.js",
     logLevel: "silent",
+    jsx: "automatic",
     plugins: [esbuildProblemMatcherPlugin],
   });
 
