@@ -900,4 +900,79 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byLanguage.get("python"), undefined);
     });
   });
+
+  suite("parseCcreqLine – language tracking", () => {
+    test("inline ccreq with encoded path sets byLanguage accepted for typescript", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [XtabProvider] ccreq:abc123 %2Fsrc%2Fapp.ts | success | gpt-4o | 120ms |",
+        stats,
+      );
+      assert.strictEqual(stats.totalAccepted, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 0, accepted: 1 });
+    });
+
+    test("inline ccreq with encoded .tsx path sets byLanguage accepted for typescriptreact", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 [nes.provider] ccreq:def456 %2Fsrc%2FApp.tsx | success | gpt-4o | 100ms |",
+        stats,
+      );
+      assert.strictEqual(stats.totalAccepted, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescriptreact"), { shown: 0, accepted: 1 });
+    });
+
+    test("chat ccreq with encoded path sets byLanguage shown for python", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 ccreq:ghi789 %2Fscripts%2Frun.py | success | gpt-4o | 800ms | [vscodePrompt]",
+        stats,
+      );
+      assert.strictEqual(stats.totalChat, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 1, accepted: 0 });
+    });
+
+    test("inline ccreq without encoded path leaves byLanguage empty", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 ccreq:mno345 | success | gpt-4o | 120ms | [XtabProvider]", stats);
+      assert.strictEqual(stats.totalAccepted, 1);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+
+    test("chat ccreq without encoded path leaves byLanguage empty", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 ccreq:pqr678 | success | gpt-4o | 800ms | [vscodePrompt]", stats);
+      assert.strictEqual(stats.totalChat, 1);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+  });
+
+  suite("processJsonEntry – language fallback from encoded path", () => {
+    test("extracts typescript from encoded path in JSON when no language field", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", doc: "%2Fsrc%2Fapp.ts" }, stats);
+      assert.strictEqual(stats.totalShown, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 1, accepted: 0 });
+    });
+
+    test("explicit language field takes priority over encoded path fallback", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", language: "go", doc: "%2Fsrc%2Fapp.ts" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("go"), { shown: 1, accepted: 0 });
+      assert.strictEqual(stats.byLanguage.get("typescript"), undefined);
+    });
+
+    test("extracts language for accepted event via encoded path fallback", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_accepted", uri: "%2Flib%2Fmain.rs" }, stats);
+      assert.strictEqual(stats.totalAccepted, 1);
+      assert.deepStrictEqual(stats.byLanguage.get("rust"), { shown: 0, accepted: 1 });
+    });
+
+    test("no language field and no encoded path leaves byLanguage empty", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown" }, stats);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+  });
 });

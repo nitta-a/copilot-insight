@@ -192,7 +192,10 @@ function extractLineContext(line: string): LineContext {
 
 export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingContext): void {
   const event = (data.event as string | undefined) ?? (data.eventName as string | undefined) ?? "";
-  const language = (data.language as string | undefined) ?? (data.languageId as string | undefined) ?? "";
+  const language =
+    (data.language as string | undefined) ??
+    (data.languageId as string | undefined) ??
+    extractLanguageFromEncodedPath(JSON.stringify(data));
   const timestamp = (data.timestamp as string | undefined) ?? "";
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
 
@@ -341,11 +344,12 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
   trackChatIntent(line, ctx);
 
+  const language = extractLanguageFromEncodedPath(line);
   const isNes = lower.includes("[xtabprovider]") || lower.includes("[nes.");
   if (isNes) {
-    recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
+    recordInlineAccepted(ctx, dateKey, hourKey, model, latency, language);
   } else {
-    recordChatRequest(ctx, dateKey, hourKey, model, latency);
+    recordChatRequest(ctx, dateKey, hourKey, model, latency, language);
   }
   return true;
 }
@@ -369,8 +373,12 @@ function recordInlineAccepted(
   hourKey: string,
   model: string,
   latency: number,
+  language: string,
 ): void {
   ctx.totalAccepted++;
+  if (language) {
+    incrementStatCount(ctx.byLanguage, language, "accepted");
+  }
   if (dateKey) {
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   }
@@ -394,8 +402,12 @@ function recordChatRequest(
   hourKey: string,
   model: string,
   latency: number,
+  language: string,
 ): void {
   ctx.totalChat++;
+  if (language) {
+    incrementStatCount(ctx.byLanguage, language, "shown");
+  }
   if (dateKey) {
     incrementCount(ctx.chatByDate, dateKey);
   }
