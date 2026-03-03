@@ -2,19 +2,79 @@ import type { LanguageStat, ParsingContext } from "../types";
 
 /** Map file extensions to VS Code language IDs. */
 const EXT_TO_LANGUAGE_ID: Record<string, string> = {
+  // TypeScript / JavaScript
   ts: "typescript",
   tsx: "typescriptreact",
   js: "javascript",
   jsx: "javascriptreact",
+  mjs: "javascript",
+  cjs: "javascript",
+  // Python
   py: "python",
+  pyw: "python",
+  // Shell / scripting
+  sh: "shellscript",
+  bash: "shellscript",
+  zsh: "shellscript",
+  fish: "fish",
+  ps1: "powershell",
+  psm1: "powershell",
+  psd1: "powershell",
+  // Systems / native
   go: "go",
   rs: "rust",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  // JVM / CLR
   java: "java",
   cs: "csharp",
-  cpp: "cpp",
-  c: "c",
+  kt: "kotlin",
+  kts: "kotlin",
+  scala: "scala",
+  groovy: "groovy",
+  // Web / markup
+  html: "html",
+  htm: "html",
+  css: "css",
+  scss: "scss",
+  sass: "sass",
+  less: "less",
+  vue: "vue",
+  svelte: "svelte",
+  astro: "astro",
+  // Config / data
+  json: "json",
+  jsonc: "jsonc",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  xml: "xml",
+  tf: "terraform",
+  hcl: "hcl",
+  // Other languages
   php: "php",
   rb: "ruby",
+  swift: "swift",
+  r: "r",
+  lua: "lua",
+  dart: "dart",
+  ex: "elixir",
+  exs: "elixir",
+  erl: "erlang",
+  hrl: "erlang",
+  hs: "haskell",
+  ml: "ocaml",
+  mli: "ocaml",
+  clj: "clojure",
+  cljs: "clojure",
+  jl: "julia",
+  sql: "sql",
+  md: "markdown",
+  vim: "viml",
 };
 
 /**
@@ -23,7 +83,7 @@ const EXT_TO_LANGUAGE_ID: Record<string, string> = {
  * Returns "" when no recognizable extension is found.
  */
 export function extractLanguageFromEncodedPath(line: string): string {
-  const match = line.match(/%2F[^&?\s]+\.([a-zA-Z]+)\b/i);
+  const match = line.match(/%2F[^&?\s]+\.([a-zA-Z][a-zA-Z0-9]*)\b/i);
   if (!match) {
     return "";
   }

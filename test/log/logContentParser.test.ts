@@ -709,6 +709,142 @@ suite("logContentParser", () => {
       assert.strictEqual(extractLanguageFromEncodedPath("%2Fapp.rb"), "ruby");
     });
 
+    test("extracts shellscript from .sh extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fscripts%2Fdeploy.sh"), "shellscript");
+    });
+
+    test("extracts shellscript from .bash extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2F.bashrc.bash"), "shellscript");
+    });
+
+    test("extracts shellscript from .zsh extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2F.zshrc.zsh"), "shellscript");
+    });
+
+    test("extracts fish from .fish extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fconfig.fish"), "fish");
+    });
+
+    test("extracts powershell from .ps1 extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fbuild.ps1"), "powershell");
+    });
+
+    test("extracts javascript from .mjs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fmodule.mjs"), "javascript");
+    });
+
+    test("extracts javascript from .cjs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Futil.cjs"), "javascript");
+    });
+
+    test("extracts python from .pyw extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fapp.pyw"), "python");
+    });
+
+    test("extracts swift from .swift extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2FSources%2FApp.swift"), "swift");
+    });
+
+    test("extracts kotlin from .kt extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FMain.kt"), "kotlin");
+    });
+
+    test("extracts kotlin from .kts extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fbuild.gradle.kts"), "kotlin");
+    });
+
+    test("extracts scala from .scala extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FApp.scala"), "scala");
+    });
+
+    test("extracts dart from .dart extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Flib%2Fmain.dart"), "dart");
+    });
+
+    test("extracts r from .r extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fanalysis.r"), "r");
+    });
+
+    test("extracts lua from .lua extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fscripts%2Finit.lua"), "lua");
+    });
+
+    test("extracts elixir from .ex extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Flib%2Fapp.ex"), "elixir");
+    });
+
+    test("extracts elixir from .exs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Ftest%2Fapp_test.exs"), "elixir");
+    });
+
+    test("extracts erlang from .erl extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fserver.erl"), "erlang");
+    });
+
+    test("extracts haskell from .hs extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FMain.hs"), "haskell");
+    });
+
+    test("extracts ocaml from .ml extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fmain.ml"), "ocaml");
+    });
+
+    test("extracts clojure from .clj extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fcore.clj"), "clojure");
+    });
+
+    test("extracts julia from .jl extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fmain.jl"), "julia");
+    });
+
+    test("extracts html from .html extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fpublic%2Findex.html"), "html");
+    });
+
+    test("extracts css from .css extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fstyle.css"), "css");
+    });
+
+    test("extracts scss from .scss extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2Fapp.scss"), "scss");
+    });
+
+    test("extracts vue from .vue extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FApp.vue"), "vue");
+    });
+
+    test("extracts svelte from .svelte extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fsrc%2FApp.svelte"), "svelte");
+    });
+
+    test("extracts json from .json extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fpackage.json"), "json");
+    });
+
+    test("extracts yaml from .yml extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2F.github%2Fworkflows%2Fci.yml"), "yaml");
+    });
+
+    test("extracts yaml from .yaml extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fdocker-compose.yaml"), "yaml");
+    });
+
+    test("extracts toml from .toml extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2FCargo.toml"), "toml");
+    });
+
+    test("extracts terraform from .tf extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fmain.tf"), "terraform");
+    });
+
+    test("extracts sql from .sql extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2Fmigrations%2F001.sql"), "sql");
+    });
+
+    test("extracts markdown from .md extension", () => {
+      assert.strictEqual(extractLanguageFromEncodedPath("%2FREADME.md"), "markdown");
+    });
+
     test("is case-insensitive for extension", () => {
       assert.strictEqual(extractLanguageFromEncodedPath("%2FApp.TS"), "typescript");
     });
