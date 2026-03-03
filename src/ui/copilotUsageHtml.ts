@@ -601,7 +601,8 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
 /** Build the Context Window Insights section showing which context sources Copilot used. */
 function buildContextInsightsSection(byContextSource: Map<string, number>): string {
   if (byContextSource.size === 0) {
-    return "";
+    return `<h2>🔍 Context Window Insights</h2>
+<p class="no-data">No context data found in current logs.</p>`;
   }
   const sorted = Array.from(byContextSource.entries()).sort((a, b) => b[1] - a[1]);
   const total = sorted.reduce((sum, [, v]) => sum + v, 0);

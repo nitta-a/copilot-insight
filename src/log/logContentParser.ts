@@ -82,8 +82,16 @@ export function mergeCountByNormalizedModel(source: Map<string, number>): Map<st
   return merged;
 }
 
-/** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
+/**
+ * Normalize a raw context source type string to a canonical display name.
+ * Returns the original `raw` string when no known pattern matches, so that
+ * unknown-but-real sources remain visible instead of being silently dropped.
+ * Returns "" only when `raw` is empty.
+ */
 export function normalizeContextSource(raw: string): string {
+  if (!raw) {
+    return "";
+  }
   const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
   if (lower.includes("opentab")) {
     return "Open Tabs";
@@ -100,7 +108,7 @@ export function normalizeContextSource(raw: string): string {
   if (lower.includes("snippet")) {
     return "Snippet";
   }
-  return "";
+  return raw;
 }
 
 /** Increment a Map<string, number> counter by 1 (no-op if key is empty). */
@@ -474,9 +482,15 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
   if (!lower.includes("context")) {
     return false;
   }
-  // Match lines like: "[ContextProvider] added openTab: file.ts"
-  // or "context source: workspace" / "context from mcp"
-  if (!lower.includes("[contextprovider]") && !lower.includes("context source") && !lower.includes("context from")) {
+  // Fast pre-filter: skip lines that contain none of the known source keywords.
+  if (
+    !lower.includes("opentab") &&
+    !lower.includes("workspace") &&
+    !lower.includes("mcp") &&
+    !lower.includes("externaldoc") &&
+    !lower.includes("currentfile") &&
+    !lower.includes("snippet")
+  ) {
     return false;
   }
   const sourcePatterns: [RegExp, string][] = [

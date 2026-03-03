@@ -594,8 +594,9 @@ suite("logContentParser", () => {
       assert.strictEqual(normalizeContextSource("snippet"), "Snippet");
     });
 
-    test("returns empty string for unknown types", () => {
-      assert.strictEqual(normalizeContextSource("unknown"), "");
+    test("returns raw string for unknown types, empty string for empty input", () => {
+      assert.strictEqual(normalizeContextSource("unknown"), "unknown");
+      assert.strictEqual(normalizeContextSource("myCustomSource"), "myCustomSource");
       assert.strictEqual(normalizeContextSource(""), "");
     });
   });
@@ -645,10 +646,10 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
     });
 
-    test("ignores unknown context types", () => {
+    test("stores unknown context types under their raw name", () => {
       const stats = makeEmptyStats();
       processJsonEntry({ event: "shown", contextItems: [{ type: "unknown_source" }] }, stats);
-      assert.strictEqual(stats.byContextSource.size, 0);
+      assert.strictEqual(stats.byContextSource.get("unknown_source"), 1);
     });
 
     test("ignores non-array contextItems", () => {
@@ -687,6 +688,12 @@ suite("logContentParser", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 context from openTab file.ts", stats);
       assert.strictEqual(stats.byContextSource.get("Open Tabs"), 1);
+    });
+
+    test("any line with 'context' and a known source keyword is recorded (relaxed prefix)", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 loading context for currentFile", stats);
+      assert.strictEqual(stats.byContextSource.get("Current File"), 1);
     });
 
     test("unrelated context line not recorded", () => {
