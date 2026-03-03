@@ -4,7 +4,7 @@ import type * as vscode from "vscode";
 import { getSortedSessionDirs, isDirectory, parseLogDirectory } from "./logFileReader";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 
-export type { CopilotUsageStats, DateStat, LanguageStat } from "../types";
+export type { CopilotUsageStats, DateStat } from "../types";
 
 const COPILOT_DIR_NAMES = [
   "GitHub.copilot",
@@ -25,7 +25,6 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     totalChat: 0,
     acceptanceRate: 0,
     avgLatencyMs: 0,
-    byLanguage: new Map(),
     byDate: new Map(),
     byModel: new Map(),
     byChatModel: new Map(),

@@ -101,18 +101,15 @@ function extractLineContext(line: string): LineContext {
 
 export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingContext): void {
   const event = (data.event as string | undefined) ?? (data.eventName as string | undefined) ?? "";
-  const language = (data.language as string | undefined) ?? (data.languageId as string | undefined) ?? "";
   const timestamp = (data.timestamp as string | undefined) ?? "";
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
 
   const eventLower = event.toLowerCase();
   if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
     ctx.totalShown++;
-    incrementStatCount(ctx.byLanguage, language, "shown");
     incrementStatCount(ctx.byDate, dateKey, "shown");
   } else if (eventLower.includes("accepted")) {
     ctx.totalAccepted++;
-    incrementStatCount(ctx.byLanguage, language, "accepted");
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   } else if (eventLower.includes("rejected") || eventLower.includes("dismissed")) {
     ctx.totalRejected++;
@@ -322,14 +319,8 @@ function recordChatRequest(
  * Parse legacy/generic keyword lines for older log formats.
  */
 function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ctx: ParsingContext): void {
-  const langMatch = line.match(/language[:\s]+([a-zA-Z]+)/i) ?? line.match(/lang[:\s]+([a-zA-Z]+)/i);
-  const language = langMatch ? langMatch[1].toLowerCase() : "";
-
   if (lower.includes("suggestion shown") || lower.includes("completion shown") || lower.includes("shown suggestion")) {
     ctx.totalShown++;
-    if (language) {
-      incrementStatCount(ctx.byLanguage, language, "shown");
-    }
     if (dateKey) {
       incrementStatCount(ctx.byDate, dateKey, "shown");
     }
@@ -339,9 +330,6 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
     lower.includes("accepted suggestion")
   ) {
     ctx.totalAccepted++;
-    if (language) {
-      incrementStatCount(ctx.byLanguage, language, "accepted");
-    }
     if (dateKey) {
       incrementStatCount(ctx.byDate, dateKey, "accepted");
     }

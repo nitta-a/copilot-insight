@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
@@ -15,16 +14,10 @@ export function getHtmlContent(
   scriptUri = "",
   dashboardPayload?: DashboardPayload,
 ): string {
-  const topCount = vscode.workspace.getConfiguration("copilot-insight").get<number>("topLanguagesCount", 10);
-  const languageData = Array.from(stats.byLanguage.entries())
-    .sort((a, b) => b[1].shown - a[1].shown)
-    .slice(0, topCount);
-
   const dateData = Array.from(stats.byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-days);
 
-  const languageSection = buildLanguageSection(languageData);
   const dateSection = buildDateSection(dateData, days, stats.chatByDate);
   const modelSection = buildModelBarChart(stats.byModel, "🤖 Inline Completion Model");
   const chatModelSection = buildSimpleBarChart(stats.byChatModel, "💬 Chat Model", "green");
@@ -227,7 +220,6 @@ export function getHtmlContent(
       <div id="db-summary-cards" class="stats-grid"></div>
       <div id="db-insights-container"></div>
       <div id="db-weekly-trend-container"></div>
-      ${dashboardPayload ? '<h2>🌐 Language Breakdown</h2><div id="db-language-table"></div>' : languageSection}
     </div>
 
     <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
@@ -264,18 +256,6 @@ export function getHtmlContent(
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
 </html>`;
-}
-
-function buildLanguageSection(languageData: [string, LanguageStat][]): string {
-  if (languageData.length === 0) {
-    return '<p class="no-data">No language-specific data found in logs.</p>';
-  }
-  return `<h2>📊 Usage by Language</h2>
-  <div class="legend">
-    <span><span class="dot blue"></span>Shown</span>
-    <span><span class="dot green"></span>Accepted</span>
-  </div>
-  ${renderBarChartWithRate(languageData)}`;
 }
 
 function buildDateSection(dateData: [string, LanguageStat][], days: number, chatByDate: Map<string, number>): string {
@@ -586,22 +566,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     }
   }
 
-  // 2. Best language insight
-  const minShownForInsight = 5;
-  const langEntries = Array.from(stats.byLanguage.entries()).filter(([, s]) => s.shown >= minShownForInsight);
-  if (langEntries.length > 0) {
-    const best = langEntries.reduce((a, b) => {
-      const rateA = a[1].accepted / a[1].shown;
-      const rateB = b[1].accepted / b[1].shown;
-      return rateB > rateA ? b : a;
-    });
-    const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
-    insights.push(
-      `<div class="insight-card"><span class="insight-icon">🏆</span>Highest acceptance rate: <strong>${escapeHtml(best[0])}</strong> at ${bestRate}% (${best[1].accepted}/${best[1].shown}).</div>`,
-    );
-  }
-
-  // 3. Peak hour insight
+  // 2. Peak hour insight
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
     insights.push(
@@ -609,7 +574,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     );
   }
 
-  // 4. Chat vs inline ratio
+  // 3. Chat vs inline ratio
   if (stats.totalChat > 0 && stats.totalShown > 0) {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { CopilotUsageStats, DateStat, LanguageStat } from "../types";
+import type { CopilotUsageStats, DateStat } from "../types";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 type TreeElement = CategoryItem | StatItem;
@@ -49,7 +49,6 @@ export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeEle
     const nodes: CategoryItem[] = [
       new CategoryItem("summary", "Summary", "dashboard", stats),
       new CategoryItem("trend", "Weekly Trend", "graph-line", stats),
-      new CategoryItem("languages", "By Language", "symbol-misc", stats),
       new CategoryItem("daily", "Daily (7 days)", "calendar", stats),
     ];
 
@@ -79,8 +78,6 @@ class CategoryItem extends vscode.TreeItem {
         return this._buildSummary(stats);
       case "trend":
         return this._buildTrend(stats);
-      case "languages":
-        return this._buildLanguages(stats);
       case "daily":
         return this._buildDaily(stats);
       case "errors":
@@ -137,20 +134,6 @@ class CategoryItem extends vscode.TreeItem {
     );
 
     return items;
-  }
-
-  private _buildLanguages(stats: CopilotUsageStats): StatItem[] {
-    const config = vscode.workspace.getConfiguration("copilot-insight");
-    const topCount = config.get<number>("topLanguagesCount", 10);
-
-    const sorted = Array.from(stats.byLanguage.entries())
-      .sort((a, b) => b[1].shown - a[1].shown)
-      .slice(0, topCount);
-
-    return sorted.map(([lang, stat]: [string, LanguageStat]) => {
-      const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
-      return new StatItem(lang, `${stat.shown} / ${stat.accepted} (${rate}%)`, "code");
-    });
   }
 
   private _buildDaily(stats: CopilotUsageStats): StatItem[] {

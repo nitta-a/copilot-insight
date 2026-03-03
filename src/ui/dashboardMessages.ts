@@ -50,14 +50,6 @@ export interface VelocityPoint {
   windowStart: string;
 }
 
-export interface LanguageEntry {
-  language: string;
-  shown: number;
-  accepted: number;
-  /** Acceptance rate as percentage 0–100. */
-  rate: number;
-}
-
 export interface WeekStat {
   shown: number;
   accepted: number;
@@ -80,7 +72,6 @@ export interface DashboardPayload {
   summary: SummaryData;
   timeline: TimelineEntry[];
   velocityPoints: VelocityPoint[];
-  languageBreakdown: LanguageEntry[];
   /** Auto-generated insight strings (plain text, safe to render as text content). */
   insights: string[];
   /** Weekly trend comparison data (null when insufficient data). */

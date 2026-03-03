@@ -7,14 +7,7 @@
 
 import type { CopilotUsageStats } from "../types";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type {
-  DashboardPayload,
-  LanguageEntry,
-  SummaryData,
-  TimelineEntry,
-  VelocityPoint,
-  WeeklyTrendData,
-} from "./dashboardMessages";
+import type { DashboardPayload, SummaryData, TimelineEntry, VelocityPoint, WeeklyTrendData } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 /** Average characters per accepted completion (used for ROI estimation). */
@@ -22,9 +15,6 @@ const AVG_CHARS_PER_COMPLETION = 40;
 
 /** Estimated developer typing speed in chars/min (used for ROI estimation). */
 const TYPING_SPEED_CPM = 200;
-
-/** Maximum language rows shown in the language-breakdown table. */
-const MAX_LANGUAGE_ROWS = 15;
 
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
@@ -128,17 +118,6 @@ export function buildDashboardPayload(
     windowStart: dp.windowStart,
   }));
 
-  // ── Language breakdown ────────────────────────────────────────────────────
-  const languageBreakdown: LanguageEntry[] = Array.from(stats.byLanguage.entries())
-    .sort((a, b) => b[1].shown - a[1].shown)
-    .slice(0, MAX_LANGUAGE_ROWS)
-    .map(([language, stat]) => ({
-      language,
-      shown: stat.shown,
-      accepted: stat.accepted,
-      rate: stat.shown > 0 ? (stat.accepted / stat.shown) * 100 : 0,
-    }));
-
   // ── Weekly trend ─────────────────────────────────────────────────────────
   const trendResult = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
   const weeklyTrend: WeeklyTrendData | null =
@@ -161,30 +140,17 @@ export function buildDashboardPayload(
     }
   }
 
-  // 2. Best language
-  const minShownForInsight = 5;
-  const langEntries = Array.from(stats.byLanguage.entries()).filter(([, s]) => s.shown >= minShownForInsight);
-  if (langEntries.length > 0) {
-    const best = langEntries.reduce((a, b) => {
-      const rateA = a[1].accepted / a[1].shown;
-      const rateB = b[1].accepted / b[1].shown;
-      return rateB > rateA ? b : a;
-    });
-    const bestRate = ((best[1].accepted / best[1].shown) * 100).toFixed(1);
-    insights.push(`🏆 Highest acceptance rate: ${best[0]} at ${bestRate}% (${best[1].accepted}/${best[1].shown}).`);
-  }
-
-  // 3. Peak hour
+  // 2. Peak hour
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
     insights.push(`⏰ Most active hour: ${peakEntry[0]}:00 with ${peakEntry[1]} completions.`);
   }
 
-  // 4. Chat vs inline ratio
+  // 3. Chat vs inline ratio
   if (stats.totalChat > 0 && stats.totalShown > 0) {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(`💬 Chat usage ratio: ${ratio}% of all Copilot interactions are chat requests.`);
   }
 
-  return { days, summary, timeline, velocityPoints, languageBreakdown, insights, weeklyTrend };
+  return { days, summary, timeline, velocityPoints, insights, weeklyTrend };
 }

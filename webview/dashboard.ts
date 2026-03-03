@@ -2,10 +2,9 @@
  * Dashboard WebView frontend — runs inside VS Code's WebviewPanel.
  *
  * Responsibilities:
- * - Render three Chart.js visualisations:
+ * - Render two Chart.js visualisations:
  *   1. True Acceptance Rate Timeline (bar + line combo)
  *   2. Flow & Velocity Correlation scatter plot
- *   3. Language breakdown table (HTML, no canvas needed)
  * - Handle period-change and export button interactions.
  * - Persist UI state (selected period) across tab switches via
  *   `vscode.getState()` / `vscode.setState()`.
@@ -34,7 +33,6 @@ import {
 import type {
   DashboardPayload,
   HostToWebviewMessage,
-  LanguageEntry,
   TimelineEntry,
   VelocityPoint,
   WebviewToHostMessage,
@@ -446,49 +444,6 @@ function renderVelocityChart(points: VelocityPoint[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Language breakdown table
-// ---------------------------------------------------------------------------
-
-function renderLanguageTable(entries: LanguageEntry[]): void {
-  const el = document.getElementById("db-language-table");
-  if (!el) {
-    return;
-  }
-
-  if (entries.length === 0) {
-    el.innerHTML = '<p class="no-data">No language data available.</p>';
-    return;
-  }
-
-  const maxShown = Math.max(...entries.map((e) => e.shown), 1);
-  const rows = entries
-    .map((e) => {
-      const barPct = ((e.shown / maxShown) * 100).toFixed(1);
-      return `<tr>
-      <td>${escHtml(e.language)}</td>
-      <td>${e.shown}</td>
-      <td>${e.accepted}</td>
-      <td>
-        <div class="db-rate-cell">
-          <div class="db-rate-bar" style="width:${e.rate.toFixed(1)}%"></div>
-          <span>${e.rate.toFixed(1)}%</span>
-        </div>
-      </td>
-      <td><div class="db-vol-bar" style="width:${barPct}%"></div></td>
-    </tr>`;
-    })
-    .join("");
-
-  el.innerHTML = `<table class="db-lang-table">
-    <thead><tr>
-      <th>Language</th><th>Shown</th><th>Accepted</th>
-      <th>Rate</th><th>Volume</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
-// ---------------------------------------------------------------------------
 // Insights
 // ---------------------------------------------------------------------------
 
@@ -652,7 +607,6 @@ function render(payload: DashboardPayload): void {
   renderWeeklyTrend(payload.weeklyTrend);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
-  renderLanguageTable(payload.languageBreakdown);
   renderPeriodSelector(payload.days);
   // Clear loading state set by the period selector.
   const interactive = document.getElementById("db-interactive");

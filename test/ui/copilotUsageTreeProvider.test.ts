@@ -10,10 +10,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalChat: 15,
     acceptanceRate: 70.0,
     avgLatencyMs: 250,
-    byLanguage: new Map([
-      ["typescript", { shown: 60, accepted: 45 }],
-      ["python", { shown: 40, accepted: 25 }],
-    ]),
     byDate: new Map([
       ["2026-02-25", { shown: 30, accepted: 20 }],
       ["2026-02-26", { shown: 35, accepted: 25 }],
@@ -79,18 +75,18 @@ suite("CopilotUsageTreeProvider", () => {
   });
 
   suite("getChildren (root)", () => {
-    test("returns 4 category nodes when no errors", () => {
+    test("returns 3 category nodes when no errors", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ totalErrors: 0 }));
       const roots = provider.getChildren();
-      assert.strictEqual(roots.length, 4);
+      assert.strictEqual(roots.length, 3);
     });
 
-    test("returns 5 category nodes when errors exist", () => {
+    test("returns 4 category nodes when errors exist", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ totalErrors: 3, errorsByType: new Map([["HTTP 500", 3]]) }));
       const roots = provider.getChildren();
-      assert.strictEqual(roots.length, 5);
+      assert.strictEqual(roots.length, 4);
     });
 
     test("root labels are correct", () => {
@@ -100,7 +96,7 @@ suite("CopilotUsageTreeProvider", () => {
       const labels = roots.map((r) => (typeof r.label === "string" ? r.label : ""));
       assert.ok(labels.includes("Summary"));
       assert.ok(labels.includes("Weekly Trend"));
-      assert.ok(labels.includes("By Language"));
+      assert.ok(!labels.includes("By Language"));
       assert.ok(labels.includes("Daily (7 days)"));
     });
   });
@@ -140,30 +136,6 @@ suite("CopilotUsageTreeProvider", () => {
       const children = provider.getChildren(provider.getChildren()[0]);
       const latencyItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Avg Latency");
       assert.strictEqual(latencyItem, undefined, "Should not include latency when 0");
-    });
-  });
-
-  suite("getChildren (languages category)", () => {
-    test("languages shows correct number of entries", () => {
-      const provider = new CopilotUsageTreeProvider();
-      provider.updateStats(makeStats());
-      const roots = provider.getChildren();
-      const langCategory = roots.find((r) => (typeof r.label === "string" ? r.label : "") === "By Language");
-      assert.ok(langCategory);
-      const children = provider.getChildren(langCategory);
-      assert.strictEqual(children.length, 2);
-    });
-
-    test("languages are sorted by shown count descending", () => {
-      const provider = new CopilotUsageTreeProvider();
-      provider.updateStats(makeStats());
-      const roots = provider.getChildren();
-      const langCategory = roots.find((r) => (typeof r.label === "string" ? r.label : "") === "By Language");
-      assert.ok(langCategory);
-      const children = provider.getChildren(langCategory);
-      const labels = children.map((c) => (typeof c.label === "string" ? c.label : ""));
-      assert.strictEqual(labels[0], "typescript");
-      assert.strictEqual(labels[1], "python");
     });
   });
 

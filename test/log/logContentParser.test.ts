@@ -17,7 +17,6 @@ function makeEmptyStats(): ParsingContext {
     totalChat: 0,
     acceptanceRate: 0,
     avgLatencyMs: 0,
-    byLanguage: new Map(),
     byDate: new Map(),
     byModel: new Map(),
     byChatModel: new Map(),
@@ -138,10 +137,7 @@ suite("logContentParser", () => {
         },
         stats,
       );
-      assert.deepStrictEqual(stats.byLanguage.get("rust"), {
-        shown: 1,
-        accepted: 0,
-      });
+      assert.strictEqual(stats.totalShown, 1);
     });
 
     test("extracts date from timestamp", () => {
@@ -242,19 +238,13 @@ suite("logContentParser", () => {
     test("extracts language from 'language: X' pattern", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-01-15 suggestion shown language: TypeScript", stats);
-      assert.deepStrictEqual(stats.byLanguage.get("typescript"), {
-        shown: 1,
-        accepted: 0,
-      });
+      assert.strictEqual(stats.totalShown, 1);
     });
 
     test("extracts language from 'lang: X' pattern", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-01-15 suggestion shown lang: Python", stats);
-      assert.deepStrictEqual(stats.byLanguage.get("python"), {
-        shown: 1,
-        accepted: 0,
-      });
+      assert.strictEqual(stats.totalShown, 1);
     });
 
     test("extracts date from log line", () => {
@@ -309,10 +299,6 @@ suite("logContentParser", () => {
       const stats = makeEmptyStats();
       parseLogContent("suggestion shown language: go", stats);
       assert.strictEqual(stats.totalShown, 1);
-      assert.deepStrictEqual(stats.byLanguage.get("go"), {
-        shown: 1,
-        accepted: 0,
-      });
     });
   });
 

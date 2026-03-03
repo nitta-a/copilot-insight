@@ -15,10 +15,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalChat: 20,
     acceptanceRate: 60.0,
     avgLatencyMs: 300,
-    byLanguage: new Map([
-      ["typescript", { shown: 120, accepted: 80 }],
-      ["python", { shown: 80, accepted: 40 }],
-    ]),
     byDate: new Map([
       ["2026-02-24", { shown: 40, accepted: 24 }],
       ["2026-02-25", { shown: 50, accepted: 30 }],
@@ -233,32 +229,6 @@ suite("buildDashboardPayload", () => {
       const payload = buildDashboardPayload(stats, 14);
       const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
-    });
-  });
-
-  suite("languageBreakdown", () => {
-    test("language breakdown is sorted by shown descending", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
-      const langs = payload.languageBreakdown.map((e) => e.language);
-      assert.strictEqual(langs[0], "typescript");
-      assert.strictEqual(langs[1], "python");
-    });
-
-    test("language entry rate is calculated correctly", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
-      const ts = payload.languageBreakdown.find((e) => e.language === "typescript");
-      assert.ok(ts);
-      // 80 / 120 * 100 ≈ 66.67
-      assert.ok(Math.abs(ts.rate - (80 / 120) * 100) < 0.001);
-    });
-
-    test("language breakdown capped at 15 entries", () => {
-      const byLanguage = new Map<string, { shown: number; accepted: number }>();
-      for (let i = 0; i < 20; i++) {
-        byLanguage.set(`lang${i}`, { shown: 20 - i, accepted: 10 });
-      }
-      const payload = buildDashboardPayload(makeStats({ byLanguage }), 14);
-      assert.ok(payload.languageBreakdown.length <= 15);
     });
   });
 });
