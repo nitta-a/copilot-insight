@@ -470,9 +470,22 @@ function renderInsights(insights: string[]): void {
     return;
   }
   const cards = insights
-    .map((text) => `<div class="insight-card"><span class="insight-icon"></span>${escHtml(text)}</div>`)
+    .map((text) => {
+      const cls = getInsightClass(text);
+      return `<div class="insight-card${cls}"><span class="insight-icon"></span>${escHtml(text)}</div>`;
+    })
     .join("\n");
   el.innerHTML = `<h2>💡 Insights</h2>\n<div class="insights-section">${cards}</div>`;
+}
+
+function getInsightClass(text: string): string {
+  if (/📈/.test(text)) {
+    return " positive";
+  }
+  if (/📉/.test(text)) {
+    return " negative";
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +642,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   if (agenticStats.subagentRequests === 0) {
     depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
     scatterPlotRoot = unmountRoot(scatterPlotRoot);
-    el.innerHTML = "";
+    el.innerHTML = '<p class="no-data">No autonomous activity detected in this period.</p>';
     return;
   }
 

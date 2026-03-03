@@ -151,6 +151,8 @@ export function getHtmlContent(
       margin: 6px 0;
       font-size: 0.9em;
     }
+    .insight-card.positive { border-left-color: var(--vscode-charts-green); }
+    .insight-card.negative { border-left-color: var(--vscode-charts-red, #f14c4c); }
     .insight-icon { margin-right: 6px; }
     .rate-bar-track { height: 8px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 2px; overflow: hidden; margin-bottom: 2px; }
     /* ── Dashboard interactive section ───────────────────────────────── */
