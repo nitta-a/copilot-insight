@@ -4,6 +4,13 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.7] - 2026-03-03
+
+### Added
+- 📊 **Model Depth & Velocity Chart** — new `ComposedChart` in the Agent Intelligence Overview showing per-model agentic depth (Avg Calls/Loop, bars) alongside velocity (seconds per autonomous action, line) on dual Y-axes
+- 🫧 **Agentic Efficiency Scatter Plot** — bubble scatter plot correlating Avg Calls/Loop (X) with Completion Rate % (Y), bubble size encoding autonomous session duration; top-right quadrant highlights models that think deeply *and* complete reliably
+- Extended `autonomousRatioByModel` payload with three new per-model fields: `avgLoopActions`, `completionRate`, and `autonomousDurationMs`
+
 ## [1.0.6] - 2026-03-02
 
 ### Changed
