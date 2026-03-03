@@ -20,16 +20,6 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   lines.push(`Log Files Parsed,${stats.logFilesFound}`);
   lines.push("");
 
-  // By Language section
-  lines.push("# By Language");
-  lines.push("Language,Shown,Accepted,Rate");
-  const sortedLanguages = Array.from(stats.byLanguage.entries()).sort((a, b) => b[1].shown - a[1].shown);
-  for (const [lang, stat] of sortedLanguages) {
-    const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
-    lines.push(`${csvEscape(lang)},${stat.shown},${stat.accepted},${rate}%`);
-  }
-  lines.push("");
-
   // By Date section
   lines.push("# By Date");
   lines.push("Date,Shown,Accepted,Rate,Chat");
@@ -139,7 +129,6 @@ export function exportAsJson(stats: CopilotUsageStats): string {
       totalErrors: stats.totalErrors,
       logFilesFound: stats.logFilesFound,
     },
-    byLanguage: mapToObject<LanguageStat>(stats.byLanguage),
     byDate: Object.fromEntries(
       Array.from(stats.byDate.entries()).map(([dateStr, stat]) => [
         dateStr,

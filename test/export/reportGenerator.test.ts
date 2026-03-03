@@ -15,10 +15,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalChat: 15,
     acceptanceRate: 70.0,
     avgLatencyMs: 250,
-    byLanguage: new Map([
-      ["typescript", { shown: 60, accepted: 45 }],
-      ["python", { shown: 40, accepted: 25 }],
-    ]),
     byDate: new Map([["2026-02-28", { shown: 100, accepted: 70 }]]),
     byModel: new Map([["gpt-4", { shown: 80, accepted: 60 }]]),
     byChatModel: new Map([["gpt-4o", 15]]),
@@ -72,16 +68,6 @@ suite("reportGenerator", () => {
       stats: makeStats(),
     });
     assert.ok(md.includes("**Project:** my-project"));
-  });
-
-  test("includes language breakdown", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats(),
-    });
-    assert.ok(md.includes("## Language Breakdown"));
-    assert.ok(md.includes("| typescript |"));
-    assert.ok(md.includes("| python |"));
   });
 
   test("includes acceptance analysis when trueAcceptance provided", () => {

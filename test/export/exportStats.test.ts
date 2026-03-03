@@ -10,10 +10,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalChat: 15,
     acceptanceRate: 70.0,
     avgLatencyMs: 250,
-    byLanguage: new Map([
-      ["typescript", { shown: 60, accepted: 45 }],
-      ["python", { shown: 40, accepted: 25 }],
-    ]),
     byDate: new Map([
       ["2026-02-27", { shown: 50, accepted: 35 }],
       ["2026-02-28", { shown: 50, accepted: 35 }],
@@ -57,15 +53,6 @@ suite("exportStats", () => {
       assert.ok(csv.includes("Acceptance Rate,70.0%"), "Should contain acceptance rate");
       assert.ok(csv.includes("Total Chat,15"), "Should contain total chat");
       assert.ok(csv.includes("Log Files Parsed,5"), "Should contain log files count");
-    });
-
-    test("contains language section sorted by shown descending", () => {
-      const csv = exportAsCsv(makeStats());
-      assert.ok(csv.includes("# By Language"), "Should contain language header");
-      assert.ok(csv.includes("Language,Shown,Accepted,Rate"), "Should contain language CSV header");
-      const tsLine = csv.split("\n").find((l) => l.startsWith("typescript,"));
-      assert.ok(tsLine, "Should have typescript row");
-      assert.strictEqual(tsLine, "typescript,60,45,75.0%");
     });
 
     test("contains date section sorted chronologically", () => {
@@ -145,21 +132,6 @@ suite("exportStats", () => {
       assert.ok(!csv.includes("# Activity by Hour"));
     });
 
-    test("escapes values containing commas", () => {
-      const stats = makeStats({
-        byLanguage: new Map([["type,script", { shown: 10, accepted: 5 }]]),
-      });
-      const csv = exportAsCsv(stats);
-      assert.ok(csv.includes('"type,script"'), "Should wrap comma-containing value in quotes");
-    });
-
-    test("escapes values containing double quotes", () => {
-      const stats = makeStats({
-        byLanguage: new Map([['lang"test', { shown: 10, accepted: 5 }]]),
-      });
-      const csv = exportAsCsv(stats);
-      assert.ok(csv.includes('"lang""test"'), "Should escape double quotes");
-    });
   });
 
   suite("exportAsJson", () => {
@@ -177,13 +149,6 @@ suite("exportStats", () => {
       assert.strictEqual(parsed.summary.totalChat, 15);
       assert.strictEqual(parsed.summary.totalErrors, 2);
       assert.strictEqual(parsed.summary.logFilesFound, 5);
-    });
-
-    test("converts byLanguage map to object", () => {
-      const parsed = JSON.parse(exportAsJson(makeStats()));
-      assert.ok(parsed.byLanguage.typescript, "Should have typescript key");
-      assert.strictEqual(parsed.byLanguage.typescript.shown, 60);
-      assert.strictEqual(parsed.byLanguage.typescript.accepted, 45);
     });
 
     test("merges chat count into byDate entries", () => {
@@ -211,14 +176,12 @@ suite("exportStats", () => {
 
     test("handles empty maps gracefully", () => {
       const stats = makeStats({
-        byLanguage: new Map(),
         byModel: new Map(),
         byChatModel: new Map(),
         bySession: new Map(),
         errorsByType: new Map(),
       });
       const parsed = JSON.parse(exportAsJson(stats));
-      assert.deepStrictEqual(parsed.byLanguage, {});
       assert.deepStrictEqual(parsed.byModel, {});
       assert.strictEqual(parsed.sessions.length, 0);
     });

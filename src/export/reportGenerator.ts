@@ -97,21 +97,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
     }
   }
 
-  // --- 3. Language Breakdown ---
-  if (stats.byLanguage.size > 0) {
-    lines.push("## Language Breakdown");
-    lines.push("");
-    lines.push("| Language | Shown | Accepted | Rate |");
-    lines.push("|----------|-------|----------|------|");
-    const sorted = Array.from(stats.byLanguage.entries()).sort((a, b) => b[1].shown - a[1].shown);
-    for (const [lang, stat] of sorted.slice(0, 15)) {
-      const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
-      lines.push(`| ${lang} | ${stat.shown} | ${stat.accepted} | ${rate}% |`);
-    }
-    lines.push("");
-  }
-
-  // --- 4. Model Performance ---
+  // --- 3. Model Performance ---
   if (options.modelPerformance && options.modelPerformance.crossTab.length > 0) {
     const mp = options.modelPerformance;
     lines.push("## Model Performance");
