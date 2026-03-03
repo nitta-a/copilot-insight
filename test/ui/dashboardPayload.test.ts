@@ -40,6 +40,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP95: 300,
     bySession: new Map([["s1", { sessionId: "s1", shown: 100, accepted: 60, chat: 10, errors: 0 }]]),
     byContextSource: new Map(),
+    byContextEffectiveness: new Map(),
     subagentRequests: 0,
     agenticRatio: 0,
     autonomousDurationMs: 0,

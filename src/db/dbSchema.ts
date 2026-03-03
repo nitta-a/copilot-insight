@@ -31,6 +31,8 @@ export interface EventRecord {
   isSubagent: boolean;
   /** Intent identifier (e.g. "runSubagent", "editAgent", "searchSubagentTool"). Empty string when not a subagent event. */
   intent: string;
+  /** Context sources referenced in this completion event (e.g. "Open Tabs", "Workspace"). Empty array when unknown. */
+  contextSources: string[];
 }
 
 /** Row in the `file_metadata` table — aggregated per-file statistics. */
@@ -116,6 +118,7 @@ export function normaliseEvent(
     filePath?: string;
     isSubagent?: boolean;
     intent?: string;
+    contextSources?: string[];
   },
   id: number,
 ): EventRecord {
@@ -134,6 +137,7 @@ export function normaliseEvent(
     filePath: raw.filePath ?? "",
     isSubagent: raw.isSubagent ?? false,
     intent: raw.intent ?? "",
+    contextSources: raw.contextSources ?? [],
   };
 }
 

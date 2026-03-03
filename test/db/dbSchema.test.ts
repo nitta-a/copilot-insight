@@ -71,6 +71,29 @@ suite("dbSchema", () => {
       assert.strictEqual(record.isSubagent, true);
       assert.strictEqual(record.intent, "runSubagent");
     });
+
+    test("normalises contextSources field", () => {
+      const raw = {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:03:00Z",
+        eventType: "completionAccept",
+        languageId: "typescript",
+        contextSources: ["Open Tabs", "Workspace"],
+      };
+      const record = normaliseEvent(raw, 10);
+      assert.deepStrictEqual(record.contextSources, ["Open Tabs", "Workspace"]);
+    });
+
+    test("defaults contextSources to empty array when absent", () => {
+      const raw = {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:04:00Z",
+        eventType: "textChange",
+        languageId: "go",
+      };
+      const record = normaliseEvent(raw, 11);
+      assert.deepStrictEqual(record.contextSources, []);
+    });
   });
 
   suite("buildSessionRecords", () => {
@@ -140,6 +163,7 @@ function makeRecord(overrides: Partial<EventRecord>): EventRecord {
     filePath: "",
     isSubagent: false,
     intent: "",
+    contextSources: [],
     ...overrides,
   };
 }

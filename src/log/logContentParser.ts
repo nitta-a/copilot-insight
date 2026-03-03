@@ -176,10 +176,13 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
 
   const eventLower = event.toLowerCase();
-  if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
+  const isShown = eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered");
+  const isAccepted = !isShown && eventLower.includes("accepted");
+
+  if (isShown) {
     ctx.totalShown++;
     incrementStatCount(ctx.byDate, dateKey, "shown");
-  } else if (eventLower.includes("accepted")) {
+  } else if (isAccepted) {
     ctx.totalAccepted++;
     incrementStatCount(ctx.byDate, dateKey, "accepted");
   } else if (eventLower.includes("rejected") || eventLower.includes("dismissed")) {
@@ -191,9 +194,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   if (typeof rawModel === "string") {
     const model = normalizeModelName(rawModel);
     if (model) {
-      if (eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered")) {
+      if (isShown) {
         incrementStatCount(ctx.byModel, model, "shown");
-      } else if (eventLower.includes("accepted")) {
+      } else if (isAccepted) {
         incrementStatCount(ctx.byModel, model, "accepted");
       } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
         incrementCount(ctx.byChatModel, model);
@@ -202,6 +205,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Context Window Insights: parse context source references from JSON telemetry
+  const effectivenessType: "shown" | "accepted" | null = isShown ? "shown" : isAccepted ? "accepted" : null;
   const contextItems = data.contextItems ?? data.references ?? data.usedContext;
   if (Array.isArray(contextItems)) {
     for (const item of contextItems) {
@@ -210,6 +214,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
         const source = normalizeContextSource(rawType);
         if (source) {
           incrementCount(ctx.byContextSource, source);
+          if (effectivenessType) {
+            incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
+          }
         }
       }
     }
@@ -219,6 +226,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     const source = normalizeContextSource(directType);
     if (source) {
       incrementCount(ctx.byContextSource, source);
+      if (effectivenessType) {
+        incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
+      }
     }
   }
 }

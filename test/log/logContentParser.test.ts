@@ -62,6 +62,7 @@ function makeEmptyStats(): ParsingContext {
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    byContextEffectiveness: new Map(),
   };
 }
 
@@ -175,6 +176,49 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalShown, 0);
       assert.strictEqual(stats.totalAccepted, 0);
       assert.strictEqual(stats.totalRejected, 0);
+    });
+
+    test("records shown count in byContextEffectiveness for shown event with contextItems", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_shown",
+          contextItems: [{ type: "openTab" }, { type: "workspace" }],
+        },
+        stats,
+      );
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Open Tabs"), { shown: 1, accepted: 0 });
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Workspace"), { shown: 1, accepted: 0 });
+    });
+
+    test("records accepted count in byContextEffectiveness for accepted event with contextItems", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_accepted",
+          contextItems: [{ type: "openTab" }],
+        },
+        stats,
+      );
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Open Tabs"), { shown: 0, accepted: 1 });
+    });
+
+    test("records shown in byContextEffectiveness for shown event with directType contextType", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", contextType: "currentFile" }, stats);
+      assert.deepStrictEqual(stats.byContextEffectiveness.get("Current File"), { shown: 1, accepted: 0 });
+    });
+
+    test("does not update byContextEffectiveness for rejected events", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "suggestion_rejected",
+          contextItems: [{ type: "openTab" }],
+        },
+        stats,
+      );
+      assert.strictEqual(stats.byContextEffectiveness.size, 0);
     });
   });
 
