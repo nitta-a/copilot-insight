@@ -95,6 +95,8 @@ export interface AgentIntelligenceOverview {
   agenticLoopCount: number;
   /** Average subagent calls per completed loop. 0 when no loops have finished. */
   avgCallsPerLoop: number;
+  /** Episode completion rate: completed loops / started loops * 100. 0 when no loops started. */
+  completionRate: number;
   /**
    * Per-model breakdown of autonomous vs total chat requests.
    * Sorted by `ratio` descending (highest autonomous ratio first).
@@ -105,6 +107,8 @@ export interface AgentIntelligenceOverview {
     totalCount: number;
     /** Percentage 0–100. */
     ratio: number;
+    /** Average autonomous duration per action in seconds. 0 when no duration data. */
+    velocitySecondsPerAction: number;
   }>;
 }
 

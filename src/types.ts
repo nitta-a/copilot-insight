@@ -65,8 +65,14 @@ export interface CopilotUsageStats {
   toolUsageStats: Map<string, number>;
   /** Number of completed ToolCallingLoop instances (distinct agentic episodes). */
   subagentLoops: number;
+  /** Number of ToolCallingLoop instances started (first subagent request seen). */
+  subagentLoopsStarted: number;
+  /** Episode completion rate: subagentLoops / subagentLoopsStarted * 100 (0 when no loops started). */
+  completionRate: number;
   /** Per-model count of subagent-initiated requests. */
   subagentByModel: Map<string, number>;
+  /** Per-model total autonomous duration (ms). */
+  autonomousDurationByModel: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */
@@ -81,4 +87,6 @@ export interface ParsingContext extends CopilotUsageStats {
    * `null` when no loop is currently active.
    */
   activeSubagentLoop: string | null;
+  /** Model name associated with the currently active subagent loop. `null` when no loop is active. */
+  activeSubagentLoopModel: string | null;
 }

@@ -2,6 +2,7 @@ import * as assert from "assert";
 import {
   incrementStatCount,
   normalizeContextSource,
+  normalizeModelName,
   parseLogContent,
   parseTextLogLine,
   processJsonEntry,
@@ -42,13 +43,17 @@ function makeEmptyStats(): ParsingContext {
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
     subagentLoops: 0,
+    subagentLoopsStarted: 0,
+    completionRate: 0,
     subagentByModel: new Map(),
+    autonomousDurationByModel: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
     chatLatencyCount: 0,
     currentSessionId: "",
     activeSubagentLoop: null,
+    activeSubagentLoopModel: null,
   };
 }
 
@@ -773,5 +778,114 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs >= 0);
     });
+  });
+});
+
+suite("normalizeModelName", () => {
+  test("returns model name unchanged when no deployment path", () => {
+    assert.strictEqual(normalizeModelName("gpt-4o"), "gpt-4o");
+  });
+
+  test("strips ' -> ' and everything after it", () => {
+    assert.strictEqual(normalizeModelName("claude-sonnet-4.6 -> azure/some/deployment"), "claude-sonnet-4.6");
+  });
+
+  test("trims surrounding whitespace", () => {
+    assert.strictEqual(normalizeModelName("  gpt-4o  "), "gpt-4o");
+  });
+
+  test("returns empty string for empty input", () => {
+    assert.strictEqual(normalizeModelName(""), "");
+  });
+
+  test("handles model with version number like gemini-1.5-pro", () => {
+    assert.strictEqual(normalizeModelName("gemini-1.5-pro"), "gemini-1.5-pro");
+  });
+
+  test("strips deployment path from model with version", () => {
+    assert.strictEqual(normalizeModelName("claude-3.5-sonnet -> gcp/us-east1/v1"), "claude-3.5-sonnet");
+  });
+});
+
+suite("model name normalization in ccreq parsing", () => {
+  test("ccreq line with deployment path normalizes model name", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine(
+      "2024-06-01 ccreq:a | success | claude-sonnet-4.6 -> azure/some/deployment | 800ms | [vscodePrompt]",
+      stats,
+    );
+    assert.strictEqual(stats.byChatModel.has("claude-sonnet-4.6"), true);
+    assert.strictEqual(stats.byChatModel.has("claude-sonnet-4.6 -> azure/some/deployment"), false);
+  });
+
+  test("ccreq subagent line with deployment path normalizes model in subagentByModel", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine(
+      "2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o -> openai/eastus | 1000ms | [tool/runSubagent]",
+      stats,
+    );
+    assert.strictEqual(stats.subagentByModel.has("gpt-4o"), true);
+    assert.strictEqual(stats.subagentByModel.has("gpt-4o -> openai/eastus"), false);
+  });
+});
+
+suite("subagentLoopsStarted and completionRate tracking", () => {
+  test("subagentLoopsStarted increments when first subagent request seen", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+    assert.strictEqual(stats.subagentLoopsStarted, 1);
+  });
+
+  test("subsequent subagent requests in same loop do not increment subagentLoopsStarted", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+    parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
+    assert.strictEqual(stats.subagentLoopsStarted, 1);
+  });
+
+  test("subagentLoopsStarted increments for each new loop start", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+    parseTextLogLine(
+      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+      stats,
+    );
+    parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+    assert.strictEqual(stats.subagentLoopsStarted, 2);
+  });
+});
+
+suite("autonomousDurationByModel tracking", () => {
+  test("accumulates per-model autonomous duration on loop completion", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+    parseTextLogLine(
+      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+      stats,
+    );
+    assert.ok((stats.autonomousDurationByModel.get("gpt-4o") ?? 0) > 0, "should have gpt-4o duration");
+  });
+
+  test("does not accumulate duration when no model is associated with the loop", () => {
+    const stats = makeEmptyStats();
+    // shouldContinue=false without a prior subagent request
+    parseTextLogLine(
+      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+      stats,
+    );
+    assert.strictEqual(stats.autonomousDurationByModel.size, 0);
+  });
+
+  test("accumulated duration matches the loop interval", () => {
+    const stats = makeEmptyStats();
+    parseTextLogLine(
+      "2024-06-01 10:00:00.000 ccreq:a | success | claude-3.5-sonnet | 1000ms | [tool/runSubagent]",
+      stats,
+    );
+    parseTextLogLine(
+      "2024-06-01 10:00:30.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+      stats,
+    );
+    assert.strictEqual(stats.autonomousDurationByModel.get("claude-3.5-sonnet"), 30000);
   });
 });

@@ -179,7 +179,9 @@ export function buildDashboardPayload(
       continue;
     }
     const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
-    autonomousRatioByModel.push({ model, subagentCount, totalCount, ratio });
+    const durationMs = stats.autonomousDurationByModel.get(model) ?? 0;
+    const velocitySecondsPerAction = subagentCount > 0 && durationMs > 0 ? durationMs / 1000 / subagentCount : 0;
+    autonomousRatioByModel.push({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction });
   }
   autonomousRatioByModel.sort((a, b) => b.ratio - a.ratio);
 
@@ -187,6 +189,7 @@ export function buildDashboardPayload(
     autonomousActionCount,
     agenticLoopCount,
     avgCallsPerLoop,
+    completionRate: stats.completionRate,
     autonomousRatioByModel,
   };
 

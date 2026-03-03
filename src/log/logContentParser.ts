@@ -14,6 +14,18 @@ const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 /** Intent tags that identify subagent-initiated requests. */
 const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
 
+/**
+ * Normalize a raw model name by stripping deployment paths and internal IDs.
+ * Removes everything after ` -> ` (deployment path separator) and trims whitespace.
+ * Examples:
+ *   "claude-sonnet-4.6 -> azure/some/deployment" → "claude-sonnet-4.6"
+ *   "gpt-4o" → "gpt-4o"
+ */
+export function normalizeModelName(model: string): string {
+  const arrowIdx = model.indexOf(" -> ");
+  return (arrowIdx !== -1 ? model.substring(0, arrowIdx) : model).trim();
+}
+
 /** Normalize a raw context source type string to a canonical display name. Returns "" if unknown. */
 export function normalizeContextSource(raw: string): string {
   const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
@@ -241,10 +253,10 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
   }
 
   const ccreqMatch = line.match(/\| success \| ([\w./\- >]+?) \| (\d+)ms \|/);
-  const model = ccreqMatch ? ccreqMatch[1].trim() : "";
+  const model = normalizeModelName(ccreqMatch ? ccreqMatch[1] : "");
   const latency = ccreqMatch ? Number.parseInt(ccreqMatch[2], 10) : 0;
 
-  trackChatIntent(line, ctx);
+  trackChatIntent(line, ctx, model);
 
   // Track per-model subagent calls for autonomous ratio calculation.
   if (model) {
@@ -264,7 +276,7 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 }
 
 /** Extract and record the chat intent tag from a ccreq success line. */
-function trackChatIntent(line: string, ctx: ParsingContext): void {
+function trackChatIntent(line: string, ctx: ParsingContext, model: string): void {
   const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
   if (!intentMatch) {
     return;
@@ -284,6 +296,8 @@ function trackChatIntent(line: string, ctx: ParsingContext): void {
       const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
       if (tsMatch) {
         ctx.activeSubagentLoop = tsMatch[1];
+        ctx.activeSubagentLoopModel = model ? model : null;
+        ctx.subagentLoopsStarted++;
       }
     }
   }
@@ -411,10 +425,16 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
       const startMs = new Date(ctx.activeSubagentLoop.replace(/\s+/g, "T")).getTime();
       const endMs = new Date(tsMatch[1].replace(/\s+/g, "T")).getTime();
       if (endMs > startMs) {
-        ctx.autonomousDurationMs += endMs - startMs;
+        const durationMs = endMs - startMs;
+        ctx.autonomousDurationMs += durationMs;
+        if (ctx.activeSubagentLoopModel) {
+          const prev = ctx.autonomousDurationByModel.get(ctx.activeSubagentLoopModel) ?? 0;
+          ctx.autonomousDurationByModel.set(ctx.activeSubagentLoopModel, prev + durationMs);
+        }
       }
     }
     ctx.activeSubagentLoop = null;
+    ctx.activeSubagentLoopModel = null;
   }
   return true;
 }
