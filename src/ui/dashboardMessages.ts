@@ -65,6 +65,18 @@ export interface WeeklyTrendData {
   rateDiff: number;
 }
 
+/** Agentic (subagent) activity statistics. */
+export interface AgenticStats {
+  /** Number of requests identified as subagent-initiated. */
+  subagentRequests: number;
+  /** Ratio of subagent requests to total requests (0–100). */
+  agenticRatio: number;
+  /** Total time (ms) during which a subagent ToolCallingLoop was active. */
+  autonomousDurationMs: number;
+  /** Per-intent execution counts sorted by count descending (e.g. [{intent:"runSubagent",count:5}]). */
+  toolUsageStats: Array<{ intent: string; count: number }>;
+}
+
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline. */
@@ -76,6 +88,8 @@ export interface DashboardPayload {
   insights: string[];
   /** Weekly trend comparison data (null when insufficient data). */
   weeklyTrend: WeeklyTrendData | null;
+  /** Agentic (subagent) activity statistics. */
+  agenticStats: AgenticStats;
 }
 
 // ---------------------------------------------------------------------------

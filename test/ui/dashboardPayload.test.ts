@@ -40,6 +40,10 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP95: 300,
     bySession: new Map([["s1", { sessionId: "s1", shown: 100, accepted: 60, chat: 10, errors: 0 }]]),
     byContextSource: new Map(),
+    subagentRequests: 0,
+    agenticRatio: 0,
+    autonomousDurationMs: 0,
+    toolUsageStats: new Map(),
     ...overrides,
   };
 }
@@ -229,6 +233,50 @@ suite("buildDashboardPayload", () => {
       const payload = buildDashboardPayload(stats, 14);
       const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
+    });
+  });
+
+  suite("agenticStats", () => {
+    test("returns zero agenticStats when no subagent data", () => {
+      const payload = buildDashboardPayload(makeStats(), 14);
+      assert.strictEqual(payload.agenticStats.subagentRequests, 0);
+      assert.strictEqual(payload.agenticStats.agenticRatio, 0);
+      assert.strictEqual(payload.agenticStats.autonomousDurationMs, 0);
+      assert.deepStrictEqual(payload.agenticStats.toolUsageStats, []);
+    });
+
+    test("includes subagentRequests, agenticRatio, autonomousDurationMs from stats", () => {
+      const stats = makeStats({
+        subagentRequests: 5,
+        agenticRatio: 2.5,
+        autonomousDurationMs: 12000,
+        toolUsageStats: new Map([
+          ["runSubagent", 3],
+          ["editAgent", 2],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      assert.strictEqual(payload.agenticStats.subagentRequests, 5);
+      assert.strictEqual(payload.agenticStats.agenticRatio, 2.5);
+      assert.strictEqual(payload.agenticStats.autonomousDurationMs, 12000);
+    });
+
+    test("toolUsageStats is sorted by count descending", () => {
+      const stats = makeStats({
+        toolUsageStats: new Map([
+          ["editAgent", 2],
+          ["runSubagent", 5],
+          ["searchSubagentTool", 1],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats, 14);
+      const sorted = payload.agenticStats.toolUsageStats;
+      assert.strictEqual(sorted[0].intent, "runSubagent");
+      assert.strictEqual(sorted[0].count, 5);
+      assert.strictEqual(sorted[1].intent, "editAgent");
+      assert.strictEqual(sorted[1].count, 2);
+      assert.strictEqual(sorted[2].intent, "searchSubagentTool");
+      assert.strictEqual(sorted[2].count, 1);
     });
   });
 });

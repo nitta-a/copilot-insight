@@ -27,6 +27,10 @@ export interface EventRecord {
   latencyMs: number;
   isPartialAccept: boolean;
   filePath: string;
+  /** Whether this event was triggered by a subagent (e.g. runSubagent, editAgent). */
+  isSubagent: boolean;
+  /** Intent identifier (e.g. "runSubagent", "editAgent", "searchSubagentTool"). Empty string when not a subagent event. */
+  intent: string;
 }
 
 /** Row in the `file_metadata` table — aggregated per-file statistics. */
@@ -77,7 +81,9 @@ export const TABLE_DDL = {
   model_name           TEXT,
   latency_ms           REAL DEFAULT 0,
   is_partial_accept    BOOLEAN DEFAULT FALSE,
-  file_path            TEXT
+  file_path            TEXT,
+  is_subagent          BOOLEAN DEFAULT FALSE,
+  intent               VARCHAR
 );`,
   fileMetadata: `CREATE TABLE IF NOT EXISTS file_metadata (
   file_path                  TEXT PRIMARY KEY,
@@ -108,6 +114,8 @@ export function normaliseEvent(
     latencyMs?: number;
     isPartialAccept?: boolean;
     filePath?: string;
+    isSubagent?: boolean;
+    intent?: string;
   },
   id: number,
 ): EventRecord {
@@ -124,6 +132,8 @@ export function normaliseEvent(
     latencyMs: raw.latencyMs ?? 0,
     isPartialAccept: raw.isPartialAccept ?? false,
     filePath: raw.filePath ?? "",
+    isSubagent: raw.isSubagent ?? false,
+    intent: raw.intent ?? "",
   };
 }
 

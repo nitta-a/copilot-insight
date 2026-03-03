@@ -54,6 +54,22 @@ suite("dbSchema", () => {
       assert.strictEqual(record.charsDeleted, 0);
       assert.strictEqual(record.filePath, "");
       assert.strictEqual(record.modelName, "");
+      assert.strictEqual(record.isSubagent, false);
+      assert.strictEqual(record.intent, "");
+    });
+
+    test("normalises isSubagent and intent fields", () => {
+      const raw = {
+        sessionId: "s1",
+        timestamp: "2026-02-28T10:02:00Z",
+        eventType: "completionAccept",
+        languageId: "typescript",
+        isSubagent: true,
+        intent: "runSubagent",
+      };
+      const record = normaliseEvent(raw, 5);
+      assert.strictEqual(record.isSubagent, true);
+      assert.strictEqual(record.intent, "runSubagent");
     });
   });
 
@@ -122,6 +138,8 @@ function makeRecord(overrides: Partial<EventRecord>): EventRecord {
     latencyMs: 0,
     isPartialAccept: false,
     filePath: "",
+    isSubagent: false,
+    intent: "",
     ...overrides,
   };
 }

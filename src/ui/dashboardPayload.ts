@@ -7,7 +7,14 @@
 
 import type { CopilotUsageStats } from "../types";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { DashboardPayload, SummaryData, TimelineEntry, VelocityPoint, WeeklyTrendData } from "./dashboardMessages";
+import type {
+  DashboardPayload,
+  SummaryData,
+  TimelineEntry,
+  VelocityPoint,
+  WeeklyTrendData,
+  AgenticStats,
+} from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 
 /** Average characters per accepted completion (used for ROI estimation). */
@@ -152,5 +159,17 @@ export function buildDashboardPayload(
     insights.push(`💬 Chat usage ratio: ${ratio}% of all Copilot interactions are chat requests.`);
   }
 
-  return { days, summary, timeline, velocityPoints, insights, weeklyTrend };
+  // ── Agentic stats ─────────────────────────────────────────────────────────
+  const toolUsageStats = Array.from(stats.toolUsageStats.entries())
+    .map(([intent, count]) => ({ intent, count }))
+    .sort((a, b) => b.count - a.count);
+
+  const agenticStats: AgenticStats = {
+    subagentRequests: stats.subagentRequests,
+    agenticRatio: stats.agenticRatio,
+    autonomousDurationMs: stats.autonomousDurationMs,
+    toolUsageStats,
+  };
+
+  return { days, summary, timeline, velocityPoints, insights, weeklyTrend, agenticStats };
 }

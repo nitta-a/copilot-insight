@@ -53,6 +53,16 @@ export interface CopilotUsageStats {
 
   // Context Window Insights
   byContextSource: Map<string, number>;
+
+  // Subagent / Agentic activity
+  /** Total number of requests identified as subagent-initiated. */
+  subagentRequests: number;
+  /** Ratio of subagent requests to total requests (0–100). */
+  agenticRatio: number;
+  /** Total duration (ms) during which a subagent ToolCallingLoop was active. */
+  autonomousDurationMs: number;
+  /** Per-intent execution counts (e.g. "runSubagent", "editAgent"). */
+  toolUsageStats: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */
@@ -62,4 +72,9 @@ export interface ParsingContext extends CopilotUsageStats {
   chatLatencySum: number;
   chatLatencyCount: number;
   currentSessionId: string;
+  /**
+   * ISO-8601 timestamp of the most recently seen subagent loop start.
+   * `null` when no loop is currently active.
+   */
+  activeSubagentLoop: string | null;
 }
