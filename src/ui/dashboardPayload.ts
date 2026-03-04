@@ -40,8 +40,6 @@ const ANOMALY_Z_THRESHOLD = 2;
  */
 export function buildDashboardPayload(
   stats: CopilotUsageStats,
-  startDate: string,
-  endDate: string,
   trueAcceptance?: TrueAcceptanceResult,
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
@@ -71,9 +69,7 @@ export function buildDashboardPayload(
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────
-  const dateEntries = Array.from(stats.byDate.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .filter(([date]) => !startDate || !endDate || (date >= startDate && date <= endDate));
+  const dateEntries = Array.from(stats.byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   // ── Available range ───────────────────────────────────────────────────────
   const allDates = Array.from(stats.byDate.keys()).sort();

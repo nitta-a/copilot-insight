@@ -5,13 +5,13 @@
  * - Render two Chart.js visualisations:
  *   1. True Acceptance Rate Timeline (bar + line combo)
  *   2. Flow & Velocity Correlation scatter plot
- * - Handle period-change and export button interactions.
- * - Persist UI state (selected period) across tab switches via
+ * - Handle export button interactions.
+ * - Persist UI state (selected tab) across tab switches via
  *   `vscode.getState()` / `vscode.setState()`.
  *
  * Communication:
  * - Listens for `dashboardData` messages from the extension host.
- * - Posts `changePeriod`, `exportMarkdown`, and `exportPng` messages back.
+ * - Posts `exportMarkdown` and `exportPng` messages back.
  */
 
 import {
@@ -66,8 +66,8 @@ Chart.register(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare function acquireVsCodeApi(): {
   postMessage(msg: WebviewToHostMessage): void;
-  getState(): { currentRange?: { start: string; end: string }; currentTab?: string } | undefined;
-  setState(state: { currentRange?: { start: string; end: string }; currentTab?: string }): void;
+  getState(): { currentTab?: string } | undefined;
+  setState(state: { currentTab?: string }): void;
 };
 
 interface DashboardWindow extends Window {
@@ -84,7 +84,6 @@ const vscode = acquireVsCodeApi();
 
 let timelineChart: Chart | null = null;
 let velocityChart: Chart | null = null;
-let currentRange: { start: string; end: string } | undefined;
 let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
@@ -534,63 +533,6 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 }
 
 // ---------------------------------------------------------------------------
-// Debounce utility
-// ---------------------------------------------------------------------------
-
-function debounce<T extends (...args: unknown[]) => void>(fn: T, delayMs: number): (...args: Parameters<T>) => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Date range selector
-// ---------------------------------------------------------------------------
-
-function renderDateRangeSelector(availableRange: { minDate: string; maxDate: string }, selectedStart: string, selectedEnd: string): void {
-  const el = document.getElementById("db-period-selector");
-  if (!el) {
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="db-date-range">
-      <label for="db-date-start">From</label>
-      <input id="db-date-start" class="db-date-input" type="date"
-        min="${escHtml(availableRange.minDate)}" max="${escHtml(availableRange.maxDate)}"
-        value="${escHtml(selectedStart)}">
-      <label for="db-date-end">To</label>
-      <input id="db-date-end" class="db-date-input" type="date"
-        min="${escHtml(availableRange.minDate)}" max="${escHtml(availableRange.maxDate)}"
-        value="${escHtml(selectedEnd)}">
-    </div>`;
-
-  const startInput = document.getElementById("db-date-start") as HTMLInputElement | null;
-  const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
-
-  const notifyHost = debounce(() => {
-    const start = startInput?.value ?? "";
-    const end = endInput?.value ?? "";
-    if (!start || !end || start > end) {
-      return;
-    }
-    currentRange = { start, end };
-    vscode.setState({ currentRange, currentTab });
-    const interactive = document.getElementById("db-interactive");
-    if (interactive) {
-      interactive.style.opacity = "0.6";
-      interactive.style.pointerEvents = "none";
-    }
-    vscode.postMessage({ type: "changePeriod", payload: { startDate: start, endDate: end } } satisfies WebviewToHostMessage);
-  }, 400);
-
-  startInput?.addEventListener("change", notifyHost);
-  endInput?.addEventListener("change", notifyHost);
-}
-
-// ---------------------------------------------------------------------------
 // Export buttons
 // ---------------------------------------------------------------------------
 
@@ -622,7 +564,7 @@ const VALID_TABS = new Set(["overview", "health", "flow"]);
 
 function switchTab(tabId: string): void {
   currentTab = tabId;
-  vscode.setState({ currentRange, currentTab: tabId });
+  vscode.setState({ currentTab: tabId });
 
   document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
     const isActive = btn.dataset.tab === tabId;
@@ -768,12 +710,6 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
-  // Initialize currentRange on first render; preserve user selection on subsequent renders.
-  if (!currentRange) {
-    currentRange = { start: payload.availableRange.minDate, end: payload.availableRange.maxDate };
-  }
-  const selectedStart = currentRange.start || payload.availableRange.minDate;
-  const selectedEnd = currentRange.end || payload.availableRange.maxDate;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderInsights(payload.insights);
@@ -781,13 +717,6 @@ function render(payload: DashboardPayload): void {
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
-  renderDateRangeSelector(payload.availableRange, selectedStart, selectedEnd);
-  // Clear loading state set by the period selector.
-  const interactive = document.getElementById("db-interactive");
-  if (interactive) {
-    interactive.style.opacity = "";
-    interactive.style.pointerEvents = "";
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -833,26 +762,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTabs();
 
   if (window.__dashboardData) {
-    const initData = window.__dashboardData;
-    // Restore persisted range and request updated data if it differs from the
-    // full available range embedded in the initial payload.
-    const saved = vscode.getState();
-    if (
-      saved?.currentRange &&
-      (saved.currentRange.start !== initData.availableRange.minDate ||
-        saved.currentRange.end !== initData.availableRange.maxDate)
-    ) {
-      currentRange = saved.currentRange;
-      // Request updated data from the host in the background.
-      vscode.postMessage({
-        type: "changePeriod",
-        payload: { startDate: saved.currentRange.start, endDate: saved.currentRange.end },
-      } satisfies WebviewToHostMessage);
-      render(initData);
-    } else {
-      render(initData);
-    }
+    render(window.__dashboardData);
     // Restore the last active tab after rendering.
+    const saved = vscode.getState();
     if (saved?.currentTab && VALID_TABS.has(saved.currentTab)) {
       switchTab(saved.currentTab);
     }

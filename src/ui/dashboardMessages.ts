@@ -151,12 +151,6 @@ export type HostToWebviewMessage = DashboardDataMessage;
 // Message types — WebView → Extension Host
 // ---------------------------------------------------------------------------
 
-/** User selected a new display period. */
-export interface ChangePeriodMessage {
-  type: "changePeriod";
-  payload: { startDate: string; endDate: string };
-}
-
 /** User requested a Markdown export. */
 export interface ExportMarkdownMessage {
   type: "exportMarkdown";
@@ -178,4 +172,4 @@ export interface ExportPngMessage {
   };
 }
 
-export type WebviewToHostMessage = ChangePeriodMessage | ExportMarkdownMessage | ExportPngMessage;
+export type WebviewToHostMessage = ExportMarkdownMessage | ExportPngMessage;
