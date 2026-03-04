@@ -58,14 +58,14 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
 suite("buildDashboardPayload", () => {
   suite("summary", () => {
     test("sets totalShown, totalAccepted, acceptanceRate from stats", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.summary.totalShown, 200);
       assert.strictEqual(payload.summary.totalAccepted, 120);
       assert.strictEqual(payload.summary.acceptanceRate, 60.0);
     });
 
     test("trueAcceptanceRate is null when no trueAcceptance passed", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.summary.trueAcceptanceRate, null);
     });
 
@@ -77,18 +77,18 @@ suite("buildDashboardPayload", () => {
         trueRate: 50,
         revertedCount: 20,
       };
-      const payload = buildDashboardPayload(makeStats(), 14, ta);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27", ta);
       assert.strictEqual(payload.summary.trueAcceptanceRate, 50);
     });
 
     test("estimatedMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       // 120 * 40 / 200 = 24
       assert.strictEqual(payload.summary.estimatedMinutesSaved, 24);
     });
 
     test("bestModel is null when no modelPerformance passed", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.summary.bestModel, null);
     });
 
@@ -101,26 +101,26 @@ suite("buildDashboardPayload", () => {
           ["go", "claude-3.5"],
         ]),
       };
-      const payload = buildDashboardPayload(makeStats(), 14, undefined, undefined, mp);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27", undefined, undefined, mp);
       assert.strictEqual(payload.summary.bestModel, "gpt-4o");
     });
   });
 
   suite("timeline", () => {
-    test("timeline length is capped by days parameter", () => {
-      const payload = buildDashboardPayload(makeStats(), 3);
+    test("timeline is filtered by date range", () => {
+      const payload = buildDashboardPayload(makeStats(), "2026-02-25", "2026-02-27");
       assert.strictEqual(payload.timeline.length, 3);
     });
 
     test("timeline is sorted by date ascending", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       const dates = payload.timeline.map((e) => e.date);
       const sorted = [...dates].sort();
       assert.deepStrictEqual(dates, sorted);
     });
 
     test("timeline entry rate is calculated correctly", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       const entry = payload.timeline[0];
       assert.ok(entry);
       const expectedRate = (entry.accepted / entry.shown) * 100;
@@ -128,21 +128,36 @@ suite("buildDashboardPayload", () => {
     });
 
     test("timeline trueAccepted is null (not available per day)", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       for (const entry of payload.timeline) {
         assert.strictEqual(entry.trueAccepted, null);
       }
     });
 
-    test("days field in payload matches parameter", () => {
-      const payload = buildDashboardPayload(makeStats(), 7);
-      assert.strictEqual(payload.days, 7);
+    test("days field in payload equals timeline length", () => {
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
+      assert.strictEqual(payload.days, payload.timeline.length);
+    });
+  });
+
+  suite("availableRange", () => {
+    test("availableRange reflects full span of stats.byDate", () => {
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
+      assert.strictEqual(payload.availableRange.minDate, "2026-02-24");
+      assert.strictEqual(payload.availableRange.maxDate, "2026-02-27");
+    });
+
+    test("availableRange is empty strings when byDate is empty", () => {
+      const stats = makeStats({ byDate: new Map() });
+      const payload = buildDashboardPayload(stats, "", "");
+      assert.strictEqual(payload.availableRange.minDate, "");
+      assert.strictEqual(payload.availableRange.maxDate, "");
     });
   });
 
   suite("velocityPoints", () => {
     test("velocityPoints is empty when no velocity passed", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.velocityPoints.length, 0);
     });
 
@@ -155,7 +170,7 @@ suite("buildDashboardPayload", () => {
         averageKpm: 80,
         disruptionCount: 1,
       };
-      const payload = buildDashboardPayload(makeStats(), 14, undefined, velocity);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27", undefined, velocity);
       assert.strictEqual(payload.velocityPoints.length, 2);
       assert.strictEqual(payload.velocityPoints[0].kpm, 120);
       assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
@@ -169,7 +184,7 @@ suite("buildDashboardPayload", () => {
       const stats = makeStats({
         byDate: new Map([["2026-02-27", { shown: 50, accepted: 30 }]]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-27", "2026-02-27");
       for (const entry of payload.timeline) {
         assert.strictEqual(entry.isAnomaly, false);
         assert.strictEqual(entry.anomalyReason, null);
@@ -178,7 +193,7 @@ suite("buildDashboardPayload", () => {
 
     test("isAnomaly is false when stdDev is zero (all days have same rate)", () => {
       // All 4 days have exactly 60% acceptance rate → stdDev = 0 → no anomaly
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       for (const entry of payload.timeline) {
         assert.strictEqual(entry.isAnomaly, false);
         assert.strictEqual(entry.anomalyReason, null);
@@ -195,7 +210,7 @@ suite("buildDashboardPayload", () => {
       byDate.set("2026-02-14", { shown: 50, accepted: 3 });
 
       const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-01", "2026-02-14");
       const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(outlier, "Outlier day should exist in timeline");
       assert.strictEqual(outlier.isAnomaly, true);
@@ -211,7 +226,7 @@ suite("buildDashboardPayload", () => {
       }
       byDate.set("2026-02-14", { shown: 5, accepted: 0 }); // below MIN_SHOWN threshold
       const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-01", "2026-02-14");
       const lowShownEntry = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(lowShownEntry);
       assert.strictEqual(lowShownEntry.isAnomaly, false);
@@ -225,7 +240,7 @@ suite("buildDashboardPayload", () => {
       }
       byDate.set("2026-02-14", { shown: 50, accepted: 3 }); // 6% — well below average
       const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-01", "2026-02-14");
       const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(outlier?.anomalyReason?.includes("lower"), `Expected 'lower' in reason: ${outlier?.anomalyReason}`);
     });
@@ -237,7 +252,7 @@ suite("buildDashboardPayload", () => {
       }
       byDate.set("2026-02-14", { shown: 50, accepted: 48 }); // 96% — well above average
       const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-01", "2026-02-14");
       const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
       assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
     });
@@ -245,7 +260,7 @@ suite("buildDashboardPayload", () => {
 
   suite("agenticStats", () => {
     test("returns zero agenticStats when no subagent data", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.subagentRequests, 0);
       assert.strictEqual(payload.agenticStats.agenticRatio, 0);
       assert.strictEqual(payload.agenticStats.autonomousDurationMs, 0);
@@ -262,7 +277,7 @@ suite("buildDashboardPayload", () => {
           ["editAgent", 2],
         ]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.subagentRequests, 5);
       assert.strictEqual(payload.agenticStats.agenticRatio, 2.5);
       assert.strictEqual(payload.agenticStats.autonomousDurationMs, 12000);
@@ -276,7 +291,7 @@ suite("buildDashboardPayload", () => {
           ["searchSubagentTool", 1],
         ]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const sorted = payload.agenticStats.toolUsageStats;
       assert.strictEqual(sorted[0].intent, "runSubagent");
       assert.strictEqual(sorted[0].count, 5);
@@ -287,7 +302,7 @@ suite("buildDashboardPayload", () => {
     });
 
     test("agentIntelligenceOverview is zero when no subagent data", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       const ov = payload.agenticStats.agentIntelligenceOverview;
       assert.strictEqual(ov.autonomousActionCount, 0);
       assert.strictEqual(ov.agenticLoopCount, 0);
@@ -297,19 +312,19 @@ suite("buildDashboardPayload", () => {
 
     test("agentIntelligenceOverview.autonomousActionCount equals subagentRequests", () => {
       const stats = makeStats({ subagentRequests: 7, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.autonomousActionCount, 7);
     });
 
     test("agentIntelligenceOverview.avgCallsPerLoop is ratio of requests to loops", () => {
       const stats = makeStats({ subagentRequests: 6, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 3);
     });
 
     test("agentIntelligenceOverview.avgCallsPerLoop is 0 when no loops", () => {
       const stats = makeStats({ subagentRequests: 4, subagentLoops: 0 });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 0);
     });
 
@@ -321,7 +336,7 @@ suite("buildDashboardPayload", () => {
         ]),
         subagentByModel: new Map([["gpt-4o", 3]]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel.length, 1);
       assert.strictEqual(byModel[0].model, "gpt-4o");
@@ -341,20 +356,20 @@ suite("buildDashboardPayload", () => {
           ["claude-3", 2], // 50%
         ]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel[0].model, "claude-3");
       assert.strictEqual(byModel[1].model, "gpt-4o");
     });
 
     test("agentIntelligenceOverview.completionRate is 0 when no loops started", () => {
-      const payload = buildDashboardPayload(makeStats(), 14);
+      const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 0);
     });
 
     test("agentIntelligenceOverview.completionRate is ratio of completed to started loops * 100", () => {
       const stats = makeStats({ subagentLoops: 3, subagentLoopsStarted: 4, completionRate: 75 });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 75);
     });
 
@@ -364,7 +379,7 @@ suite("buildDashboardPayload", () => {
         subagentByModel: new Map([["gpt-4o", 5]]),
         autonomousDurationByModel: new Map(),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel.length, 1);
       assert.strictEqual(byModel[0].velocitySecondsPerAction, 0);
@@ -376,7 +391,7 @@ suite("buildDashboardPayload", () => {
         subagentByModel: new Map([["gpt-4o", 4]]),
         autonomousDurationByModel: new Map([["gpt-4o", 20000]]), // 20s / 4 actions = 5s/action
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel.length, 1);
       assert.strictEqual(byModel[0].velocitySecondsPerAction, 5);
@@ -394,7 +409,7 @@ suite("buildDashboardPayload", () => {
           ["gpt-4o -> deployment-b", 1],
         ]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel.length, 1, "should merge two deployments into one row");
       assert.strictEqual(byModel[0].model, "gpt-4o");
@@ -411,7 +426,7 @@ suite("buildDashboardPayload", () => {
         ]),
         subagentByModel: new Map([["claude-3.5-sonnet:20241022", 2]]),
       });
-      const payload = buildDashboardPayload(stats, 14);
+      const payload = buildDashboardPayload(stats, "2026-02-24", "2026-02-27");
       const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
       assert.strictEqual(byModel.length, 1);
       assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");

@@ -66,8 +66,8 @@ Chart.register(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare function acquireVsCodeApi(): {
   postMessage(msg: WebviewToHostMessage): void;
-  getState(): { days?: number; currentTab?: string } | undefined;
-  setState(state: { days?: number; currentTab?: string }): void;
+  getState(): { currentRange?: { start: string; end: string }; currentTab?: string } | undefined;
+  setState(state: { currentRange?: { start: string; end: string }; currentTab?: string }): void;
 };
 
 interface DashboardWindow extends Window {
@@ -84,7 +84,7 @@ const vscode = acquireVsCodeApi();
 
 let timelineChart: Chart | null = null;
 let velocityChart: Chart | null = null;
-let currentDays = 14;
+let currentRange: { start: string; end: string } | undefined;
 let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
@@ -534,36 +534,60 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 }
 
 // ---------------------------------------------------------------------------
-// Period selector
+// Debounce utility
 // ---------------------------------------------------------------------------
 
-function renderPeriodSelector(activeDays: number): void {
+function debounce<T extends (...args: unknown[]) => void>(fn: T, delayMs: number): (...args: Parameters<T>) => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delayMs);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Date range selector
+// ---------------------------------------------------------------------------
+
+function renderDateRangeSelector(availableRange: { minDate: string; maxDate: string }, selectedStart: string, selectedEnd: string): void {
   const el = document.getElementById("db-period-selector");
   if (!el) {
     return;
   }
 
-  el.innerHTML = [7, 14, 30]
-    .map((d) => {
-      const cls = d === activeDays ? "db-period-btn active" : "db-period-btn";
-      return `<button class="${cls}" data-days="${d}">${d} days</button>`;
-    })
-    .join("");
+  el.innerHTML = `
+    <div class="db-date-range">
+      <label for="db-date-start">From</label>
+      <input id="db-date-start" class="db-date-input" type="date"
+        min="${escHtml(availableRange.minDate)}" max="${escHtml(availableRange.maxDate)}"
+        value="${escHtml(selectedStart)}">
+      <label for="db-date-end">To</label>
+      <input id="db-date-end" class="db-date-input" type="date"
+        min="${escHtml(availableRange.minDate)}" max="${escHtml(availableRange.maxDate)}"
+        value="${escHtml(selectedEnd)}">
+    </div>`;
 
-  el.querySelectorAll<HTMLButtonElement>(".db-period-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const days = Number(btn.dataset.days);
-      currentDays = days;
-      vscode.setState({ days, currentTab });
-      // Show loading state while waiting for updated data.
-      const interactive = document.getElementById("db-interactive");
-      if (interactive) {
-        interactive.style.opacity = "0.6";
-        interactive.style.pointerEvents = "none";
-      }
-      vscode.postMessage({ type: "changePeriod", payload: { days } } satisfies WebviewToHostMessage);
-    });
-  });
+  const startInput = document.getElementById("db-date-start") as HTMLInputElement | null;
+  const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
+
+  const notifyHost = debounce(() => {
+    const start = startInput?.value ?? "";
+    const end = endInput?.value ?? "";
+    if (!start || !end || start > end) {
+      return;
+    }
+    currentRange = { start, end };
+    vscode.setState({ currentRange, currentTab });
+    const interactive = document.getElementById("db-interactive");
+    if (interactive) {
+      interactive.style.opacity = "0.6";
+      interactive.style.pointerEvents = "none";
+    }
+    vscode.postMessage({ type: "changePeriod", payload: { startDate: start, endDate: end } } satisfies WebviewToHostMessage);
+  }, 400);
+
+  startInput?.addEventListener("change", notifyHost);
+  endInput?.addEventListener("change", notifyHost);
 }
 
 // ---------------------------------------------------------------------------
@@ -590,7 +614,7 @@ const VALID_TABS = new Set(["overview", "health", "flow"]);
 
 function switchTab(tabId: string): void {
   currentTab = tabId;
-  vscode.setState({ days: currentDays, currentTab: tabId });
+  vscode.setState({ currentRange, currentTab: tabId });
 
   document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
     const isActive = btn.dataset.tab === tabId;
@@ -736,7 +760,12 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
-  currentDays = payload.days;
+  // Initialize currentRange on first render; preserve user selection on subsequent renders.
+  if (!currentRange) {
+    currentRange = { start: payload.availableRange.minDate, end: payload.availableRange.maxDate };
+  }
+  const selectedStart = currentRange.start || payload.availableRange.minDate;
+  const selectedEnd = currentRange.end || payload.availableRange.maxDate;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderInsights(payload.insights);
@@ -744,7 +773,7 @@ function render(payload: DashboardPayload): void {
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);
-  renderPeriodSelector(payload.days);
+  renderDateRangeSelector(payload.availableRange, selectedStart, selectedEnd);
   // Clear loading state set by the period selector.
   const interactive = document.getElementById("db-interactive");
   if (interactive) {
@@ -797,16 +826,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (window.__dashboardData) {
     const initData = window.__dashboardData;
-    // Restore persisted period and substitute it directly into the initial
-    // data to avoid a flash of incorrectly-filtered content.
+    // Restore persisted range and request updated data if it differs from the
+    // full available range embedded in the initial payload.
     const saved = vscode.getState();
-    if (saved?.days && saved.days !== initData.days) {
-      currentDays = saved.days;
+    if (
+      saved?.currentRange &&
+      (saved.currentRange.start !== initData.availableRange.minDate ||
+        saved.currentRange.end !== initData.availableRange.maxDate)
+    ) {
+      currentRange = saved.currentRange;
       // Request updated data from the host in the background.
-      vscode.postMessage({ type: "changePeriod", payload: { days: saved.days } } satisfies WebviewToHostMessage);
-      // Render immediately with the saved-days label so the period buttons
-      // already reflect the correct selection while waiting for the update.
-      render({ ...initData, days: saved.days });
+      vscode.postMessage({
+        type: "changePeriod",
+        payload: { startDate: saved.currentRange.start, endDate: saved.currentRange.end },
+      } satisfies WebviewToHostMessage);
+      render(initData);
     } else {
       render(initData);
     }

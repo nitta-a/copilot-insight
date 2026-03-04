@@ -40,7 +40,8 @@ const ANOMALY_Z_THRESHOLD = 2;
  */
 export function buildDashboardPayload(
   stats: CopilotUsageStats,
-  days: number,
+  startDate: string,
+  endDate: string,
   trueAcceptance?: TrueAcceptanceResult,
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
@@ -72,7 +73,14 @@ export function buildDashboardPayload(
   // ── Timeline ─────────────────────────────────────────────────────────────
   const dateEntries = Array.from(stats.byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-days);
+    .filter(([date]) => !startDate || !endDate || (date >= startDate && date <= endDate));
+
+  // ── Available range ───────────────────────────────────────────────────────
+  const allDates = Array.from(stats.byDate.keys()).sort();
+  const availableRange = {
+    minDate: allDates[0] ?? "",
+    maxDate: allDates[allDates.length - 1] ?? "",
+  };
 
   // ── Anomaly baseline ──────────────────────────────────────────────────────
   // Compute mean and stdDev of daily acceptance rates from the last
@@ -220,5 +228,14 @@ export function buildDashboardPayload(
     agentIntelligenceOverview,
   };
 
-  return { days, summary, timeline, velocityPoints, insights, weeklyTrend, agenticStats };
+  return {
+    days: timeline.length,
+    availableRange,
+    summary,
+    timeline,
+    velocityPoints,
+    insights,
+    weeklyTrend,
+    agenticStats,
+  };
 }

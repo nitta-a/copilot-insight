@@ -120,8 +120,10 @@ export interface AgentIntelligenceOverview {
 
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
-  /** Number of days shown in the timeline. */
+  /** Number of days shown in the timeline (equals timeline.length). */
   days: number;
+  /** The full available date range present in the data. */
+  availableRange: { minDate: string; maxDate: string };
   summary: SummaryData;
   timeline: TimelineEntry[];
   velocityPoints: VelocityPoint[];
@@ -152,7 +154,7 @@ export type HostToWebviewMessage = DashboardDataMessage;
 /** User selected a new display period. */
 export interface ChangePeriodMessage {
   type: "changePeriod";
-  payload: { days: number };
+  payload: { startDate: string; endDate: string };
 }
 
 /** User requested a Markdown export. */
