@@ -39,6 +39,7 @@ function makeEmptyStats(): ParsingContext {
     chatLatencyP50: 0,
     chatLatencyP95: 0,
     bySession: new Map(),
+    byLanguage: new Map(),
     byContextSource: new Map(),
     subagentRequests: 0,
     agenticRatio: 0,
@@ -219,6 +220,50 @@ suite("logContentParser", () => {
         stats,
       );
       assert.strictEqual(stats.byContextEffectiveness.size, 0);
+    });
+
+    test("records shown count in byLanguage for shown event with languageId", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", languageId: "typescript" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 1, accepted: 0 });
+    });
+
+    test("records accepted count in byLanguage for accepted event with languageId", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_accepted", languageId: "python" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("python"), { shown: 0, accepted: 1 });
+    });
+
+    test("falls back to language field when languageId is absent", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", language: "go" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("go"), { shown: 1, accepted: 0 });
+    });
+
+    test("falls back to lang field when languageId and language are absent", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", lang: "rust" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("rust"), { shown: 1, accepted: 0 });
+    });
+
+    test("accumulates byLanguage across multiple events", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", languageId: "typescript" }, stats);
+      processJsonEntry({ event: "suggestion_shown", languageId: "typescript" }, stats);
+      processJsonEntry({ event: "suggestion_accepted", languageId: "typescript" }, stats);
+      assert.deepStrictEqual(stats.byLanguage.get("typescript"), { shown: 2, accepted: 1 });
+    });
+
+    test("does not update byLanguage for rejected events", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_rejected", languageId: "python" }, stats);
+      assert.strictEqual(stats.byLanguage.size, 0);
+    });
+
+    test("does not update byLanguage when languageId is missing", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown" }, stats);
+      assert.strictEqual(stats.byLanguage.size, 0);
     });
   });
 

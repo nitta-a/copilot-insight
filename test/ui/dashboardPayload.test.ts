@@ -39,6 +39,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP50: 200,
     chatLatencyP95: 300,
     bySession: new Map([["s1", { sessionId: "s1", shown: 100, accepted: 60, chat: 10, errors: 0 }]]),
+    byLanguage: new Map(),
     byContextSource: new Map(),
     byContextEffectiveness: new Map(),
     subagentRequests: 0,
@@ -456,6 +457,51 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");
       assert.strictEqual(byModel[0].totalCount, 10);
       assert.strictEqual(byModel[0].subagentCount, 2);
+    });
+  });
+
+  suite("byLanguage", () => {
+    test("returns empty array when no language data", () => {
+      const payload = buildDashboardPayload(makeStats());
+      assert.deepStrictEqual(payload.byLanguage, []);
+    });
+
+    test("maps language stats to array with rate", () => {
+      const stats = makeStats({
+        byLanguage: new Map([
+          ["typescript", { shown: 100, accepted: 60 }],
+          ["python", { shown: 50, accepted: 20 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.byLanguage.length, 2);
+      const ts = payload.byLanguage.find((l) => l.language === "typescript");
+      assert.ok(ts);
+      assert.strictEqual(ts.shown, 100);
+      assert.strictEqual(ts.accepted, 60);
+      assert.ok(Math.abs(ts.rate - 60) < 0.01);
+    });
+
+    test("sorts by shown count descending", () => {
+      const stats = makeStats({
+        byLanguage: new Map([
+          ["go", { shown: 20, accepted: 10 }],
+          ["typescript", { shown: 100, accepted: 60 }],
+          ["python", { shown: 50, accepted: 20 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.byLanguage[0].language, "typescript");
+      assert.strictEqual(payload.byLanguage[1].language, "python");
+      assert.strictEqual(payload.byLanguage[2].language, "go");
+    });
+
+    test("rate is 0 when shown is 0", () => {
+      const stats = makeStats({
+        byLanguage: new Map([["rust", { shown: 0, accepted: 0 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.byLanguage[0].rate, 0);
     });
   });
 });

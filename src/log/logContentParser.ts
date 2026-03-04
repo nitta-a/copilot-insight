@@ -212,6 +212,16 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     }
   }
 
+  // Per-language stats: extract languageId from completion events.
+  const rawLanguage = data.languageId ?? data.language ?? data.lang;
+  if (typeof rawLanguage === "string") {
+    if (isShown) {
+      incrementStatCount(ctx.byLanguage, rawLanguage, "shown");
+    } else if (isAccepted) {
+      incrementStatCount(ctx.byLanguage, rawLanguage, "accepted");
+    }
+  }
+
   // Context Window Insights: parse context source references from JSON telemetry
   const effectivenessType: "shown" | "accepted" | null = isShown ? "shown" : isAccepted ? "accepted" : null;
   const contextItems = data.contextItems ?? data.references ?? data.usedContext;

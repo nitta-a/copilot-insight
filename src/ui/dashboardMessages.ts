@@ -137,6 +137,8 @@ export interface DashboardPayload {
   weeklyTrend: WeeklyTrendData | null;
   /** Agentic (subagent) activity statistics. */
   agenticStats: AgenticStats;
+  /** Per-language shown/accepted stats, sorted by shown count descending. */
+  byLanguage: Array<{ language: string; shown: number; accepted: number; rate: number }>;
 }
 
 // ---------------------------------------------------------------------------

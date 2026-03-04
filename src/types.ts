@@ -84,6 +84,9 @@ export interface CopilotUsageStats {
   // Session tracking
   bySession: Map<string, SessionStat>;
 
+  /** Per programming-language shown/accepted counts (keyed by languageId). */
+  byLanguage: Map<string, LanguageStat>;
+
   // Context Window Insights
   byContextSource: Map<string, number>;
   /** Per context source shown/accepted counts for effectiveness analysis. */

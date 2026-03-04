@@ -237,6 +237,16 @@ export function buildDashboardPayload(
     agentIntelligenceOverview,
   };
 
+  // ── Language breakdown ────────────────────────────────────────────────────
+  const byLanguage = Array.from(stats.byLanguage.entries())
+    .map(([language, stat]) => ({
+      language,
+      shown: stat.shown,
+      accepted: stat.accepted,
+      rate: stat.shown > 0 ? (stat.accepted / stat.shown) * 100 : 0,
+    }))
+    .sort((a, b) => b.shown - a.shown);
+
   return {
     days: timeline.length,
     availableRange,
@@ -246,5 +256,6 @@ export function buildDashboardPayload(
     insights,
     weeklyTrend,
     agenticStats,
+    byLanguage,
   };
 }
