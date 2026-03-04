@@ -4,6 +4,15 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.8] - 2026-03-04
+
+### Added
+- 📡 **Context Effectiveness Dashboard** — new section in the Flow tab tracks which Copilot context sources (Active File, Workspace, Symbol, Embeddings, etc.) are contributing to accepted completions, with shown/accepted counts and per-source acceptance rate
+- 🗓️ **Dynamic date range selector** — replaced the fixed 7 / 14 / 30-day period buttons with HTML5 date-range inputs; the WebView defaults to the full available data range on first render and updates charts on change without a full reload
+
+### Changed
+- 💾 **Reimplemented export** — CSV / JSON / Markdown report exports now include agentic & subagent metrics and the context-effectiveness data added in this release; per-tab export context is preserved correctly
+
 ## [1.0.7] - 2026-03-03
 
 ### Added
