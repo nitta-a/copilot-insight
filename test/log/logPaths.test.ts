@@ -2,8 +2,9 @@ import * as assert from "assert";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { findCopilotDirs } from "../../src/log/logFileReader";
+import { findCopilotDirs, parseRemoteExthostLog } from "../../src/log/logFileReader";
 import { findSessionRoot } from "../../src/utils/logPaths";
+import type { ParsingContext } from "../../src/types";
 
 suite("findSessionRoot", () => {
   // NOTE: findSessionRoot uses path.sep to split the path, so it correctly
@@ -138,5 +139,124 @@ suite("findCopilotDirs", () => {
     await fs.mkdir(path.join(tmpDir, "some-other-extension"));
     const results = await findCopilotDirs(tmpDir);
     assert.deepStrictEqual(results, []);
+  });
+
+  test("finds Copilot dir inside numbered exthost dir (exthost1)", async () => {
+    const exthost1 = path.join(tmpDir, "exthost1");
+    await fs.mkdir(exthost1);
+    const copilotDir = path.join(exthost1, "GitHub.copilot");
+    await fs.mkdir(copilotDir);
+    const results = await findCopilotDirs(tmpDir);
+    assert.deepStrictEqual(results, [copilotDir]);
+  });
+
+  test("finds Copilot dirs across multiple numbered exthost dirs", async () => {
+    const exthost1 = path.join(tmpDir, "exthost1");
+    const exthost82 = path.join(tmpDir, "exthost82");
+    await fs.mkdir(exthost1);
+    await fs.mkdir(exthost82);
+    const dir1 = path.join(exthost1, "GitHub.copilot");
+    const dir2 = path.join(exthost82, "GitHub.copilot-chat");
+    await fs.mkdir(dir1);
+    await fs.mkdir(dir2);
+    const results = await findCopilotDirs(tmpDir);
+    assert.strictEqual(results.length, 2);
+    assert.ok(results.includes(dir1));
+    assert.ok(results.includes(dir2));
+  });
+});
+
+suite("parseRemoteExthostLog", () => {
+  let tmpDir: string;
+
+  setup(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-remoteexthost-"));
+  });
+
+  teardown(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeEmptyCtx(): ParsingContext {
+    return {
+      totalShown: 0,
+      totalAccepted: 0,
+      totalRejected: 0,
+      totalChat: 0,
+      acceptanceRate: 0,
+      avgLatencyMs: 0,
+      byDate: new Map(),
+      byModel: new Map(),
+      byChatModel: new Map(),
+      byHour: new Map(),
+      byChatIntent: new Map(),
+      logFilesFound: 0,
+      chatByDate: new Map(),
+      chatByHour: new Map(),
+      totalErrors: 0,
+      errorsByType: new Map(),
+      latencies: [],
+      chatLatencies: [],
+      latencyP50: 0,
+      latencyP95: 0,
+      latencyP99: 0,
+      chatAvgLatencyMs: 0,
+      chatLatencyP50: 0,
+      chatLatencyP95: 0,
+      bySession: new Map(),
+      byContextSource: new Map(),
+      byContextEffectiveness: new Map(),
+      subagentRequests: 0,
+      agenticRatio: 0,
+      autonomousDurationMs: 0,
+      toolUsageStats: new Map(),
+      subagentLoops: 0,
+      subagentLoopsStarted: 0,
+      completionRate: 0,
+      subagentByModel: new Map(),
+      autonomousDurationByModel: new Map(),
+      agenticDepthByModel: new Map(),
+      latencySum: 0,
+      latencyCount: 0,
+      chatLatencySum: 0,
+      chatLatencyCount: 0,
+      currentSessionId: "",
+      activeSubagentLoop: null,
+      activeSubagentLoopModel: null,
+      activeSubagentLoopActionCount: 0,
+      loopsStartedByModel: new Map(),
+      loopsCompletedByModel: new Map(),
+      totalLoopActionsByModel: new Map(),
+      loopDistributionByModel: new Map(),
+      planCount: 0,
+      executedPlanCount: 0,
+      userChoicesInPlan: 0,
+      activePlanPending: false,
+    };
+  }
+
+  test("silently skips when remoteexthost.log does not exist", async () => {
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 0);
+  });
+
+  test("parses remoteexthost.log and increments logFilesFound", async () => {
+    // Write a minimal log line that the parser recognizes
+    const logContent = '{"envelope":{"type":"completion/shown","requestId":"r1"}}\n';
+    await fs.writeFile(path.join(tmpDir, "remoteexthost.log"), logContent, "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 1);
+  });
+
+  test("parses log content from remoteexthost.log (acceptance counted)", async () => {
+    const shown = '{"envelope":{"type":"completion/shown","requestId":"r1"}}\n';
+    const accepted = '{"envelope":{"type":"completion/accepted","requestId":"r1"}}\n';
+    await fs.writeFile(path.join(tmpDir, "remoteexthost.log"), shown + accepted, "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 1);
   });
 });

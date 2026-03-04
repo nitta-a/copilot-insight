@@ -24,7 +24,9 @@ const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/s
  *      (e.g. "gpt-5-mini:20241101" → "gpt-5-mini")
  *   3. Strip hash suffix: remove everything from the first `#` onward
  *      (e.g. "claude-3.5-sonnet#abc123" → "claude-3.5-sonnet")
- *   4. Trim surrounding whitespace.
+ *   4. Strip `-copilot` vendor suffix (case-insensitive)
+ *      (e.g. "gpt-41-copilot" → "gpt-41")
+ *   5. Trim surrounding whitespace.
  */
 export function normalizeModelName(model: string): string {
   // Rule 1: strip deployment path after ' -> '
@@ -40,6 +42,11 @@ export function normalizeModelName(model: string): string {
   if (hashIdx > 0) {
     base = base.substring(0, hashIdx).trim();
   }
+  // Rule 4: strip trailing -copilot vendor suffix (e.g. "gpt-41-copilot" → "gpt-41")
+  if (base.toLowerCase().endsWith("-copilot")) {
+    base = base.slice(0, -"-copilot".length).trim();
+  }
+  // Rule 5: final whitespace trim (already applied above after each rule, kept for clarity)
   return base;
 }
 

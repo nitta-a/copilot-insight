@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory } from "./logFileReader";
+import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory, parseRemoteExthostLog } from "./logFileReader";
 import { findSessionRoot } from "../utils/logPaths";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 
@@ -113,6 +113,10 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
           channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
           await parseLogDirectory(copilotLogDir, ctx);
         }
+
+        // Also parse remoteexthost.log at the session root level — present in
+        // VS Code Remote / WSL sessions and contains MCP and agentic-loop signals.
+        await parseRemoteExthostLog(sessDir, ctx);
       } catch {
         // Skip unreadable session directories
         channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);

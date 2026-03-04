@@ -1047,6 +1047,29 @@ suite("normalizeModelName", () => {
   test("does not strip leading hash (edge case)", () => {
     assert.strictEqual(normalizeModelName("#weird"), "#weird");
   });
+
+  // Rule 4: -copilot vendor suffix stripping
+  test("strips -copilot vendor suffix", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-copilot"), "gpt-41");
+  });
+
+  test("strips -copilot suffix case-insensitively", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-Copilot"), "gpt-41");
+  });
+
+  test("strips -copilot suffix after arrow removal", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-copilot -> azure/eastus"), "gpt-41");
+  });
+
+  test("does not strip -copilot when it is not a suffix", () => {
+    // "copilot" appears in the middle but is not a trailing -copilot suffix
+    assert.strictEqual(normalizeModelName("copilot-model"), "copilot-model");
+  });
+
+  test("does not strip -copilot when it is embedded in the middle", () => {
+    // '-copilot' in the middle should not be stripped
+    assert.strictEqual(normalizeModelName("model-copilot-v2"), "model-copilot-v2");
+  });
 });
 
 suite("model name normalization in ccreq parsing", () => {

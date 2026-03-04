@@ -86,3 +86,32 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
     // Skip if directory is not readable
   }
 }
+
+/**
+ * Parse `remoteexthost.log` from a session directory when present.
+ *
+ * In VS Code Remote / WSL environments the extension host runs inside a
+ * remote process and writes its log to `<session>/remoteexthost.log` rather
+ * than (or in addition to) a normal `exthost` subdirectory.  This file often
+ * contains MCP server messages and agentic-loop signals that are otherwise
+ * absent from the regular copilot log directories.
+ *
+ * The file is read into memory at once (consistent with other log parsing in
+ * this module).  It silently skips the file if it does not exist.
+ */
+export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
+  const filePath = path.join(sessionDir, "remoteexthost.log");
+  try {
+    await fs.access(filePath);
+  } catch {
+    // File does not exist — skip silently
+    return;
+  }
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    parseLogContent(content, ctx);
+    ctx.logFilesFound++;
+  } catch {
+    // Skip unreadable file
+  }
+}
