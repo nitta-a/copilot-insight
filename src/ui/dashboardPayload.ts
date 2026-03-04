@@ -45,8 +45,11 @@ export function buildDashboardPayload(
   modelPerformance?: ModelPerformanceResult,
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
-  const estimatedMinutesSaved =
-    (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM + (stats.autonomousDurationMs / 60000) * 0.5;
+  const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
+  // Agentic contribution: 50% of autonomous duration represents developer time freed up
+  // (factor 0.5 reflects that developers still need to monitor and review AI actions).
+  const agenticMinutesSaved = (stats.autonomousDurationMs / 60000) * 0.5;
+  const estimatedMinutesSaved = typingMinutesSaved + agenticMinutesSaved;
   const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
   // Best model = the model name that appears most often as "best" across
@@ -66,6 +69,8 @@ export function buildDashboardPayload(
     acceptanceRate: stats.acceptanceRate,
     trueAcceptanceRate,
     estimatedMinutesSaved,
+    typingMinutesSaved,
+    agenticMinutesSaved,
     bestModel,
   };
 

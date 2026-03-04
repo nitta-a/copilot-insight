@@ -16,6 +16,7 @@
 
 import type { CopilotUsageStats } from "../types";
 import type { TrueAcceptanceResult, VelocityAnalysisResult, ModelPerformanceResult } from "../metrics/metricsEngine";
+import { mergeCountByNormalizedModel } from "../log/logContentParser";
 
 /** Input options for report generation. */
 export interface ReportOptions {
@@ -76,7 +77,17 @@ export function generateMarkdownReport(options: ReportOptions): string {
   const lines: string[] = [];
 
   // --- Header ---
-  lines.push("# Copilot Insight — Usage Report");
+  // Derive date range from stats.byDate and append to title for easy sharing.
+  const allDates = Array.from(stats.byDate.keys()).sort();
+  const minDate = allDates[0] ?? "";
+  const maxDate = allDates[allDates.length - 1] ?? "";
+  const dateRangeSuffix =
+    minDate && maxDate
+      ? minDate === maxDate
+        ? ` (${minDate.replace(/-/g, "/")})`
+        : ` (${minDate.replace(/-/g, "/")} - ${maxDate.replace(/-/g, "/")})`
+      : "";
+  lines.push(`# Copilot Insight — Usage Report${dateRangeSuffix}`);
   lines.push("");
   if (projectName) {
     lines.push(`**Project:** ${projectName}`);
@@ -99,9 +110,9 @@ export function generateMarkdownReport(options: ReportOptions): string {
   lines.push(`| Log Files Parsed | ${stats.logFilesFound} |`);
   lines.push("");
 
-  // --- 2. Agentic ROI ---
+  // --- 2. Agentic ROI Summary ---
   if (stats.subagentRequests > 0) {
-    lines.push("## Agentic ROI");
+    lines.push("## Agentic ROI Summary");
     lines.push("");
     lines.push(
       `> 🤖 **AI Autonomous Time: ${formatDurationMs(stats.autonomousDurationMs)}** — time during which Copilot was autonomously acting on your behalf.`,
@@ -137,14 +148,19 @@ export function generateMarkdownReport(options: ReportOptions): string {
     lines.push("");
   }
 
-  // --- 4. Model Comparison ---
+  // --- 4. Model Performance Comparison ---
   if (stats.subagentByModel.size > 0) {
-    lines.push("## Model Comparison");
+    lines.push("## Model Performance Comparison");
     lines.push("");
-    lines.push("| Model | Autonomous Actions | Autonomous Ratio | Avg sec / Action |");
-    lines.push("|-------|-------------------|------------------|-----------------|");
+    lines.push("| Model | Autonomous Actions | % of Auto Actions | Avg sec / Action |");
+    lines.push("|-------|-------------------|--------------------|-----------------|");
 
-    // Build sorted model list with combined stats
+    // Normalize model names to aggregate deployment aliases into a single row.
+    // We use the normalized duration map for velocity rather than the raw agenticDepthByModel
+    // entries (which are keyed by un-normalized names) to keep the data consistent.
+    const normalizedSubagent = mergeCountByNormalizedModel(stats.subagentByModel);
+    const normalizedDuration = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
+
     const modelEntries: Array<{
       model: string;
       subagentCount: number;
@@ -152,17 +168,13 @@ export function generateMarkdownReport(options: ReportOptions): string {
       velocitySecondsPerAction: number;
     }> = [];
 
-    for (const [model, subagentCount] of stats.subagentByModel) {
-      const durationMs = stats.autonomousDurationByModel.get(model) ?? 0;
-      const depthStat = stats.agenticDepthByModel.get(model);
-      const velocityMs = depthStat?.velocityMsPerAction ?? 0;
-      const velocitySec =
-        velocityMs > 0
-          ? velocityMs / 1000
-          : durationMs > 0 && subagentCount > 0
-            ? durationMs / subagentCount / 1000
-            : 0;
-      const ratio = stats.agenticRatio > 0 ? (subagentCount / stats.subagentRequests) * stats.agenticRatio : 0;
+    const totalSubagent = stats.subagentRequests;
+    for (const [model, subagentCount] of normalizedSubagent) {
+      const durationMs = normalizedDuration.get(model) ?? 0;
+      // Velocity = total autonomous duration ÷ autonomous action count (simple average).
+      const velocitySec = durationMs > 0 && subagentCount > 0 ? durationMs / subagentCount / 1000 : 0;
+      // Ratio = percentage share of this model among all autonomous actions.
+      const ratio = totalSubagent > 0 ? (subagentCount / totalSubagent) * 100 : 0;
       modelEntries.push({ model, subagentCount, ratio, velocitySecondsPerAction: velocitySec });
     }
 
@@ -250,9 +262,9 @@ export function generateMarkdownReport(options: ReportOptions): string {
   );
   lines.push("");
 
-  // --- 9. Insights ---
+  // --- 9. Qualitative Insights ---
   if (options.insights && options.insights.length > 0) {
-    lines.push("## Insights");
+    lines.push("## Qualitative Insights");
     lines.push("");
     for (const insight of options.insights) {
       lines.push(`- ${insight}`);
