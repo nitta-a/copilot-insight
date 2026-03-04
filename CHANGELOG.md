@@ -4,6 +4,19 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.11] - 2026-03-04
+
+### Added
+- 📝 **Professional Markdown report** — `Copilot Insight: Export Report (Markdown)` now produces a structured, shareable document with six sections: Executive Summary, Acceptance Analysis, Language Breakdown, Model Performance, Velocity/Flow, and ROI Estimation; pre-computed values from `buildDashboardPayload` are forwarded to ensure dashboard ↔ report consistency
+- 🧩 **Dashboard payload builder** — extracted `buildDashboardPayload` into `src/ui/dashboardPayload.ts` as a standalone, side-effect-free function; enables full unit-test coverage without a VS Code process
+- 🔌 **Typed message protocol** — `src/ui/dashboardMessages.ts` formalises the WebView ↔ Extension Host bidirectional communication with explicit TypeScript union types (`HostToWebviewMessage`, `WebviewToHostMessage`)
+- 🗂️ **Reliable log discovery** — `src/utils/logPaths.ts` introduces `findSessionRoot`, which locates the VS Code session root by scanning path segments for the `logs/<timestamp>` landmark; works correctly regardless of the number of intermediate directories and on both macOS and Windows
+- 🧪 **Expanded test coverage** — new test suites for `logPaths` (`findSessionRoot`), MCP server tools, dashboard payload builder, and top-level `utils` helpers
+
+### Changed
+- **`parseCopilotLogs`** — uses `findSessionRoot` (segment-based) instead of three `path.dirname()` calls for session root location; more reliable across all VS Code log path layouts
+- **WebView** — `enableScripts: true`; the webview bundle (`dist/webview/`) is built by `tsconfig.webview.json` and includes Chart.js + React chart components served via `localResourceRoots`
+
 ## [1.0.10] - 2026-03-04
 
 ### Changed
