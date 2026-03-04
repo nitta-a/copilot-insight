@@ -143,13 +143,13 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   }
 
   const trueRateStr = summary.trueAcceptanceRate !== null ? `${summary.trueAcceptanceRate.toFixed(1)}%` : "—";
-  const hours = (summary.estimatedMinutesSaved / 60).toFixed(1);
+  const totalHours = (summary.estimatedMinutesSaved / 60).toFixed(1);
   const typingHours = (summary.typingMinutesSaved / 60).toFixed(1);
   const agenticHours = (summary.agenticMinutesSaved / 60).toFixed(1);
   const roiDetail =
     summary.agenticMinutesSaved > 0
-      ? `${hours}h (Typing: ${typingHours}h + AI: ${agenticHours}h)`
-      : `${hours} hours (ROI)`;
+      ? `Typing: ${typingHours}h + AI: ${agenticHours}h`
+      : `Typing: ${typingHours}h`;
   const bestModelStr = summary.bestModel ?? "—";
 
   el.innerHTML = `
@@ -159,7 +159,7 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
       <div class="stat-detail">vs ${summary.acceptanceRate.toFixed(1)}% raw</div>
     </div>
     <div class="stat-card db-highlight">
-      <div class="stat-value db-accent">${summary.estimatedMinutesSaved.toFixed(0)} min</div>
+      <div class="stat-value db-accent">${totalHours} hours</div>
       <div class="stat-label">Estimated Time Saved</div>
       <div class="stat-detail">${roiDetail}</div>
     </div>
