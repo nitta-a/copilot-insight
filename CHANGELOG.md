@@ -4,6 +4,15 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.9] - 2026-03-04
+
+### Removed
+- 🗓️ **Date range selector** — removed the dynamic date-range inputs and the `copilot-insight.changeDailyUsagePeriod` command; the dashboard now always shows the full span of available log data, eliminating the infinite re-render loop that the date-range state restoration triggered
+
+### Changed
+- **`buildDashboardPayload`** — removed `startDate`/`endDate` parameters; the timeline now includes all entries from `stats.byDate` unconditionally
+- **WebView state** — `vscode.setState`/`getState` now only persists `currentTab`; `DOMContentLoaded` no longer issues a `changePeriod` roundtrip on restore
+
 ## [1.0.8] - 2026-03-04
 
 ### Added
