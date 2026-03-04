@@ -60,6 +60,27 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("**Period:** 2026-02-01 — 2026-02-28"));
   });
 
+  test("report title includes date range from stats.byDate", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        byDate: new Map([
+          ["2026-02-24", { shown: 50, accepted: 30 }],
+          ["2026-03-04", { shown: 50, accepted: 30 }],
+        ]),
+      }),
+    });
+    assert.ok(md.includes("(2026/02/24 - 2026/03/04)"), `Expected date range in title, got: ${md.split("\n")[0]}`);
+  });
+
+  test("report title shows single date when only one day in stats", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ byDate: new Map([["2026-02-28", { shown: 100, accepted: 70 }]]) }),
+    });
+    assert.ok(md.includes("(2026/02/28)"), `Expected single date in title, got: ${md.split("\n")[0]}`);
+  });
+
   test("includes executive summary with correct values", () => {
     const md = generateMarkdownReport({
       period: "test",
@@ -180,7 +201,7 @@ suite("reportGenerator", () => {
         agenticDepthByModel: new Map(),
       }),
     });
-    assert.ok(md.includes("## Agentic ROI"));
+    assert.ok(md.includes("## Agentic ROI Summary"));
     assert.ok(md.includes("Autonomous Duration"));
     assert.ok(md.includes("Episode Completion Rate"));
     assert.ok(md.includes("AI Autonomous Time"));
@@ -191,7 +212,7 @@ suite("reportGenerator", () => {
       period: "test",
       stats: makeStats({ subagentRequests: 0 }),
     });
-    assert.ok(!md.includes("## Agentic ROI"));
+    assert.ok(!md.includes("## Agentic ROI Summary"));
   });
 
   test("includes intelligence overview section when subagent activity present", () => {
@@ -210,7 +231,7 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("Avg Calls / Loop"));
   });
 
-  test("includes model comparison section when subagentByModel has entries", () => {
+  test("includes model performance comparison section when subagentByModel has entries", () => {
     const md = generateMarkdownReport({
       period: "test",
       stats: makeStats({
@@ -228,26 +249,26 @@ suite("reportGenerator", () => {
         agenticDepthByModel: new Map(),
       }),
     });
-    assert.ok(md.includes("## Model Comparison"));
+    assert.ok(md.includes("## Model Performance Comparison"));
     assert.ok(md.includes("gpt-4o"));
   });
 
-  test("includes insights section when insights provided", () => {
+  test("includes qualitative insights section when insights provided", () => {
     const md = generateMarkdownReport({
       period: "test",
       stats: makeStats(),
       insights: ["📈 Acceptance rate improved by 5%", "📉 Chat usage decreased"],
     });
-    assert.ok(md.includes("## Insights"));
+    assert.ok(md.includes("## Qualitative Insights"));
     assert.ok(md.includes("📈 Acceptance rate improved by 5%"));
     assert.ok(md.includes("📉 Chat usage decreased"));
   });
 
-  test("omits insights section when not provided", () => {
+  test("omits qualitative insights section when not provided", () => {
     const md = generateMarkdownReport({
       period: "test",
       stats: makeStats(),
     });
-    assert.ok(!md.includes("## Insights"));
+    assert.ok(!md.includes("## Qualitative Insights"));
   });
 });

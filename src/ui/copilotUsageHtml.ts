@@ -16,6 +16,16 @@ export function getHtmlContent(
 ): string {
   const dateData = Array.from(stats.byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
+  const allDates = Array.from(stats.byDate.keys()).sort();
+  const minDate = allDates[0] ?? "";
+  const maxDate = allDates[allDates.length - 1] ?? "";
+  const dateRangeLabel =
+    minDate && maxDate
+      ? minDate === maxDate
+        ? `<p class="date-range-label">${escapeHtml(minDate.replace(/-/g, "/"))}</p>`
+        : `<p class="date-range-label">${escapeHtml(minDate.replace(/-/g, "/"))} – ${escapeHtml(maxDate.replace(/-/g, "/"))}</p>`
+      : "";
+
   const dateSection = buildDateSection(dateData, stats.chatByDate);
   const modelSection = buildModelBarChart(mergeStatsByNormalizedModel(stats.byModel), "🤖 Inline Completion Model");
   const chatModelSection = buildSimpleBarChart(
@@ -48,7 +58,8 @@ export function getHtmlContent(
       padding: 20px;
       margin: 0;
     }
-    h1 { font-size: 1.5em; margin-bottom: 20px; }
+    h1 { font-size: 1.5em; margin-bottom: 4px; }
+    .date-range-label { font-size: 0.85em; opacity: 0.65; margin: 0 0 16px; }
     h2 { font-size: 1.1em; margin: 24px 0 10px; }
     .stats-grid {
       display: grid;
@@ -200,6 +211,7 @@ export function getHtmlContent(
 </head>
 <body>
   <h1>🤖 GitHub Copilot Usage Dashboard</h1>
+  ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
     <div class="db-tabs" role="tablist">
@@ -560,6 +572,21 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(
       `<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`,
+    );
+  }
+
+  // 4. Autonomous action count
+  if (stats.subagentRequests > 0) {
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">🤖</span>Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</div>`,
+    );
+  }
+
+  // 5. Agentic loop completion rate
+  if (stats.subagentLoopsStarted > 0) {
+    const rate = stats.completionRate.toFixed(1);
+    insights.push(
+      `<div class="insight-card"><span class="insight-icon">✅</span>Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</div>`,
     );
   }
 

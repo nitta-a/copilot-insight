@@ -83,8 +83,32 @@ suite("buildDashboardPayload", () => {
 
     test("estimatedMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
       const payload = buildDashboardPayload(makeStats());
-      // 120 * 40 / 200 = 24
+      // 120 * 40 / 200 = 24 (no autonomous duration)
       assert.strictEqual(payload.summary.estimatedMinutesSaved, 24);
+    });
+
+    test("typingMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
+      const payload = buildDashboardPayload(makeStats());
+      // 120 * 40 / 200 = 24
+      assert.strictEqual(payload.summary.typingMinutesSaved, 24);
+    });
+
+    test("agenticMinutesSaved is autonomousDurationMs / 60000 * 0.5", () => {
+      const stats = makeStats({ autonomousDurationMs: 12000 }); // 12s = 0.2min
+      const payload = buildDashboardPayload(stats);
+      // (12000 / 60000) * 0.5 = 0.1
+      assert.ok(Math.abs(payload.summary.agenticMinutesSaved - 0.1) < 0.0001);
+    });
+
+    test("estimatedMinutesSaved equals typingMinutesSaved + agenticMinutesSaved", () => {
+      const stats = makeStats({ autonomousDurationMs: 60000 }); // 1min autonomous
+      const payload = buildDashboardPayload(stats);
+      assert.ok(
+        Math.abs(
+          payload.summary.estimatedMinutesSaved -
+            (payload.summary.typingMinutesSaved + payload.summary.agenticMinutesSaved),
+        ) < 0.0001,
+      );
     });
 
     test("bestModel is null when no modelPerformance passed", () => {

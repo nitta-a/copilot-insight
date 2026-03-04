@@ -20,6 +20,10 @@ export interface SummaryData {
   trueAcceptanceRate: number | null;
   /** Estimated minutes saved by Copilot completions (ROI). */
   estimatedMinutesSaved: number;
+  /** Minutes saved from inline completions (typing speed × accepted chars). */
+  typingMinutesSaved: number;
+  /** Minutes saved from AI autonomous actions (50% of autonomous duration). */
+  agenticMinutesSaved: number;
   /** Best-performing model name (null when no model-performance data). */
   bestModel: string | null;
 }
