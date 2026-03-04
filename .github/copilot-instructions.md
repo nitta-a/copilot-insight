@@ -17,14 +17,18 @@ copilot-insight/
 ├── src/
 │   ├── extension.ts              # Activation entry point; registers all commands and wires the pipeline
 │   ├── types.ts                  # Shared TypeScript interfaces (CopilotUsageStats, ParsingContext, …)
+│   ├── utils.ts                  # Shared helpers (e.g. todayDateString)
+│   ├── globals.d.ts              # Ambient declarations for webview global (acquireVsCodeApi)
 │   ├── log/
 │   │   ├── copilotLogParser.ts   # Orchestrates log discovery and delegates to logFileReader / logContentParser
 │   │   ├── logFileReader.ts      # File-system utilities: session dir sorting, .log file reading
 │   │   └── logContentParser.ts  # Line-by-line parser for both JSON-embedded and plain-text log formats
 │   ├── ui/
 │   │   ├── copilotUsagePanel.ts  # Singleton WebviewPanel (createOrShow pattern)
-│   │   ├── copilotUsageHtml.ts   # Generates the HTML string rendered in the WebviewPanel
+│   │   ├── copilotUsageHtml.ts   # Generates the HTML shell that loads the webview bundle
 │   │   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Copilot Usage" sidebar view
+│   │   ├── dashboardMessages.ts  # Shared WebView ↔ Extension Host message types (HostToWebviewMessage, WebviewToHostMessage)
+│   │   ├── dashboardPayload.ts   # Standalone buildDashboardPayload() function (no VS Code deps; unit-testable)
 │   │   └── statusBarIndicator.ts
 │   ├── events/
 │   │   ├── eventSchema.ts
@@ -38,20 +42,36 @@ copilot-insight/
 │   │   └── weeklyTrend.ts        # Compares this-week vs last-week acceptance rates
 │   ├── export/
 │   │   ├── exportStats.ts        # Serializes CopilotUsageStats to CSV or JSON
-│   │   └── reportGenerator.ts
+│   │   └── reportGenerator.ts   # Professional Markdown report (ROI, language breakdown, model performance, velocity)
+│   ├── mcp/
+│   │   ├── server.ts             # MCP server exposing get_usage_summary / get_model_efficiency / get_anomaly_report tools
+│   │   └── storageResolver.ts   # Resolves the global storage path for the MCP server
+│   ├── utils/
+│   │   └── logPaths.ts          # findSessionRoot() — segment-based VS Code log directory locator
 │   ├── db/
 │   │   ├── dbSchema.ts
 │   │   └── duckdbClient.ts       # Placeholder DuckDB client interface (not yet wired)
 │   └── worker/
 │       ├── dbWorker.ts
 │       └── dbWorkerClient.ts
+├── webview/                      # WebView frontend (compiled to dist/webview/ by tsconfig.webview.json)
+│   ├── dashboard.ts              # Chart.js dashboard: Timeline chart, Velocity scatter plot, export handling
+│   └── charts/
+│       ├── AgenticEfficiencyScatterPlot.tsx  # React scatter plot (Avg Calls/Loop vs Completion Rate)
+│       └── ModelDepthVelocityChart.tsx       # React ComposedChart (agentic depth bars + velocity line)
 ├── test/                         # Mocha/vscode-test test files (*.test.ts)
 │   ├── extension.test.ts
+│   ├── utils.test.ts
 │   ├── log/
-│   │   └── logContentParser.test.ts
+│   │   ├── logContentParser.test.ts
+│   │   └── logPaths.test.ts
 │   ├── ui/
 │   │   ├── copilotUsageTreeProvider.test.ts
+│   │   ├── dashboardPayload.test.ts
 │   │   └── statusBarIndicator.test.ts
+│   ├── mcp/
+│   │   ├── server.test.ts
+│   │   └── storageResolver.test.ts
 │   ├── events/
 │   │   ├── eventSchema.test.ts
 │   │   ├── eventStorage.test.ts
@@ -68,26 +88,36 @@ copilot-insight/
 │   │   └── duckdbClient.test.ts
 │   └── worker/
 │       └── dbWorkerClient.test.ts
-├── dist/                         # Build output — extension.js (CJS bundle, git-ignored)
+├── dist/                         # Build output — extension.js + webview/ (CJS bundle, git-ignored)
+├── bin/
+│   └── mcp-server.js             # MCP server entry point (registered via contributes.mcpServers)
 ├── biome.json                    # Biome linter + formatter config
 ├── esbuild.js                    # esbuild bundler script (dev and production modes)
 ├── package.json                  # Extension manifest, commands, configuration, scripts
-└── tsconfig.json                 # TypeScript compiler options (target: ES2022, module: Node16)
+├── tsconfig.json                 # TypeScript compiler options (target: ES2022, module: Node16)
+└── tsconfig.webview.json         # TypeScript compiler options for the webview bundle
 ```
 
 ## Architecture
 
-Three-layer pipeline:
+Four-layer pipeline:
 
 1. **`src/log/copilotLogParser.ts`** — reads `.log` files from VS Code's extension host log directory, parses both JSON-embedded lines (matching `/\{.*\}/`) and plain-text lines, and accumulates `CopilotUsageStats`.
-2. **`src/ui/copilotUsagePanel.ts`** — singleton `WebviewPanel` via `createOrShow` pattern; holds `static currentPanel` reference; `enableScripts: false` (no JS in webview).
-3. **`src/ui/copilotUsageHtml.ts`** — generates the HTML string directly (no templating library); uses VS Code CSS variables (`var(--vscode-foreground)`, `var(--vscode-charts-blue)`, etc.) for automatic theme support.
+2. **`src/ui/dashboardPayload.ts`** — `buildDashboardPayload()` converts raw `CopilotUsageStats` + optional advanced-metrics into the typed `DashboardPayload` shape consumed by the WebView; no VS Code dependencies, fully unit-testable.
+3. **`src/ui/copilotUsagePanel.ts`** — singleton `WebviewPanel` via `createOrShow` pattern; holds `static currentPanel` reference; `enableScripts: true`; serves the bundled webview from `dist/webview/` via `localResourceRoots`.
+4. **`webview/dashboard.ts`** — Chart.js frontend (bundled separately by `tsconfig.webview.json`); renders the Timeline, Velocity, and export charts; communicates with the host via `vscode.postMessage` using the typed protocol in `dashboardMessages.ts`.
 
 `extension.ts` wires commands to the pipeline using `vscode.window.withProgress` for the parsing step.
 
+## Key Modules
+
+- **`src/utils/logPaths.ts`** — `findSessionRoot(fsPath)` locates the VS Code session root by splitting the path on the native separator and finding the `logs/<timestamp>` landmark; depth-independent and correct on macOS, Linux, and Windows.
+- **`src/ui/dashboardMessages.ts`** — shared TypeScript union types (`HostToWebviewMessage`, `WebviewToHostMessage`) imported by both the host and the WebView; erased at runtime.
+- **`src/mcp/server.ts`** — MCP server exposing `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; entry point is `bin/mcp-server.js`, registered via `contributes.mcpServers`.
+
 ## Log File Discovery
 
-`parseCopilotLogs` receives `context.logUri` and traverses **up** three `path.dirname()` calls to reach the base log dir, then scans the **5 most recent** session directories for subdirectories named `GitHub.copilot`, `github.copilot`, or `GitHub.copilot-nightly`.
+`parseCopilotLogs` receives `context.logUri` and calls `findSessionRoot` (from `src/utils/logPaths.ts`) to locate the VS Code session root by splitting the path on the native separator and finding the `logs/<timestamp>` landmark. It then reads **up** one level to the base log dir and scans the **N most recent** session directories (configurable via `copilot-insight.maxSessionDirs`, default 5) for subdirectories named `GitHub.copilot`, `github.copilot`, or `GitHub.copilot-nightly`.
 
 ## Build & Dev Workflow
 
@@ -99,15 +129,16 @@ Three-layer pipeline:
 | Run tests | `npm test` (compiles tests + extension + lint, then `vscode-test`) |
 | Lint only | `npm run lint` |
 
-Output goes to `dist/extension.js` (CJS, `vscode` external).
+Output goes to `dist/extension.js` (CJS, `vscode` external) and `dist/webview/` (webview bundle, built from `webview/dashboard.ts` using `tsconfig.webview.json`).
 
 ## Key Conventions
 
 - **Linter is Biome, not ESLint.** Config in `biome.json`; runs only on `src/**/*.ts`. Rules are non-recommended: `useBlockStatements`, `useNamingConvention`, `useThrowOnlyError`, `noDoubleEquals` (all `warn`).
 - **Type-checking is separate from bundling.** `esbuild.js` never invokes `tsc`; type errors surface only via `check-types` / `watch:tsc`.
-- **WebviewPanel CSP:** `default-src 'none'; style-src 'unsafe-inline'` — no external resources, no scripts, inline styles only.
+- **WebviewPanel CSP:** uses a per-request `nonce` to allow only the bundled webview script; `localResourceRoots` is limited to `dist/webview/`.
 - **Error handling in parser:** every `fs` call is wrapped in `try/catch` that silently skips unreadable files/dirs — preserve this pattern.
-- **HTML generation:** build the HTML string in `src/ui/copilotUsageHtml.ts`, not in `src/ui/copilotUsagePanel.ts`. Call `escapeHtml()` for any user-derived data inserted into HTML.
+- **HTML generation:** `src/ui/copilotUsageHtml.ts` generates the HTML shell that loads the webview bundle. `src/ui/dashboardPayload.ts` builds the data payload sent to the WebView via `postMessage`.
+- **Dashboard messages:** always use the typed unions in `src/ui/dashboardMessages.ts` for WebView ↔ Host communication; never use ad-hoc string `type` fields.
 
 ## Adding New Commands
 
