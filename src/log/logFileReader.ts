@@ -36,6 +36,38 @@ export async function getSortedSessionDirs(logBaseDir: string, fallback: string)
   }
 }
 
+/**
+ * Recursively search for Copilot log directories under `rootDir`.
+ * Any directory whose name matches `github.copilot` (case-insensitive) is
+ * collected without recursing further into it.
+ * Non-matching directories are recursed into up to `maxDepth` levels deep.
+ */
+export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<string[]> {
+  const results: string[] = [];
+  async function search(dir: string, depth: number): Promise<void> {
+    if (depth > maxDepth) {
+      return;
+    }
+    try {
+      const entries = await fs.readdir(dir);
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry);
+        if (await isDirectory(fullPath)) {
+          if (entry.toLowerCase().includes("github.copilot")) {
+            results.push(fullPath);
+          } else {
+            await search(fullPath, depth + 1);
+          }
+        }
+      }
+    } catch {
+      // Skip unreadable directories
+    }
+  }
+  await search(rootDir, 0);
+  return results;
+}
+
 export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Promise<void> {
   try {
     const entries = await fs.readdir(logDir);

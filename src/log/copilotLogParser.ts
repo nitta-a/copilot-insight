@@ -1,18 +1,19 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type * as vscode from "vscode";
-import { getSortedSessionDirs, isDirectory, parseLogDirectory } from "./logFileReader";
+import * as vscode from "vscode";
+import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory } from "./logFileReader";
+import { findSessionRoot } from "../utils/logPaths";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 
 export type { CopilotUsageStats, DateStat } from "../types";
 
-const COPILOT_DIR_NAMES = [
-  "GitHub.copilot",
-  "github.copilot",
-  "GitHub.copilot-nightly",
-  "GitHub.copilot-chat",
-  "github.copilot-chat",
-];
+/** Lazy output channel for diagnostic logging. */
+let _outputChannel: vscode.OutputChannel | undefined;
+function getOutputChannel(): vscode.OutputChannel {
+  if (!_outputChannel) {
+    _outputChannel = vscode.window.createOutputChannel("Copilot Insight");
+  }
+  return _outputChannel;
+}
 
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
 const MAX_LATENCY_SAMPLES = 10_000;
@@ -71,35 +72,46 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
   };
 
   try {
-    // logUri.fsPath is like: .../logs/<session>/<exthost>/copilot-insight/
-    const extHostDir = path.dirname(logUri.fsPath);
-    const sessionDir = path.dirname(extHostDir);
-    const logBaseDir = path.dirname(sessionDir);
+    // Locate the VS Code session root by splitting fsPath on the native
+    // separator and finding the `logs` landmark segment — depth-independent
+    // and correct on both macOS ('/') and Windows ('\').
+    const channel = getOutputChannel();
+    channel.appendLine(`Original logUri: ${logUri.fsPath}`);
 
-    const sessionDirs = await getSortedSessionDirs(logBaseDir, sessionDir);
+    const sessionRoot = findSessionRoot(logUri.fsPath);
+    channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);
+
+    let logBaseDir: string;
+    let fallbackSessionDir: string;
+    if (sessionRoot) {
+      logBaseDir = path.dirname(sessionRoot);
+      fallbackSessionDir = sessionRoot;
+    } else {
+      channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using fixed-depth fallback`);
+      logBaseDir = path.dirname(path.dirname(path.dirname(logUri.fsPath)));
+      fallbackSessionDir = path.dirname(path.dirname(logUri.fsPath));
+    }
+
+    channel.appendLine(`Searching for logs in: ${logBaseDir}`);
+
+    const sessionDirs = await getSortedSessionDirs(logBaseDir, fallbackSessionDir);
 
     for (const sessDir of sessionDirs) {
       try {
         ctx.currentSessionId = path.basename(sessDir);
-        const entries = await fs.readdir(sessDir);
-        const extHostPaths = entries.map((entry) => path.join(sessDir, entry));
-        const extHostDirs: string[] = [];
-        for (const dirPath of extHostPaths) {
-          if (await isDirectory(dirPath)) {
-            extHostDirs.push(dirPath);
-          }
-        }
+        channel.appendLine(`Scanning session: ${sessDir}`);
 
-        for (const extHostDir of extHostDirs) {
-          for (const dirName of COPILOT_DIR_NAMES) {
-            const copilotLogDir = path.join(extHostDir, dirName);
-            if (await isDirectory(copilotLogDir)) {
-              await parseLogDirectory(copilotLogDir, ctx);
-            }
-          }
+        const copilotDirs = await findCopilotDirs(sessDir);
+        if (copilotDirs.length === 0) {
+          channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
+        }
+        for (const copilotLogDir of copilotDirs) {
+          channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
+          await parseLogDirectory(copilotLogDir, ctx);
         }
       } catch {
         // Skip unreadable session directories
+        channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
       }
     }
   } catch (e) {
