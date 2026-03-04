@@ -11,6 +11,7 @@ import { todayDateString } from "./utils";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
+import { buildDashboardPayload } from "./ui/dashboardPayload";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 
@@ -179,6 +180,12 @@ export function activate(context: vscode.ExtensionContext) {
     const period = dates.length > 0 ? `${dates[0]} — ${dates[dates.length - 1]}` : "All available data";
     const projectName = vscode.workspace.name;
 
+    // Build the dashboard payload to obtain consistent pre-computed ROI values and
+    // auto-generated insights — this ensures the report numbers match the dashboard.
+    const dashboardPayload = buildDashboardPayload(cachedStats, trueAcceptance, velocity, modelPerformance);
+    const { typingMinutesSaved, agenticMinutesSaved } = dashboardPayload.summary;
+    const insights = dashboardPayload.insights;
+
     const content = generateMarkdownReport({
       period,
       projectName,
@@ -186,6 +193,9 @@ export function activate(context: vscode.ExtensionContext) {
       trueAcceptance,
       velocity,
       modelPerformance,
+      insights,
+      typingMinutesSaved,
+      agenticMinutesSaved,
     });
 
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;

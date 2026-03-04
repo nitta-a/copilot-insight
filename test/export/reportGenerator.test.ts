@@ -56,7 +56,7 @@ suite("reportGenerator", () => {
       period: "2026-02-01 — 2026-02-28",
       stats: makeStats(),
     });
-    assert.ok(md.includes("# Copilot Insight — Usage Report"));
+    assert.ok(md.includes("# GitHub Copilot Contribution Report"));
     assert.ok(md.includes("**Period:** 2026-02-01 — 2026-02-28"));
   });
 
@@ -165,9 +165,21 @@ suite("reportGenerator", () => {
       period: "test",
       stats: makeStats(),
     });
-    assert.ok(md.includes("## ROI Estimation"));
-    assert.ok(md.includes("Estimated Characters Generated"));
-    assert.ok(md.includes("Estimated Time Saved"));
+    assert.ok(md.includes("## 📊 Productivity Metrics"));
+    assert.ok(md.includes("Total Developer Time Saved"));
+    assert.ok(md.includes("Coding Assistance"));
+  });
+
+  test("includes agentic autonomy breakdown when agenticMinutesSaved provided", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats(),
+      typingMinutesSaved: 10,
+      agenticMinutesSaved: 20,
+    });
+    assert.ok(md.includes("Agentic Autonomy"));
+    // total = 30 minutes = 0.5 hours → toFixed(1) = "0.5"
+    assert.ok(md.includes("0.5 hours"));
   });
 
   test("omits acceptance analysis when not provided", () => {
@@ -227,7 +239,7 @@ suite("reportGenerator", () => {
         agenticDepthByModel: new Map(),
       }),
     });
-    assert.ok(md.includes("## Intelligence Overview"));
+    assert.ok(md.includes("## Agent Intelligence Details"));
     assert.ok(md.includes("Avg Calls / Loop"));
   });
 
@@ -249,7 +261,7 @@ suite("reportGenerator", () => {
         agenticDepthByModel: new Map(),
       }),
     });
-    assert.ok(md.includes("## Model Performance Comparison"));
+    assert.ok(md.includes("## Model Efficiency"));
     assert.ok(md.includes("gpt-4o"));
   });
 
@@ -259,7 +271,7 @@ suite("reportGenerator", () => {
       stats: makeStats(),
       insights: ["📈 Acceptance rate improved by 5%", "📉 Chat usage decreased"],
     });
-    assert.ok(md.includes("## Qualitative Insights"));
+    assert.ok(md.includes("## 💡 Qualitative Insights"));
     assert.ok(md.includes("📈 Acceptance rate improved by 5%"));
     assert.ok(md.includes("📉 Chat usage decreased"));
   });
@@ -269,6 +281,6 @@ suite("reportGenerator", () => {
       period: "test",
       stats: makeStats(),
     });
-    assert.ok(!md.includes("## Qualitative Insights"));
+    assert.ok(!md.includes("## 💡 Qualitative Insights"));
   });
 });

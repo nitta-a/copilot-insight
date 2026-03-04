@@ -37,6 +37,18 @@ export interface ReportOptions {
    * When provided, these are appended verbatim in an "Insights" section.
    */
   insights?: string[];
+  /**
+   * Pre-computed minutes saved from inline completions (typing speed × accepted chars).
+   * When provided, this value is used directly instead of being re-derived from stats,
+   * ensuring consistency with the dashboard's `buildDashboardPayload` calculation.
+   */
+  typingMinutesSaved?: number;
+  /**
+   * Pre-computed minutes saved from AI autonomous actions (50% of autonomous duration).
+   * When provided, this value is used directly instead of being re-derived from stats,
+   * ensuring consistency with the dashboard's `buildDashboardPayload` calculation.
+   */
+  agenticMinutesSaved?: number;
 }
 
 /**
@@ -87,7 +99,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
         ? ` (${minDate.replace(/-/g, "/")})`
         : ` (${minDate.replace(/-/g, "/")} - ${maxDate.replace(/-/g, "/")})`
       : "";
-  lines.push(`# Copilot Insight — Usage Report${dateRangeSuffix}`);
+  lines.push(`# GitHub Copilot Contribution Report${dateRangeSuffix}`);
   lines.push("");
   if (projectName) {
     lines.push(`**Project:** ${projectName}`);
@@ -131,11 +143,11 @@ export function generateMarkdownReport(options: ReportOptions): string {
     lines.push("");
   }
 
-  // --- 3. Intelligence Overview ---
+  // --- 3. Agent Intelligence Details ---
   if (stats.subagentRequests > 0) {
     const totalLoops = stats.subagentLoops;
     const avgCallsPerLoop = totalLoops > 0 ? stats.subagentRequests / totalLoops : 0;
-    lines.push("## Intelligence Overview");
+    lines.push("## Agent Intelligence Details");
     lines.push("");
     lines.push("| Metric | Value |");
     lines.push("|--------|-------|");
@@ -148,11 +160,11 @@ export function generateMarkdownReport(options: ReportOptions): string {
     lines.push("");
   }
 
-  // --- 4. Model Performance Comparison ---
+  // --- 4. Model Efficiency ---
   if (stats.subagentByModel.size > 0) {
-    lines.push("## Model Performance Comparison");
+    lines.push("## Model Efficiency");
     lines.push("");
-    lines.push("| Model | Autonomous Actions | % of Auto Actions | Avg sec / Action |");
+    lines.push("| Model | Autonomous Actions | Autonomous Ratio | Avg sec / Action |");
     lines.push("|-------|-------------------|--------------------|-----------------|");
 
     // Normalize model names to aggregate deployment aliases into a single row.
@@ -160,29 +172,31 @@ export function generateMarkdownReport(options: ReportOptions): string {
     // entries (which are keyed by un-normalized names) to keep the data consistent.
     const normalizedSubagent = mergeCountByNormalizedModel(stats.subagentByModel);
     const normalizedDuration = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
+    // Normalized total chat counts per model, used to compute the autonomous ratio.
+    const normalizedChat = mergeCountByNormalizedModel(stats.byChatModel);
 
     const modelEntries: Array<{
       model: string;
       subagentCount: number;
-      ratio: number;
+      autonomousRatio: number;
       velocitySecondsPerAction: number;
     }> = [];
 
-    const totalSubagent = stats.subagentRequests;
     for (const [model, subagentCount] of normalizedSubagent) {
       const durationMs = normalizedDuration.get(model) ?? 0;
       // Velocity = total autonomous duration ÷ autonomous action count (simple average).
       const velocitySec = durationMs > 0 && subagentCount > 0 ? durationMs / subagentCount / 1000 : 0;
-      // Ratio = percentage share of this model among all autonomous actions.
-      const ratio = totalSubagent > 0 ? (subagentCount / totalSubagent) * 100 : 0;
-      modelEntries.push({ model, subagentCount, ratio, velocitySecondsPerAction: velocitySec });
+      // Autonomous ratio = autonomous actions / total chat requests for this model (0–100).
+      const totalChatCount = normalizedChat.get(model) ?? 0;
+      const autonomousRatio = totalChatCount > 0 ? (subagentCount / totalChatCount) * 100 : 0;
+      modelEntries.push({ model, subagentCount, autonomousRatio, velocitySecondsPerAction: velocitySec });
     }
 
     modelEntries.sort((a, b) => b.subagentCount - a.subagentCount);
 
     for (const entry of modelEntries.slice(0, 20)) {
       const velocityStr = entry.velocitySecondsPerAction > 0 ? `${entry.velocitySecondsPerAction.toFixed(1)}s` : "—";
-      const ratioStr = entry.ratio > 0 ? `${entry.ratio.toFixed(1)}%` : "—";
+      const ratioStr = entry.autonomousRatio > 0 ? `${entry.autonomousRatio.toFixed(1)}%` : "—";
       lines.push(`| ${entry.model} | ${entry.subagentCount} | ${ratioStr} | ${velocityStr} |`);
     }
     lines.push("");
@@ -249,22 +263,27 @@ export function generateMarkdownReport(options: ReportOptions): string {
     }
   }
 
-  // --- 8. ROI Estimation ---
-  lines.push("## ROI Estimation");
+  // --- 8. Productivity Metrics (ROI) ---
+  // Use pre-computed values when provided (ensures consistency with the dashboard's
+  // buildDashboardPayload calculation).  Fall back to deriving from stats directly.
+  const typingMins = options.typingMinutesSaved ?? (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
+  const agenticMins = options.agenticMinutesSaved ?? 0;
+  const totalMins = typingMins + agenticMins;
+  const totalHours = totalMins / 60;
+  const typingHours = typingMins / 60;
+  const agenticHours = agenticMins / 60;
+  lines.push("## 📊 Productivity Metrics");
   lines.push("");
-  const estimatedChars = stats.totalAccepted * AVG_CHARS_PER_COMPLETION;
-  const estimatedMinutes = estimatedChars / TYPING_SPEED_CPM;
-  const estimatedHours = estimatedMinutes / 60;
-  lines.push(`- **Estimated Characters Generated:** ${estimatedChars.toLocaleString()}`);
-  lines.push(`- **Estimated Time Saved:** ${estimatedMinutes.toFixed(0)} minutes (${estimatedHours.toFixed(1)} hours)`);
-  lines.push(
-    `- **Calculation:** ${stats.totalAccepted} accepted × ${AVG_CHARS_PER_COMPLETION} avg chars ÷ ${TYPING_SPEED_CPM} chars/min`,
-  );
+  lines.push(`- **Total Developer Time Saved**: ${totalHours.toFixed(1)} hours`);
+  lines.push(`  - *Coding Assistance*: ${typingHours.toFixed(1)} hours (based on characters accepted)`);
+  if (agenticMins > 0) {
+    lines.push(`  - *Agentic Autonomy*: ${agenticHours.toFixed(1)} hours (AI-led task execution)`);
+  }
   lines.push("");
 
   // --- 9. Qualitative Insights ---
   if (options.insights && options.insights.length > 0) {
-    lines.push("## Qualitative Insights");
+    lines.push("## 💡 Qualitative Insights");
     lines.push("");
     for (const insight of options.insights) {
       lines.push(`- ${insight}`);
