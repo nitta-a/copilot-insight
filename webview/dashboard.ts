@@ -89,6 +89,7 @@ let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let isRendering = false;
+let notifyHost: ((() => void) & { cancel(): void }) | null = null;
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -538,12 +539,18 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 // Debounce utility
 // ---------------------------------------------------------------------------
 
-function debounce<T extends (...args: unknown[]) => void>(fn: T, delayMs: number): (...args: Parameters<T>) => void {
+function debounce<T extends (...args: unknown[]) => void>(
+  fn: T,
+  delayMs: number,
+): ((...args: Parameters<T>) => void) & { cancel(): void } {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delayMs);
-  };
+  return Object.assign(
+    (...args: Parameters<T>): void => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delayMs);
+    },
+    { cancel: () => clearTimeout(timer) },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +589,7 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
   const startInput = document.getElementById("db-date-start") as HTMLInputElement | null;
   const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
 
-  const notifyHost = debounce(() => {
+  notifyHost = debounce(() => {
     if (isRendering) {
       return;
     }
@@ -801,6 +808,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
+  notifyHost?.cancel();
   isRendering = true;
   try {
     // Initialize currentRange on first render; preserve user selection on subsequent renders.
