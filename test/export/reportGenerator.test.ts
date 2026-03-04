@@ -164,4 +164,90 @@ suite("reportGenerator", () => {
     });
     assert.ok(!md.includes("## Model Performance"));
   });
+
+  test("includes agentic ROI section when subagent activity present", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        subagentRequests: 50,
+        agenticRatio: 25.0,
+        autonomousDurationMs: 12540000, // ~209m 17s
+        subagentLoops: 10,
+        subagentLoopsStarted: 12,
+        completionRate: 83.3,
+        subagentByModel: new Map([["gpt-4o", 30]]),
+        autonomousDurationByModel: new Map([["gpt-4o", 9000000]]),
+        agenticDepthByModel: new Map(),
+      }),
+    });
+    assert.ok(md.includes("## Agentic ROI"));
+    assert.ok(md.includes("Autonomous Duration"));
+    assert.ok(md.includes("Episode Completion Rate"));
+    assert.ok(md.includes("AI Autonomous Time"));
+  });
+
+  test("omits agentic ROI section when no subagent activity", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ subagentRequests: 0 }),
+    });
+    assert.ok(!md.includes("## Agentic ROI"));
+  });
+
+  test("includes intelligence overview section when subagent activity present", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        subagentRequests: 50,
+        subagentLoops: 10,
+        completionRate: 83.3,
+        subagentByModel: new Map(),
+        autonomousDurationByModel: new Map(),
+        agenticDepthByModel: new Map(),
+      }),
+    });
+    assert.ok(md.includes("## Intelligence Overview"));
+    assert.ok(md.includes("Avg Calls / Loop"));
+  });
+
+  test("includes model comparison section when subagentByModel has entries", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        subagentRequests: 30,
+        agenticRatio: 20.0,
+        autonomousDurationMs: 5000000,
+        subagentLoops: 5,
+        subagentLoopsStarted: 6,
+        completionRate: 83.3,
+        subagentByModel: new Map([
+          ["gpt-4o", 20],
+          ["gpt-4-turbo", 10],
+        ]),
+        autonomousDurationByModel: new Map([["gpt-4o", 3000000]]),
+        agenticDepthByModel: new Map(),
+      }),
+    });
+    assert.ok(md.includes("## Model Comparison"));
+    assert.ok(md.includes("gpt-4o"));
+  });
+
+  test("includes insights section when insights provided", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats(),
+      insights: ["📈 Acceptance rate improved by 5%", "📉 Chat usage decreased"],
+    });
+    assert.ok(md.includes("## Insights"));
+    assert.ok(md.includes("📈 Acceptance rate improved by 5%"));
+    assert.ok(md.includes("📉 Chat usage decreased"));
+  });
+
+  test("omits insights section when not provided", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats(),
+    });
+    assert.ok(!md.includes("## Insights"));
+  });
 });

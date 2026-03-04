@@ -233,6 +233,10 @@ export function getHtmlContent(
     <div id="db-period-selector" style="margin: 0 0 16px;"></div>
 
     <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span></span>
+        <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
+      </div>
       <div id="db-summary-cards" class="stats-grid"></div>
       <div id="db-insights-container"></div>
       <div id="db-weekly-trend-container"></div>
@@ -240,7 +244,10 @@ export function getHtmlContent(
     </div>
 
     <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
-      <h2>📈 True Acceptance Rate Timeline</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
+        <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
+      </div>
       <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
       ${dateSection}
       ${modelSection}
@@ -253,7 +260,10 @@ export function getHtmlContent(
 
     <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
       <div id="db-velocity-section">
-        <h2>🌊 Flow &amp; Velocity Correlation</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <h2 style="margin:0">🌊 Flow &amp; Velocity Correlation</h2>
+          <button id="db-btn-export-png-flow" class="db-export-btn">🖼️ Save Chart (PNG)</button>
+        </div>
         <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
           Scatter of typing speed (KPM) vs relative completion activity.
           Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
@@ -264,11 +274,6 @@ export function getHtmlContent(
       ${chatHourSection}
       ${contextInsightsSection}
       ${contextEffectivenessSection}
-    </div>
-
-    <div style="margin:16px 0 8px">
-      <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
-      <button id="db-btn-export-png" class="db-export-btn">🖼️ Export Chart (PNG)</button>
     </div>
   </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}

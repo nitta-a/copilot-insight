@@ -166,7 +166,16 @@ export interface ExportMarkdownMessage {
 export interface ExportPngMessage {
   type: "exportPng";
   /** Base64-encoded PNG data URI produced by `canvas.toDataURL('image/png')`. */
-  payload: { imageData: string };
+  payload: {
+    imageData: string;
+    /**
+     * Identifier of the chart being exported.
+     * - `"timeline"`: Health tab Timeline chart (Chart.js canvas).
+     * - `"velocity"`: Flow tab Velocity Correlation chart (Chart.js canvas).
+     * - `"overview"`: Overview tab Agentic Efficiency SVG chart.
+     */
+    chartId: "timeline" | "velocity" | "overview";
+  };
 }
 
 export type WebviewToHostMessage = ChangePeriodMessage | ExportMarkdownMessage | ExportPngMessage;
