@@ -45,8 +45,11 @@ export interface ReportOptions {
   typingMinutesSaved?: number;
   /**
    * Pre-computed minutes saved from AI autonomous actions (50% of autonomous duration).
-   * When provided, this value is used directly instead of being re-derived from stats,
-   * ensuring consistency with the dashboard's `buildDashboardPayload` calculation.
+   * When provided, this value is used directly, ensuring consistency with the
+   * dashboard's `buildDashboardPayload` calculation.  When omitted, the report
+   * falls back to computing `(stats.autonomousDurationMs / 60000) * 0.5` so that
+   * agentic ROI is never silently lost even when the caller does not supply the
+   * pre-computed value.
    */
   agenticMinutesSaved?: number;
 }
@@ -63,6 +66,13 @@ const AVG_CHARS_PER_COMPLETION = 40;
  * Used to estimate time saved by Copilot completions.
  */
 const TYPING_SPEED_CPM = 200;
+
+/**
+ * Cognitive weight applied to autonomous AI duration when calculating agentic ROI.
+ * Mirrored from `dashboardPayload.ts` to ensure the fallback calculation produces
+ * values consistent with the dashboard when `agenticMinutesSaved` is not supplied.
+ */
+const AGENTIC_COGNITIVE_WEIGHT = 0.5;
 
 /**
  * Format a millisecond duration into a human-readable string (e.g. "2h 5m 30s").
@@ -283,7 +293,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
   // Use pre-computed values when provided (ensures consistency with the dashboard's
   // buildDashboardPayload calculation).  Fall back to deriving from stats directly.
   const typingMins = options.typingMinutesSaved ?? (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
-  const agenticMins = options.agenticMinutesSaved ?? 0;
+  const agenticMins = options.agenticMinutesSaved ?? (stats.autonomousDurationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
   const totalMins = typingMins + agenticMins;
   const totalHours = totalMins / 60;
   const typingHours = typingMins / 60;

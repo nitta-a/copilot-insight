@@ -286,4 +286,65 @@ suite("reportGenerator", () => {
     });
     assert.ok(!md.includes("## 💡 Qualitative Insights"));
   });
+
+  test("agenticMinutesSaved fallback computes from stats.autonomousDurationMs when not provided", () => {
+    // 120000ms autonomous = 2min / 60000 * 0.5 = 1 agentic minute saved
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ autonomousDurationMs: 120000 }),
+      // intentionally NOT passing agenticMinutesSaved
+    });
+    assert.ok(md.includes("Agentic Autonomy"), "Agentic Autonomy line should appear when autonomousDurationMs > 0");
+  });
+
+  test("agenticMinutesSaved fallback is 0 when autonomousDurationMs is 0", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ autonomousDurationMs: 0 }),
+    });
+    assert.ok(
+      !md.includes("Agentic Autonomy"),
+      "Agentic Autonomy line should be absent when autonomousDurationMs is 0",
+    );
+  });
+
+  test("explicit agenticMinutesSaved overrides fallback computation", () => {
+    // stats.autonomousDurationMs = 0, but explicit agenticMinutesSaved = 30 → Agentic line shown
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ autonomousDurationMs: 0 }),
+      agenticMinutesSaved: 30,
+    });
+    assert.ok(md.includes("Agentic Autonomy"), "Explicit agenticMinutesSaved should take precedence");
+    // 30 minutes = 0.5 hours → toFixed(1) = "0.5"
+    assert.ok(md.includes("0.5 hours"), `Expected "0.5 hours" in report`);
+  });
+
+  test("includes planning section when planCount > 0", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ planCount: 10, executedPlanCount: 8, userChoicesInPlan: 3 }),
+    });
+    assert.ok(md.includes("## 🧠 Planning & Strategic Autonomy"));
+    assert.ok(md.includes("**Strategic Plans Proposed**: 10"));
+    assert.ok(md.includes("**Plans Executed (Implemented)**: 8"));
+    assert.ok(md.includes("**Planning Success Rate**: 80.0%"));
+    assert.ok(md.includes("**In-Plan User Interactions**: 3"));
+  });
+
+  test("omits planning section when planCount is 0", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ planCount: 0 }),
+    });
+    assert.ok(!md.includes("## 🧠 Planning & Strategic Autonomy"));
+  });
+
+  test("planning success rate is 0.0% when executedPlanCount is 0", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ planCount: 5, executedPlanCount: 0, userChoicesInPlan: 0 }),
+    });
+    assert.ok(md.includes("**Planning Success Rate**: 0.0%"));
+  });
 });
