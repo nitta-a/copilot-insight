@@ -45,7 +45,8 @@ export function buildDashboardPayload(
   modelPerformance?: ModelPerformanceResult,
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
-  const estimatedMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
+  const estimatedMinutesSaved =
+    (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM + (stats.autonomousDurationMs / 60000) * 0.5;
   const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
   // Best model = the model name that appears most often as "best" across
