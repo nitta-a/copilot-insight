@@ -636,6 +636,35 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
       : "";
 
+  // Planning & Execution stats
+  const planSuccessStr = overview.planCount > 0 ? `${overview.planSuccessRate.toFixed(1)}%` : "—";
+  const planningSection = overview.planCount > 0
+    ? `<hr class="db-section-sep">
+       <h3 style="font-size:1em;margin:16px 0 10px">📋 Planning &amp; Execution</h3>
+       <div class="stats-grid">
+         <div class="stat-card">
+           <div class="stat-value">${overview.planCount}</div>
+           <div class="stat-label">Plans Proposed</div>
+           <div class="stat-detail">agent/plan proposals</div>
+         </div>
+         <div class="stat-card">
+           <div class="stat-value">${overview.executedPlanCount}</div>
+           <div class="stat-label">Plans Executed</div>
+           <div class="stat-detail">led to file edits</div>
+         </div>
+         <div class="stat-card db-highlight">
+           <div class="stat-value db-accent">${planSuccessStr}</div>
+           <div class="stat-label">Success Rate</div>
+           <div class="stat-detail">plans implemented</div>
+         </div>
+         <div class="stat-card">
+           <div class="stat-value">${overview.userChoicesInPlan}</div>
+           <div class="stat-label">User Choices</div>
+           <div class="stat-detail">in-plan interactions</div>
+         </div>
+       </div>`
+    : "";
+
   const modelRows = overview.autonomousRatioByModel
     .map(
       ({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
@@ -690,6 +719,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
       ${durationCell}
     </div>
     ${modelTable}
+    ${planningSection}
     <div id="db-model-depth-chart" style="margin-top:16px"></div>
     <div id="db-agentic-scatter" style="margin-top:4px"></div>`;
 

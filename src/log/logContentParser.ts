@@ -239,6 +239,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       }
     }
   }
+
+  // Planning & Execution: check event name for plan/execution signals.
+  trackPlanningStats(eventLower, ctx);
 }
 
 export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean {
@@ -472,7 +475,51 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
   }
 }
 
-// --- Public API ---
+// --- Planning & Execution tracking ---
+
+/**
+ * Detect plan-proposal events: JSON events with `agent/plan` or `strategy/propose`
+ * signatures, and plain-text log lines containing the same keywords.
+ * Returns true if the line was identified as a plan-proposal.
+ */
+function isPlanProposalLine(lower: string): boolean {
+  return lower.includes("agent/plan") || lower.includes("strategy/propose");
+}
+
+/**
+ * Detect plan-execution events: JSON events with `workspace/editfile` or `apply_patch`
+ * signatures, and plain-text log lines containing the same keywords.
+ * Returns true if the line was identified as a plan-execution action.
+ */
+function isPlanExecutionLine(lower: string): boolean {
+  return lower.includes("workspace/editfile") || lower.includes("apply_patch");
+}
+
+/**
+ * Detect in-plan user choice interactions (`choice_selected`).
+ */
+function isChoiceSelectedLine(lower: string): boolean {
+  return lower.includes("choice_selected");
+}
+
+/**
+ * Update plan tracking state for a single log line (plain-text or JSON-derived).
+ */
+function trackPlanningStats(lower: string, ctx: ParsingContext): void {
+  if (isPlanProposalLine(lower)) {
+    ctx.planCount++;
+    ctx.activePlanPending = true;
+  }
+  if (isPlanExecutionLine(lower)) {
+    if (ctx.activePlanPending) {
+      ctx.executedPlanCount++;
+      ctx.activePlanPending = false;
+    }
+  }
+  if (isChoiceSelectedLine(lower)) {
+    ctx.userChoicesInPlan++;
+  }
+}
 
 /**
  * Parse context provider log lines that record which context sources were used.
@@ -600,6 +647,8 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   if (parseContextProviderLine(line, lineCtx.lower, ctx)) {
     return;
   }
+  // Planning & Execution: check plain-text lines for plan/execution signals.
+  trackPlanningStats(lineCtx.lower, ctx);
   parseLegacyKeywordLine(line, lineCtx.lower, lineCtx.dateKey, ctx);
 }
 

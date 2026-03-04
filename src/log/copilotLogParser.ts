@@ -69,6 +69,10 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    planCount: 0,
+    executedPlanCount: 0,
+    userChoicesInPlan: 0,
+    activePlanPending: false,
   };
 
   try {

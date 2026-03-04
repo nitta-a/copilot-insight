@@ -63,6 +63,10 @@ function makeEmptyStats(): ParsingContext {
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
     byContextEffectiveness: new Map(),
+    planCount: 0,
+    executedPlanCount: 0,
+    userChoicesInPlan: 0,
+    activePlanPending: false,
   };
 }
 
@@ -1261,5 +1265,77 @@ suite("processJsonEntry model extraction", () => {
     processJsonEntry({ event: "completionRejected", model: "gpt-4o", timestamp: "2024-06-01T10:00:00Z" }, stats);
     assert.strictEqual(stats.byChatModel.size, 0);
     assert.strictEqual(stats.byModel.size, 0);
+  });
+});
+
+suite("planning stats", () => {
+  test("planCount increments on agent/plan text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 [Agent] agent/plan proposed for task X", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("planCount increments on strategy/propose text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 [Strategy] strategy/propose applied", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("executedPlanCount increments when workspace/editFile follows a plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("executedPlanCount increments when apply_patch follows a plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    parseTextLogLine("2024-06-01 10:00:01 apply_patch to file", ctx);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("executedPlanCount does not increment when editFile appears with no preceding plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+  });
+
+  test("activePlanPending is cleared after editFile follows plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    assert.strictEqual(ctx.activePlanPending, true);
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("userChoicesInPlan increments on choice_selected text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 user choice_selected option A", ctx);
+    assert.strictEqual(ctx.userChoicesInPlan, 1);
+  });
+
+  test("plan from JSON event increments planCount", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("apply_patch from JSON event triggers executedPlanCount after plan", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    processJsonEntry({ event: "apply_patch", timestamp: "2024-06-01T10:00:01Z" }, ctx);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("multiple plans each independently tracked for execution", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("agent/plan 1", ctx);
+    parseTextLogLine("workspace/editFile a", ctx);
+    parseTextLogLine("agent/plan 2", ctx);
+    // second plan not yet executed
+    assert.strictEqual(ctx.planCount, 2);
+    assert.strictEqual(ctx.executedPlanCount, 1);
   });
 });

@@ -101,6 +101,14 @@ export interface AgentIntelligenceOverview {
   avgCallsPerLoop: number;
   /** Episode completion rate: completed loops / started loops * 100. 0 when no loops started. */
   completionRate: number;
+  /** Total number of plans proposed by the agent (agent/plan or strategy/propose). */
+  planCount: number;
+  /** Number of plans that were followed by a file edit or patch application. */
+  executedPlanCount: number;
+  /** Planning success rate: (executedPlanCount / planCount) * 100. 0 when no plans proposed. */
+  planSuccessRate: number;
+  /** Number of in-plan user choice interactions (choice_selected). */
+  userChoicesInPlan: number;
   /**
    * Per-model breakdown of autonomous vs total chat requests.
    * Sorted by `ratio` descending (highest autonomous ratio first).

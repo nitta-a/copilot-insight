@@ -160,6 +160,22 @@ export function generateMarkdownReport(options: ReportOptions): string {
     lines.push("");
   }
 
+  // --- 3a. Planning & Strategic Autonomy ---
+  if (stats.planCount > 0) {
+    const successRate = (stats.executedPlanCount / stats.planCount) * 100;
+    lines.push("## 🧠 Planning & Strategic Autonomy");
+    lines.push("");
+    lines.push(
+      "> AI-proposed plans that were adopted and implemented — a measure of strategic alignment between AI and developer.",
+    );
+    lines.push("");
+    lines.push(`- **Strategic Plans Proposed**: ${stats.planCount}`);
+    lines.push(`- **Plans Executed (Implemented)**: ${stats.executedPlanCount}`);
+    lines.push(`- **Planning Success Rate**: ${successRate.toFixed(1)}%`);
+    lines.push(`- **In-Plan User Interactions**: ${stats.userChoicesInPlan}`);
+    lines.push("");
+  }
+
   // --- 4. Model Efficiency ---
   if (stats.subagentByModel.size > 0) {
     lines.push("## Model Efficiency");

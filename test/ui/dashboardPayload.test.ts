@@ -51,6 +51,9 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    planCount: 0,
+    executedPlanCount: 0,
+    userChoicesInPlan: 0,
     ...overrides,
   };
 }
@@ -456,6 +459,31 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");
       assert.strictEqual(byModel[0].totalCount, 10);
       assert.strictEqual(byModel[0].subagentCount, 2);
+    });
+
+    test("planCount, executedPlanCount, planSuccessRate, userChoicesInPlan are zero when no planning data", () => {
+      const payload = buildDashboardPayload(makeStats());
+      const ov = payload.agenticStats.agentIntelligenceOverview;
+      assert.strictEqual(ov.planCount, 0);
+      assert.strictEqual(ov.executedPlanCount, 0);
+      assert.strictEqual(ov.planSuccessRate, 0);
+      assert.strictEqual(ov.userChoicesInPlan, 0);
+    });
+
+    test("planSuccessRate is executedPlanCount / planCount * 100", () => {
+      const stats = makeStats({ planCount: 10, executedPlanCount: 8, userChoicesInPlan: 5 });
+      const payload = buildDashboardPayload(stats);
+      const ov = payload.agenticStats.agentIntelligenceOverview;
+      assert.strictEqual(ov.planCount, 10);
+      assert.strictEqual(ov.executedPlanCount, 8);
+      assert.ok(Math.abs(ov.planSuccessRate - 80) < 0.001);
+      assert.strictEqual(ov.userChoicesInPlan, 5);
+    });
+
+    test("planSuccessRate is 0 when planCount is 0", () => {
+      const stats = makeStats({ planCount: 0, executedPlanCount: 0 });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.planSuccessRate, 0);
     });
   });
 });
