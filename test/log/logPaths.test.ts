@@ -7,61 +7,48 @@ import { findSessionRoot } from "../../src/utils/logPaths";
 
 suite("findSessionRoot", () => {
   test("finds session root in Windows-style path (no output_logging dir)", () => {
-    const logPath = path.join(
-      "C:",
-      "Users",
-      "user",
-      "AppData",
-      "Roaming",
-      "Code",
-      "logs",
-      "20260304T120000",
-      "exthost",
-      "copilot-insight",
-    );
+    // Use raw string to simulate Windows path separators
+    const logPath = "C:\\Users\\user\\AppData\\Roaming\\Code\\logs\\20260304T120000\\exthost\\copilot-insight";
     const result = findSessionRoot(logPath);
-    assert.strictEqual(
-      result,
-      path.join("C:", "Users", "user", "AppData", "Roaming", "Code", "logs", "20260304T120000"),
-    );
+    assert.strictEqual(result, "C:\\Users\\user\\AppData\\Roaming\\Code\\logs\\20260304T120000");
+  });
+
+  test("finds session root in Mac-style path (no output_logging dir)", () => {
+    const logPath = "/Users/user/Library/Application Support/Code/logs/20260304T120000/exthost/copilot-insight";
+    const result = findSessionRoot(logPath);
+    assert.strictEqual(result, "/Users/user/Library/Application Support/Code/logs/20260304T120000");
   });
 
   test("finds session root in Mac-style path (with output_logging dir)", () => {
-    const logPath = path.join(
-      "/",
-      "Users",
-      "user",
-      "Library",
-      "Application Support",
-      "Code",
-      "logs",
-      "20260304T120000",
-      "exthost",
-      "output_logging_1",
-      "copilot-insight",
-    );
+    const logPath =
+      "/Users/user/Library/Application Support/Code/logs/20260304T120000/exthost/output_logging_1/copilot-insight";
     const result = findSessionRoot(logPath);
-    assert.strictEqual(
-      result,
-      path.join("/", "Users", "user", "Library", "Application Support", "Code", "logs", "20260304T120000"),
-    );
+    assert.strictEqual(result, "/Users/user/Library/Application Support/Code/logs/20260304T120000");
   });
 
-  test("returns null when no session root is found", () => {
-    const logPath = path.join("/", "some", "unrelated", "path");
+  test("works regardless of how many intermediate directories exist", () => {
+    // Simulate a very deeply nested path (depth-independent)
+    const logPath =
+      "/Users/user/Library/Application Support/Code - Insiders/logs/20260304T120000/exthost/output_logging_42/a/b/c/copilot-insight";
+    const result = findSessionRoot(logPath);
+    assert.strictEqual(result, "/Users/user/Library/Application Support/Code - Insiders/logs/20260304T120000");
+  });
+
+  test("returns null when path has no /logs/<timestamp> segment", () => {
+    const logPath = "/some/unrelated/path/without/logs";
     const result = findSessionRoot(logPath);
     assert.strictEqual(result, null);
   });
 
-  test("returns null when maxLevels is reached before finding session root", () => {
-    const logPath = path.join("/", "logs", "20260304T120000", "exthost", "copilot-insight");
-    // With maxLevels=2 it cannot reach the session dir (3 levels up)
-    const result = findSessionRoot(logPath, 2);
+  test("returns null when timestamp segment exists but not after /logs/", () => {
+    // A segment that looks like a timestamp but is not under a 'logs' parent
+    const logPath = "/projects/20260304T120000/src/extension";
+    const result = findSessionRoot(logPath);
     assert.strictEqual(result, null);
   });
 
-  test("returns the path itself when it is the session root", () => {
-    const sessionRoot = path.join("/", "logs", "20260304T120000");
+  test("returns the path itself when it exactly equals the session root", () => {
+    const sessionRoot = "/Users/user/Library/Application Support/Code/logs/20260304T120000";
     const result = findSessionRoot(sessionRoot);
     assert.strictEqual(result, sessionRoot);
   });
@@ -85,8 +72,15 @@ suite("findCopilotDirs", () => {
     assert.deepStrictEqual(results, [copilotDir]);
   });
 
-  test("finds github.copilot-chat dir (case-insensitive)", async () => {
+  test("finds github.copilot-chat dir (case-insensitive via toLowerCase)", async () => {
     const copilotDir = path.join(tmpDir, "github.copilot-chat");
+    await fs.mkdir(copilotDir);
+    const results = await findCopilotDirs(tmpDir);
+    assert.deepStrictEqual(results, [copilotDir]);
+  });
+
+  test("finds GITHUB.COPILOT dir (all-caps, toLowerCase)", async () => {
+    const copilotDir = path.join(tmpDir, "GITHUB.COPILOT");
     await fs.mkdir(copilotDir);
     const results = await findCopilotDirs(tmpDir);
     assert.deepStrictEqual(results, [copilotDir]);

@@ -72,13 +72,13 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
   };
 
   try {
-    // Walk up from logUri.fsPath to find the session root directory
-    // (named with a timestamp like 20260304T120000). This handles both
-    // path structures VS Code uses across platforms:
-    //   - without output_logging: .../logs/<session>/exthost/<extension_id>
-    //   - with output_logging:    .../logs/<session>/exthost/output_logging_X/<extension_id>
-    const sessionRoot = findSessionRoot(logUri.fsPath);
+    // Locate the VS Code session root by scanning the path string for the
+    // `.../logs/<timestamp>` segment — depth-independent and cross-platform.
     const channel = getOutputChannel();
+    channel.appendLine(`Log URI: ${logUri.fsPath}`);
+
+    const sessionRoot = findSessionRoot(logUri.fsPath);
+    channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);
 
     let logBaseDir: string;
     let fallbackSessionDir: string;
@@ -101,12 +101,16 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
         channel.appendLine(`Scanning session: ${sessDir}`);
 
         const copilotDirs = await findCopilotDirs(sessDir);
+        if (copilotDirs.length === 0) {
+          channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
+        }
         for (const copilotLogDir of copilotDirs) {
-          channel.appendLine(`Found Copilot log dir: ${copilotLogDir}`);
+          channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
           await parseLogDirectory(copilotLogDir, ctx);
         }
       } catch {
         // Skip unreadable session directories
+        channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
       }
     }
   } catch (e) {

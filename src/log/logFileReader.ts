@@ -4,9 +4,6 @@ import * as vscode from "vscode";
 import { parseLogContent } from "./logContentParser";
 import type { ParsingContext } from "../types";
 
-/** Pattern matching directory names that contain Copilot log files. */
-const COPILOT_DIR_PATTERN = /github\.copilot/i;
-
 function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
 }
@@ -56,7 +53,7 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
       for (const entry of entries) {
         const fullPath = path.join(dir, entry);
         if (await isDirectory(fullPath)) {
-          if (COPILOT_DIR_PATTERN.test(entry)) {
+          if (entry.toLowerCase().includes("github.copilot")) {
             results.push(fullPath);
           } else {
             await search(fullPath, depth + 1);

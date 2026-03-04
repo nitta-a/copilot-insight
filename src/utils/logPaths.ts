@@ -1,31 +1,25 @@
-import * as path from "node:path";
-
-/** Pattern for VS Code session directory names (e.g. `20260304T120000`). */
-const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
+/**
+ * Regex to identify VS Code session root directories within a log path.
+ *
+ * Matches the `.../logs/<session>` prefix of any VS Code log path, where
+ * `<session>` is a timestamp directory such as `20260304T120000`.
+ * Handles both forward-slash (Unix/Mac) and backslash (Windows) separators.
+ *
+ * Using a direct string match rather than walking up the directory tree makes
+ * this robust to any number of intermediate directories between the session
+ * root and the extension's log folder (e.g. the `output_logging_X` level that
+ * macOS VS Code inserts between `exthost/` and the extension directory).
+ */
+const LOGS_SESSION_PATTERN = /^(.*[/\\]logs[/\\]\d{8}T\d{6})(?:[/\\]|$)/;
 
 /**
- * Walk up the directory tree from `startPath` to find the VS Code session root
- * directory — the directory whose name matches the session timestamp pattern
- * (e.g. `20260304T120000`).
+ * Extract the VS Code session root directory from a log file system path by
+ * scanning the path string for the `.../logs/<session>` segment.
  *
- * Returns the session root path, or `null` if not found within `maxLevels`.
- *
- * This handles both path structures that VS Code uses across platforms:
- *   - Without output_logging dir: `.../logs/<session>/exthost/<extension_id>`
- *   - With output_logging dir:    `.../logs/<session>/exthost/output_logging_X/<extension_id>`
+ * Returns the session root path (preserving the original path separators), or
+ * `null` if the expected `/logs/<timestamp>` pattern is not found.
  */
-export function findSessionRoot(startPath: string, maxLevels = 8): string | null {
-  let current = startPath;
-  for (let i = 0; i < maxLevels; i++) {
-    const name = path.basename(current);
-    if (SESSION_DIR_PATTERN.test(name)) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break; // reached filesystem root
-    }
-    current = parent;
-  }
-  return null;
+export function findSessionRoot(fsPath: string): string | null {
+  const match = fsPath.match(LOGS_SESSION_PATTERN);
+  return match ? match[1] : null;
 }
