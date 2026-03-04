@@ -90,7 +90,7 @@ let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let isRendering = false;
 
-const notifyHost = debounce((): void => {
+function handleApplyRange(): void {
   if (isRendering) {
     return;
   }
@@ -110,7 +110,7 @@ const notifyHost = debounce((): void => {
     interactive.style.pointerEvents = "none";
   }
   vscode.postMessage({ type: "changePeriod", payload: { startDate: start, endDate: end } } satisfies WebviewToHostMessage);
-}, 400);
+}
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -557,24 +557,6 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 }
 
 // ---------------------------------------------------------------------------
-// Debounce utility
-// ---------------------------------------------------------------------------
-
-function debounce<T extends (...args: unknown[]) => void>(
-  fn: T,
-  delayMs: number,
-): ((...args: Parameters<T>) => void) & { cancel(): void } {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return Object.assign(
-    (...args: Parameters<T>): void => {
-      clearTimeout(timer);
-      timer = setTimeout(() => fn(...args), delayMs);
-    },
-    { cancel: () => clearTimeout(timer) },
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Date range selector
 // ---------------------------------------------------------------------------
 
@@ -605,13 +587,11 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
       <input id="db-date-end" class="db-date-input" type="date"
         min="${escHtml(availableRange.minDate)}" max="${escHtml(availableRange.maxDate)}"
         value="${escHtml(selectedEnd)}">
+      <button id="db-btn-apply" class="db-export-btn" style="margin-left: 8px;">Apply</button>
     </div>`;
 
-  const startInput = document.getElementById("db-date-start") as HTMLInputElement | null;
-  const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
-
-  startInput?.addEventListener("change", notifyHost);
-  endInput?.addEventListener("change", notifyHost);
+  const applyBtn = document.getElementById("db-btn-apply");
+  applyBtn?.addEventListener("click", handleApplyRange);
 }
 
 // ---------------------------------------------------------------------------
@@ -807,7 +787,6 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
-  notifyHost.cancel();
   isRendering = true;
   try {
     // Always sync currentRange from the host-confirmed applied date range.
