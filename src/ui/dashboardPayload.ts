@@ -25,6 +25,14 @@ const AVG_CHARS_PER_COMPLETION = 40;
 /** Estimated developer typing speed in chars/min (used for ROI estimation). */
 const TYPING_SPEED_CPM = 200;
 
+/**
+ * Cognitive weight applied to autonomous AI duration when calculating agentic ROI.
+ * A value of 0.5 represents the 50% of autonomous time credited as developer time saved,
+ * acknowledging that developers still need to monitor and review AI actions.
+ * Intended to be made user-configurable in a future settings panel.
+ */
+const AGENTIC_COGNITIVE_WEIGHT = 0.5;
+
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
 
@@ -46,9 +54,8 @@ export function buildDashboardPayload(
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
-  // Agentic contribution: 50% of autonomous duration represents developer time freed up
-  // (factor 0.5 reflects that developers still need to monitor and review AI actions).
-  const agenticMinutesSaved = (stats.autonomousDurationMs / 60000) * 0.5;
+  // Agentic contribution: AGENTIC_COGNITIVE_WEIGHT of autonomous duration represents developer time freed up.
+  const agenticMinutesSaved = (stats.autonomousDurationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
   const estimatedMinutesSaved = typingMinutesSaved + agenticMinutesSaved;
   const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
