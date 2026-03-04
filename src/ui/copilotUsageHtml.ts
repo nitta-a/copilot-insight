@@ -10,15 +10,11 @@ const SESSION_ID_MAX_LENGTH = 20;
 
 export function getHtmlContent(
   stats: CopilotUsageStats,
-  startDate = "",
-  endDate = "",
   nonce = "",
   scriptUri = "",
   dashboardPayload?: DashboardPayload,
 ): string {
-  const dateData = Array.from(stats.byDate.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .filter(([date]) => !startDate || !endDate || (date >= startDate && date <= endDate));
+  const dateData = Array.from(stats.byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   const dateSection = buildDateSection(dateData, stats.chatByDate);
   const modelSection = buildModelBarChart(mergeStatsByNormalizedModel(stats.byModel), "🤖 Inline Completion Model");
@@ -160,25 +156,6 @@ export function getHtmlContent(
     .db-highlight { border: 1px solid var(--vscode-charts-blue); }
     .db-accent { color: var(--vscode-charts-blue); }
     .db-model { font-size: 1.1em; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .db-date-range {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 8px;
-    }
-    .db-date-range label { font-size: 0.85em; opacity: 0.8; }
-    .db-date-input {
-      background: var(--vscode-input-background, #3c3c3c);
-      color: var(--vscode-input-foreground, #cccccc);
-      border: 1px solid var(--vscode-input-border, transparent);
-      border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 0.85em;
-      font-family: var(--vscode-font-family);
-      cursor: pointer;
-    }
-    .db-date-input:focus { outline: 1px solid var(--vscode-focusBorder, #007fd4); }
     .db-export-btn {
       background: var(--vscode-button-background, #0078d4);
       color: var(--vscode-button-foreground, #fff);
@@ -230,8 +207,6 @@ export function getHtmlContent(
       <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
       <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
     </div>
-    <div id="db-period-selector" style="margin: 0 0 16px;"></div>
-
     <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span></span>

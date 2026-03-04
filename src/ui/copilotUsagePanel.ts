@@ -7,14 +7,6 @@ import { buildDashboardPayload } from "./dashboardPayload";
 import { getHtmlContent } from "./copilotUsageHtml";
 import { todayDateString } from "../utils";
 
-function getDateRange(stats: CopilotUsageStats): { startDate: string; endDate: string } {
-  const dates = Array.from(stats.byDate.keys()).sort();
-  return {
-    startDate: dates[0] ?? "",
-    endDate: dates[dates.length - 1] ?? "",
-  };
-}
-
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
   return crypto.randomBytes(16).toString("hex");
@@ -35,8 +27,6 @@ export class CopilotUsagePanel {
   private readonly _disposables: vscode.Disposable[] = [];
   private _stats: CopilotUsageStats;
   private _advanced: AdvancedMetrics;
-  private _startDate: string;
-  private _endDate: string;
 
   public static createOrShow(extensionUri: vscode.Uri, stats: CopilotUsageStats, advanced: AdvancedMetrics = {}): void {
     const column = vscode.window.activeTextEditor?.viewColumn;
@@ -45,9 +35,6 @@ export class CopilotUsagePanel {
       CopilotUsagePanel.currentPanel._panel.reveal(column);
       CopilotUsagePanel.currentPanel._stats = stats;
       CopilotUsagePanel.currentPanel._advanced = advanced;
-      const range = getDateRange(stats);
-      CopilotUsagePanel.currentPanel._startDate = range.startDate;
-      CopilotUsagePanel.currentPanel._endDate = range.endDate;
       CopilotUsagePanel.currentPanel._update();
       return;
     }
@@ -77,9 +64,6 @@ export class CopilotUsagePanel {
     this._extensionUri = extensionUri;
     this._stats = stats;
     this._advanced = advanced;
-    const range = getDateRange(stats);
-    this._startDate = range.startDate;
-    this._endDate = range.endDate;
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -89,15 +73,6 @@ export class CopilotUsagePanel {
       null,
       this._disposables,
     );
-  }
-
-  public updateDateRange(startDate: string, endDate: string): void {
-    if (!startDate || !endDate || startDate > endDate) {
-      return;
-    }
-    this._startDate = startDate;
-    this._endDate = endDate;
-    this._update();
   }
 
   public dispose(): void {
@@ -111,10 +86,6 @@ export class CopilotUsagePanel {
 
   private _handleWebviewMessage(msg: WebviewToHostMessage): void {
     switch (msg.type) {
-      case "changePeriod": {
-        this.updateDateRange(msg.payload.startDate, msg.payload.endDate);
-        break;
-      }
       case "exportMarkdown": {
         vscode.commands.executeCommand("copilot-insight.exportReport");
         break;
@@ -159,20 +130,11 @@ export class CopilotUsagePanel {
     );
     const payload = buildDashboardPayload(
       this._stats,
-      this._startDate,
-      this._endDate,
       this._advanced.trueAcceptance,
       this._advanced.velocity,
       this._advanced.modelPerformance,
     );
-    this._panel.webview.html = getHtmlContent(
-      this._stats,
-      this._startDate,
-      this._endDate,
-      nonce,
-      scriptUri.toString(),
-      payload,
-    );
+    this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 
     // Also push an update via postMessage so the WebView re-renders without
     // a full HTML reload (e.g. when only the period changes after first load).

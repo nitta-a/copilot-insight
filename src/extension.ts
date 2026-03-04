@@ -107,23 +107,6 @@ export function activate(context: vscode.ExtensionContext) {
     );
   });
 
-  const changeDailyUsagePeriodDisposable = vscode.commands.registerCommand(
-    "copilot-insight.changeDailyUsagePeriod",
-    (days: number) => {
-      if (!Number.isFinite(days) || days < 1 || days > 365) {
-        return;
-      }
-      const panel = CopilotUsagePanel.currentPanel;
-      if (!panel) {
-        return;
-      }
-      const endDate = new Date().toISOString().slice(0, 10);
-      const startMs = Date.now() - (days - 1) * 86400000;
-      const startDate = new Date(startMs).toISOString().slice(0, 10);
-      panel.updateDateRange(startDate, endDate);
-    },
-  );
-
   const refreshDisposable = vscode.commands.registerCommand("copilot-insight.refreshUsage", async () => {
     await vscode.window.withProgress(
       {
@@ -226,7 +209,6 @@ export function activate(context: vscode.ExtensionContext) {
     configWatcher,
     { dispose: () => clearInterval(statusBarTimer) },
     showCopilotUsageDisposable,
-    changeDailyUsagePeriodDisposable,
     refreshDisposable,
     exportCsvDisposable,
     exportJsonDisposable,
