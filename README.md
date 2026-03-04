@@ -17,7 +17,7 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
   - Overall acceptance rate, **True Acceptance Rate**, and estimated **minutes saved (ROI)**
   - **Best model** highlight derived from cross-language model performance
   - Breakdown by programming language (top N languages configurable)
-  - Daily usage chart with acceptance rate trendline (last 7 / 14 / 30 days)
+  - Daily usage chart with acceptance rate trendline (full span of available log data)
   - Weekly trend comparison (this week vs. last week)
   - AI model usage breakdown — Chat vs. Inline Completion, with per-model acceptance rate
   - Activity heatmap by hour of day
@@ -26,6 +26,8 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
   - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
   - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown
   - 🌊 **Flow (Velocity)**: KPM vs completions scatter plot, activity heatmaps, context-source insights
+- **Real-time Status Bar** — live acceptance rate indicator in the VS Code status bar (`$(copilot) 73% (42/58)`); updates every 3 seconds during your coding session and opens the dashboard on click
+- **MCP Server** — built-in Model Context Protocol server lets external AI agents (Claude Desktop, VS Code Copilot Chat, etc.) query your usage statistics via `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; no cloud or external network access required
 - **Activity Bar** — dedicated sidebar view with quick-access buttons
 - **Export** — export your statistics as CSV, JSON, Markdown report, or **PNG chart screenshot**
 - **Refresh** — re-parse logs at any time with a single click
@@ -43,7 +45,6 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 | Setting | Default | Description |
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `5` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
-| `copilot-insight.defaultDisplayDays` | `14` | Default date range for the Daily Usage chart (`7`, `14`, or `30` days) |
 | `copilot-insight.topLanguagesCount` | `10` | Number of top languages shown in the Language chart (3–30) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance) |
 
@@ -82,7 +83,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - 全体の受け入れ率・**真の受け入れ率 (True Acceptance Rate)**・推定**節約時間 (ROI)**
   - クロス言語モデル性能から導出した**ベストモデル**ハイライト
   - プログラミング言語別の内訳 (表示言語数は設定で変更可能)
-  - 日次使用チャートと受け入れ率のトレンドライン (直近 7 / 14 / 30 日)
+  - 日次使用チャートと受け入れ率のトレンドライン (利用可能なログデータの全期間)
   - 週次トレンド比較 (今週 vs 先週)
   - AIモデル別の使用状況 — Chat vs. インライン補完、モデルごとの受け入れ率
   - 時間帯別のアクティビティヒートマップ
@@ -91,6 +92,8 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
   - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳
   - 🌊 **Flow (Velocity)**: KPM vs 補完受け入れ数の散布図・アクティビティヒートマップ・コンテキストソースインサイト
+- **リアルタイムステータスバー** — VS Code のステータスバーにライブの受け入れ率インジケーターを表示 (`$(copilot) 73% (42/58)`)。コーディング中に 3 秒ごとに更新され、クリックするとダッシュボードが開く
+- **MCP サーバー** — 組み込みの Model Context Protocol サーバーにより、外部 AI エージェント (Claude Desktop・VS Code Copilot Chat など) が `get_usage_summary`・`get_model_efficiency`・`get_anomaly_report` ツールを通じて使用統計を照会可能。クラウドや外部ネットワークへのアクセス不要
 - **アクティビティバー** — サイドバーに専用ビューとクイックアクセスボタン
 - **エクスポート** — 統計を CSV・JSON・Markdown レポート・**PNG チャートスクリーンショット**として書き出し
 - **更新** — ワンクリックでログを再解析
@@ -108,7 +111,6 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 | 設定 | デフォルト | 説明 |
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `5` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
-| `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (`7`・`14`・`30` 日) |
 | `copilot-insight.topLanguagesCount` | `10` | 言語チャートに表示するトップ言語数 (3〜30) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする (真の受け入れ率・速度・モデル性能)。無効にするとイベントログは継続されるが、メトリクスダッシュボードは利用不可 |
 

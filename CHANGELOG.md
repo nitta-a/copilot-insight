@@ -4,6 +4,11 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.10] - 2026-03-04
+
+### Changed
+- 📄 **README** — updated documentation to reflect current features: removed the date-range period reference (eliminated in 1.0.9), removed the unused `defaultDisplayDays` configuration entry, and added the Real-time Status Bar indicator and MCP Server integration to the feature list
+
 ## [1.0.9] - 2026-03-04
 
 ### Removed
