@@ -88,6 +88,7 @@ let currentRange: { start: string; end: string } | undefined;
 let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
+let isRendering = false;
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -555,6 +556,17 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
     return;
   }
 
+  const existingStart = document.getElementById("db-date-start") as HTMLInputElement | null;
+  const existingEnd = document.getElementById("db-date-end") as HTMLInputElement | null;
+
+  if (existingStart && existingEnd) {
+    // Inputs already exist — only update values to avoid re-registering listeners
+    // and prevent spurious change events from being dispatched.
+    existingStart.value = selectedStart;
+    existingEnd.value = selectedEnd;
+    return;
+  }
+
   el.innerHTML = `
     <div class="db-date-range">
       <label for="db-date-start">From</label>
@@ -571,9 +583,15 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
   const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
 
   const notifyHost = debounce(() => {
+    if (isRendering) {
+      return;
+    }
     const start = startInput?.value ?? "";
     const end = endInput?.value ?? "";
     if (!start || !end || start > end) {
+      return;
+    }
+    if (currentRange && currentRange.start === start && currentRange.end === end) {
       return;
     }
     currentRange = { start, end };
@@ -710,7 +728,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
        </table>`
     : "";
 
-  el.innerHTML = `
+  const statsHtml = `
     <hr class="db-section-sep">
     <h2>🤖 Agent Intelligence Overview</h2>
     <div class="stats-grid">
@@ -741,24 +759,39 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
       </div>
       ${durationCell}
     </div>
-    ${modelTable}
-    <div id="db-model-depth-chart" style="margin-top:16px"></div>
-    <div id="db-agentic-scatter" style="margin-top:4px"></div>`;
+    ${modelTable}`;
+
+  // Update the stats section without destroying the React container elements.
+  // On the first render, build the full structure (stats wrapper + React containers).
+  // On subsequent renders, only update the stats wrapper's innerHTML.
+  let statsEl = document.getElementById("db-agent-stats");
+  if (!statsEl) {
+    el.innerHTML =
+      '<div id="db-agent-stats"></div>' +
+      '<div id="db-model-depth-chart" style="margin-top:16px"></div>' +
+      '<div id="db-agentic-scatter" style="margin-top:4px"></div>';
+    statsEl = document.getElementById("db-agent-stats");
+  }
+  if (statsEl) {
+    statsEl.innerHTML = statsHtml;
+  }
 
   // Mount React chart components into the containers just added.
   const modelData = overview.autonomousRatioByModel;
 
   const depthEl = document.getElementById("db-model-depth-chart");
   if (depthEl) {
-    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
-    depthVelocityChartRoot = createRoot(depthEl);
+    if (!depthVelocityChartRoot) {
+      depthVelocityChartRoot = createRoot(depthEl);
+    }
     depthVelocityChartRoot.render(createElement(ModelDepthVelocityChart, { data: modelData }));
   }
 
   const scatterEl = document.getElementById("db-agentic-scatter");
   if (scatterEl) {
-    scatterPlotRoot = unmountRoot(scatterPlotRoot);
-    scatterPlotRoot = createRoot(scatterEl);
+    if (!scatterPlotRoot) {
+      scatterPlotRoot = createRoot(scatterEl);
+    }
     scatterPlotRoot.render(createElement(AgenticEfficiencyScatterPlot, { data: modelData }));
   }
 }
@@ -768,25 +801,30 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
-  // Initialize currentRange on first render; preserve user selection on subsequent renders.
-  if (!currentRange) {
-    currentRange = { start: payload.availableRange.minDate, end: payload.availableRange.maxDate };
-  }
-  const selectedStart = currentRange.start || payload.availableRange.minDate;
-  const selectedEnd = currentRange.end || payload.availableRange.maxDate;
-  renderAnomalyBanner(payload.timeline);
-  renderSummaryCards(payload.summary);
-  renderInsights(payload.insights);
-  renderWeeklyTrend(payload.weeklyTrend);
-  renderAgentIntelligenceOverview(payload.agenticStats);
-  renderTimelineChart(payload.timeline);
-  renderVelocityChart(payload.velocityPoints);
-  renderDateRangeSelector(payload.availableRange, selectedStart, selectedEnd);
-  // Clear loading state set by the period selector.
-  const interactive = document.getElementById("db-interactive");
-  if (interactive) {
-    interactive.style.opacity = "";
-    interactive.style.pointerEvents = "";
+  isRendering = true;
+  try {
+    // Initialize currentRange on first render; preserve user selection on subsequent renders.
+    if (!currentRange) {
+      currentRange = { start: payload.availableRange.minDate, end: payload.availableRange.maxDate };
+    }
+    const selectedStart = currentRange.start || payload.availableRange.minDate;
+    const selectedEnd = currentRange.end || payload.availableRange.maxDate;
+    renderAnomalyBanner(payload.timeline);
+    renderSummaryCards(payload.summary);
+    renderInsights(payload.insights);
+    renderWeeklyTrend(payload.weeklyTrend);
+    renderAgentIntelligenceOverview(payload.agenticStats);
+    renderTimelineChart(payload.timeline);
+    renderVelocityChart(payload.velocityPoints);
+    renderDateRangeSelector(payload.availableRange, selectedStart, selectedEnd);
+    // Clear loading state set by the period selector.
+    const interactive = document.getElementById("db-interactive");
+    if (interactive) {
+      interactive.style.opacity = "";
+      interactive.style.pointerEvents = "";
+    }
+  } finally {
+    isRendering = false;
   }
 }
 
