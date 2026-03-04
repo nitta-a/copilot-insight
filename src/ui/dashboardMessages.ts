@@ -124,6 +124,8 @@ export interface DashboardPayload {
   days: number;
   /** The full available date range present in the data. */
   availableRange: { minDate: string; maxDate: string };
+  /** The date range that was actually applied to generate this payload. */
+  selectedRange: { startDate: string; endDate: string };
   summary: SummaryData;
   timeline: TimelineEntry[];
   velocityPoints: VelocityPoint[];

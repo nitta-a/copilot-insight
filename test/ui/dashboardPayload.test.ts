@@ -155,6 +155,27 @@ suite("buildDashboardPayload", () => {
     });
   });
 
+  suite("selectedRange", () => {
+    test("selectedRange reflects the startDate/endDate arguments passed in", () => {
+      const payload = buildDashboardPayload(makeStats(), "2026-02-25", "2026-02-26");
+      assert.strictEqual(payload.selectedRange.startDate, "2026-02-25");
+      assert.strictEqual(payload.selectedRange.endDate, "2026-02-26");
+    });
+
+    test("selectedRange falls back to availableRange when startDate/endDate are empty", () => {
+      const payload = buildDashboardPayload(makeStats(), "", "");
+      assert.strictEqual(payload.selectedRange.startDate, payload.availableRange.minDate);
+      assert.strictEqual(payload.selectedRange.endDate, payload.availableRange.maxDate);
+    });
+
+    test("selectedRange can differ from availableRange (custom window)", () => {
+      // stats span 2026-02-24 to 2026-02-27 but we request a sub-range
+      const payload = buildDashboardPayload(makeStats(), "2026-02-25", "2026-02-26");
+      assert.notStrictEqual(payload.selectedRange.startDate, payload.availableRange.minDate);
+      assert.strictEqual(payload.selectedRange.startDate, "2026-02-25");
+    });
+  });
+
   suite("velocityPoints", () => {
     test("velocityPoints is empty when no velocity passed", () => {
       const payload = buildDashboardPayload(makeStats(), "2026-02-24", "2026-02-27");

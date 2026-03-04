@@ -231,6 +231,10 @@ export function buildDashboardPayload(
   return {
     days: timeline.length,
     availableRange,
+    selectedRange: {
+      startDate: startDate || availableRange.minDate,
+      endDate: endDate || availableRange.maxDate,
+    },
     summary,
     timeline,
     velocityPoints,

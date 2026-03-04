@@ -89,7 +89,28 @@ let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let isRendering = false;
-let notifyHost: ((() => void) & { cancel(): void }) | null = null;
+
+const notifyHost = debounce((): void => {
+  if (isRendering) {
+    return;
+  }
+  const start = (document.getElementById("db-date-start") as HTMLInputElement | null)?.value ?? "";
+  const end = (document.getElementById("db-date-end") as HTMLInputElement | null)?.value ?? "";
+  if (!start || !end || start > end) {
+    return;
+  }
+  if (currentRange && currentRange.start === start && currentRange.end === end) {
+    return;
+  }
+  currentRange = { start, end };
+  vscode.setState({ currentRange, currentTab });
+  const interactive = document.getElementById("db-interactive");
+  if (interactive) {
+    interactive.style.opacity = "0.6";
+    interactive.style.pointerEvents = "none";
+  }
+  vscode.postMessage({ type: "changePeriod", payload: { startDate: start, endDate: end } } satisfies WebviewToHostMessage);
+}, 400);
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -589,28 +610,6 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
   const startInput = document.getElementById("db-date-start") as HTMLInputElement | null;
   const endInput = document.getElementById("db-date-end") as HTMLInputElement | null;
 
-  notifyHost = debounce(() => {
-    if (isRendering) {
-      return;
-    }
-    const start = startInput?.value ?? "";
-    const end = endInput?.value ?? "";
-    if (!start || !end || start > end) {
-      return;
-    }
-    if (currentRange && currentRange.start === start && currentRange.end === end) {
-      return;
-    }
-    currentRange = { start, end };
-    vscode.setState({ currentRange, currentTab });
-    const interactive = document.getElementById("db-interactive");
-    if (interactive) {
-      interactive.style.opacity = "0.6";
-      interactive.style.pointerEvents = "none";
-    }
-    vscode.postMessage({ type: "changePeriod", payload: { startDate: start, endDate: end } } satisfies WebviewToHostMessage);
-  }, 400);
-
   startInput?.addEventListener("change", notifyHost);
   endInput?.addEventListener("change", notifyHost);
 }
@@ -808,15 +807,13 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
-  notifyHost?.cancel();
+  notifyHost.cancel();
   isRendering = true;
   try {
-    // Initialize currentRange on first render; preserve user selection on subsequent renders.
-    if (!currentRange) {
-      currentRange = { start: payload.availableRange.minDate, end: payload.availableRange.maxDate };
-    }
-    const selectedStart = currentRange.start || payload.availableRange.minDate;
-    const selectedEnd = currentRange.end || payload.availableRange.maxDate;
+    // Always sync currentRange from the host-confirmed applied date range.
+    currentRange = { start: payload.selectedRange.startDate, end: payload.selectedRange.endDate };
+    const selectedStart = currentRange.start;
+    const selectedEnd = currentRange.end;
     renderAnomalyBanner(payload.timeline);
     renderSummaryCards(payload.summary);
     renderInsights(payload.insights);
