@@ -594,15 +594,23 @@ function renderDateRangeSelector(availableRange: { minDate: string; maxDate: str
 // Export buttons
 // ---------------------------------------------------------------------------
 
+function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "overview"): void {
+  const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+  const imageData = canvas?.toDataURL("image/png") ?? "";
+  vscode.postMessage({ type: "exportPng", payload: { imageData, chartId } } satisfies WebviewToHostMessage);
+}
+
 function setupExportButtons(): void {
   document.getElementById("db-btn-export-md")?.addEventListener("click", () => {
     vscode.postMessage({ type: "exportMarkdown" } satisfies WebviewToHostMessage);
   });
 
-  document.getElementById("db-btn-export-png")?.addEventListener("click", () => {
-    const canvas = document.getElementById("db-timeline-chart") as HTMLCanvasElement | null;
-    const imageData = canvas?.toDataURL("image/png") ?? "";
-    vscode.postMessage({ type: "exportPng", payload: { imageData } } satisfies WebviewToHostMessage);
+  document.getElementById("db-btn-export-png-health")?.addEventListener("click", () => {
+    exportChartAsPng("db-timeline-chart", "timeline");
+  });
+
+  document.getElementById("db-btn-export-png-flow")?.addEventListener("click", () => {
+    exportChartAsPng("db-velocity-chart", "velocity");
   });
 }
 

@@ -31,6 +31,11 @@ export interface ReportOptions {
   velocity?: VelocityAnalysisResult;
   /** Model performance cross-tab (optional). */
   modelPerformance?: ModelPerformanceResult;
+  /**
+   * Auto-generated insight strings from the dashboard (optional).
+   * When provided, these are appended verbatim in an "Insights" section.
+   */
+  insights?: string[];
 }
 
 /**
@@ -45,6 +50,23 @@ const AVG_CHARS_PER_COMPLETION = 40;
  * Used to estimate time saved by Copilot completions.
  */
 const TYPING_SPEED_CPM = 200;
+
+/**
+ * Format a millisecond duration into a human-readable string (e.g. "2h 5m 30s").
+ */
+function formatDurationMs(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}h ${m}m ${s}s`;
+  }
+  if (m > 0) {
+    return `${m}m ${s}s`;
+  }
+  return `${s}s`;
+}
 
 /**
  * Generate a Markdown report from Copilot usage statistics.
@@ -77,7 +99,84 @@ export function generateMarkdownReport(options: ReportOptions): string {
   lines.push(`| Log Files Parsed | ${stats.logFilesFound} |`);
   lines.push("");
 
-  // --- 2. Acceptance Analysis ---
+  // --- 2. Agentic ROI ---
+  if (stats.subagentRequests > 0) {
+    lines.push("## Agentic ROI");
+    lines.push("");
+    lines.push(
+      `> 🤖 **AI Autonomous Time: ${formatDurationMs(stats.autonomousDurationMs)}** — time during which Copilot was autonomously acting on your behalf.`,
+    );
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Autonomous Duration | ${formatDurationMs(stats.autonomousDurationMs)} |`);
+    lines.push(`| Agentic Requests | ${stats.subagentRequests} |`);
+    lines.push(`| Agentic Ratio | ${stats.agenticRatio.toFixed(1)}% |`);
+    lines.push(`| Episodes Completed | ${stats.subagentLoops} |`);
+    lines.push(`| Episodes Started | ${stats.subagentLoopsStarted} |`);
+    lines.push(
+      `| Episode Completion Rate | ${stats.completionRate > 0 ? `${stats.completionRate.toFixed(1)}%` : "—"} |`,
+    );
+    lines.push("");
+  }
+
+  // --- 3. Intelligence Overview ---
+  if (stats.subagentRequests > 0) {
+    const totalLoops = stats.subagentLoops;
+    const avgCallsPerLoop = totalLoops > 0 ? stats.subagentRequests / totalLoops : 0;
+    lines.push("## Intelligence Overview");
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Total Autonomous Actions | ${stats.subagentRequests} |`);
+    lines.push(`| Completed Agentic Loops | ${stats.subagentLoops} |`);
+    lines.push(`| Avg Calls / Loop (Thinking Depth) | ${avgCallsPerLoop > 0 ? avgCallsPerLoop.toFixed(1) : "—"} |`);
+    lines.push(
+      `| Episode Completion Rate | ${stats.completionRate > 0 ? `${stats.completionRate.toFixed(1)}%` : "—"} |`,
+    );
+    lines.push("");
+  }
+
+  // --- 4. Model Comparison ---
+  if (stats.subagentByModel.size > 0) {
+    lines.push("## Model Comparison");
+    lines.push("");
+    lines.push("| Model | Autonomous Actions | Autonomous Ratio | Avg sec / Action |");
+    lines.push("|-------|-------------------|------------------|-----------------|");
+
+    // Build sorted model list with combined stats
+    const modelEntries: Array<{
+      model: string;
+      subagentCount: number;
+      ratio: number;
+      velocitySecondsPerAction: number;
+    }> = [];
+
+    for (const [model, subagentCount] of stats.subagentByModel) {
+      const durationMs = stats.autonomousDurationByModel.get(model) ?? 0;
+      const depthStat = stats.agenticDepthByModel.get(model);
+      const velocityMs = depthStat?.velocityMsPerAction ?? 0;
+      const velocitySec =
+        velocityMs > 0
+          ? velocityMs / 1000
+          : durationMs > 0 && subagentCount > 0
+            ? durationMs / subagentCount / 1000
+            : 0;
+      const ratio = stats.agenticRatio > 0 ? (subagentCount / stats.subagentRequests) * stats.agenticRatio : 0;
+      modelEntries.push({ model, subagentCount, ratio, velocitySecondsPerAction: velocitySec });
+    }
+
+    modelEntries.sort((a, b) => b.subagentCount - a.subagentCount);
+
+    for (const entry of modelEntries.slice(0, 20)) {
+      const velocityStr = entry.velocitySecondsPerAction > 0 ? `${entry.velocitySecondsPerAction.toFixed(1)}s` : "—";
+      const ratioStr = entry.ratio > 0 ? `${entry.ratio.toFixed(1)}%` : "—";
+      lines.push(`| ${entry.model} | ${entry.subagentCount} | ${ratioStr} | ${velocityStr} |`);
+    }
+    lines.push("");
+  }
+
+  // --- 5. Acceptance Analysis ---
   if (options.trueAcceptance) {
     const ta = options.trueAcceptance;
     lines.push("## Acceptance Analysis");
@@ -97,7 +196,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
     }
   }
 
-  // --- 3. Model Performance ---
+  // --- 6. Model Performance ---
   if (options.modelPerformance && options.modelPerformance.crossTab.length > 0) {
     const mp = options.modelPerformance;
     lines.push("## Model Performance");
@@ -121,7 +220,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
     }
   }
 
-  // --- 5. Velocity / Flow ---
+  // --- 7. Velocity / Flow ---
   if (options.velocity) {
     const v = options.velocity;
     lines.push("## Velocity & Flow Analysis");
@@ -138,7 +237,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
     }
   }
 
-  // --- 6. ROI Estimation ---
+  // --- 8. ROI Estimation ---
   lines.push("## ROI Estimation");
   lines.push("");
   const estimatedChars = stats.totalAccepted * AVG_CHARS_PER_COMPLETION;
@@ -150,6 +249,16 @@ export function generateMarkdownReport(options: ReportOptions): string {
     `- **Calculation:** ${stats.totalAccepted} accepted × ${AVG_CHARS_PER_COMPLETION} avg chars ÷ ${TYPING_SPEED_CPM} chars/min`,
   );
   lines.push("");
+
+  // --- 9. Insights ---
+  if (options.insights && options.insights.length > 0) {
+    lines.push("## Insights");
+    lines.push("");
+    for (const insight of options.insights) {
+      lines.push(`- ${insight}`);
+    }
+    lines.push("");
+  }
 
   lines.push("---");
   lines.push(
