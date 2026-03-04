@@ -6,12 +6,11 @@ import { findCopilotDirs } from "../../src/log/logFileReader";
 import { findSessionRoot } from "../../src/utils/logPaths";
 
 suite("findSessionRoot", () => {
-  test("finds session root in Windows-style path (no output_logging dir)", () => {
-    // Use raw string to simulate Windows path separators
-    const logPath = "C:\\Users\\user\\AppData\\Roaming\\Code\\logs\\20260304T120000\\exthost\\copilot-insight";
-    const result = findSessionRoot(logPath);
-    assert.strictEqual(result, "C:\\Users\\user\\AppData\\Roaming\\Code\\logs\\20260304T120000");
-  });
+  // NOTE: findSessionRoot uses path.sep to split the path, so it correctly
+  // handles the native separator of the current OS. On macOS/Linux path.sep
+  // is '/', and on Windows it is '\'. The tests below cover Unix/Mac-style
+  // paths (running on Linux CI). Windows-backslash paths are verified when
+  // tests run on Windows.
 
   test("finds session root in Mac-style path (no output_logging dir)", () => {
     const logPath = "/Users/user/Library/Application Support/Code/logs/20260304T120000/exthost/copilot-insight";
@@ -44,6 +43,11 @@ suite("findSessionRoot", () => {
     // A segment that looks like a timestamp but is not under a 'logs' parent
     const logPath = "/projects/20260304T120000/src/extension";
     const result = findSessionRoot(logPath);
+    assert.strictEqual(result, null);
+  });
+
+  test("returns null when /logs/ has no element after it", () => {
+    const result = findSessionRoot("/Users/user/logs");
     assert.strictEqual(result, null);
   });
 

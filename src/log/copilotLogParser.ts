@@ -72,10 +72,11 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
   };
 
   try {
-    // Locate the VS Code session root by scanning the path string for the
-    // `.../logs/<timestamp>` segment — depth-independent and cross-platform.
+    // Locate the VS Code session root by splitting fsPath on the native
+    // separator and finding the `logs` landmark segment — depth-independent
+    // and correct on both macOS ('/') and Windows ('\').
     const channel = getOutputChannel();
-    channel.appendLine(`Log URI: ${logUri.fsPath}`);
+    channel.appendLine(`Original logUri: ${logUri.fsPath}`);
 
     const sessionRoot = findSessionRoot(logUri.fsPath);
     channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);

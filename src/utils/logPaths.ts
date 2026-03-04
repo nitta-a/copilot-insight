@@ -1,25 +1,36 @@
-/**
- * Regex to identify VS Code session root directories within a log path.
- *
- * Matches the `.../logs/<session>` prefix of any VS Code log path, where
- * `<session>` is a timestamp directory such as `20260304T120000`.
- * Handles both forward-slash (Unix/Mac) and backslash (Windows) separators.
- *
- * Using a direct string match rather than walking up the directory tree makes
- * this robust to any number of intermediate directories between the session
- * root and the extension's log folder (e.g. the `output_logging_X` level that
- * macOS VS Code inserts between `exthost/` and the extension directory).
- */
-const LOGS_SESSION_PATTERN = /^(.*[/\\]logs[/\\]\d{8}T\d{6})(?:[/\\]|$)/;
+import * as path from "node:path";
+
+/** Pattern for VS Code session directory names (e.g. `20260304T120000`). */
+const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
 
 /**
- * Extract the VS Code session root directory from a log file system path by
- * scanning the path string for the `.../logs/<session>` segment.
+ * Locate the VS Code session root directory from `fsPath` by splitting on the
+ * native path separator and searching for the `logs` landmark segment.
  *
- * Returns the session root path (preserving the original path separators), or
- * `null` if the expected `/logs/<timestamp>` pattern is not found.
+ * VS Code always places session directories directly inside a `logs` folder:
+ *   - macOS:   `.../Application Support/Code/logs/<session>/exthost/...`
+ *   - Windows: `...\AppData\Roaming\Code\logs\<session>\exthost\...`
+ *
+ * Splitting on the native separator and finding the `logs` element lets us
+ * locate the session root regardless of how many extra directories (e.g.
+ * `output_logging_X`) exist between the session root and the extension dir.
+ *
+ * Returns the session root path (joined with the native separator), or `null`
+ * if the expected `logs/<timestamp>` segment is not present in the path.
  */
 export function findSessionRoot(fsPath: string): string | null {
-  const match = fsPath.match(LOGS_SESSION_PATTERN);
-  return match ? match[1] : null;
+  const parts = fsPath.split(path.sep);
+  const logsIdx = parts.indexOf("logs");
+  if (logsIdx === -1 || logsIdx + 1 >= parts.length) {
+    return null;
+  }
+  const sessionId = parts[logsIdx + 1];
+  if (!SESSION_DIR_PATTERN.test(sessionId)) {
+    return null;
+  }
+  // Reconstruct the path up to and including the session directory.
+  // Join with the native separator directly (not path.join) so that a leading
+  // empty element from splitting a Unix absolute path (e.g. '/Users/...')
+  // is preserved as the root separator '/'.
+  return parts.slice(0, logsIdx + 2).join(path.sep);
 }
