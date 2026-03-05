@@ -1581,3 +1581,83 @@ suite("real log format: agenticMinutesSaved end-to-end data flow", () => {
     assert.ok(Math.abs(ctx.autonomousDurationMs - 180_000) < 100, "total duration should be ~180s");
   });
 });
+
+suite("planning tracking from ccreq intents", () => {
+  test("panel/unknown ccreq increments planCount and sets activePlanPending", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.activePlanPending, true);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+  });
+
+  test("panel/editAgent after panel/unknown increments executedPlanCount and clears activePlanPending", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("panel/editAgent without prior panel/unknown does not increment executedPlanCount", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 0);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("panel/unknown followed by non-agentic ccreq leaves executedPlanCount at 0", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    // A regular chat request — not an agentic execution
+    parseTextLogLine(
+      "2026-03-06 09:00:03.000 [info] ccreq:chat01.copilotmd | success | gpt-5-mini | 800ms | [copilotLanguageModelWrapper]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+    assert.strictEqual(ctx.activePlanPending, true);
+  });
+
+  test("multiple plan/execute cycles accumulate correctly", () => {
+    const ctx = makeEmptyStats();
+    // Cycle 1
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    // Cycle 2
+    parseTextLogLine(
+      "2026-03-06 09:01:00.000 [info] ccreq:plan02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:01:05.000 [info] ccreq:edit02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 2);
+    assert.strictEqual(ctx.executedPlanCount, 2);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+});

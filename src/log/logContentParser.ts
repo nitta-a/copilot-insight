@@ -385,7 +385,17 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
     const displayName = INTENT_DISPLAY_NAMES[rawIntent] ?? rawIntent;
     incrementCount(ctx.byChatIntent, displayName);
   }
+  // panel/unknown is the Copilot "Plan" mode intent: a plan was proposed.
+  if (rawIntent === "panel/unknown") {
+    ctx.planCount++;
+    ctx.activePlanPending = true;
+  }
   if (SUBAGENT_INTENTS.has(rawIntent)) {
+    // If a plan was pending execution, the first agentic request fulfils it.
+    if (ctx.activePlanPending) {
+      ctx.executedPlanCount++;
+      ctx.activePlanPending = false;
+    }
     ctx.subagentRequests++;
     // Extract the short intent name (e.g. "tool/runSubagent" → "runSubagent")
     const shortIntent = rawIntent.split("/").pop() ?? rawIntent;
