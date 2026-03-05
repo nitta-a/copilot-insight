@@ -1,8 +1,8 @@
+import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as vscode from "vscode";
-import { parseLogContent } from "./logContentParser";
 import type { ParsingContext } from "../types";
+import { parseLogContent } from "./logContentParser";
 
 function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
@@ -88,30 +88,39 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
 }
 
 /**
- * Parse `remoteexthost.log` from a session directory when present.
+ * Parse `remoteexthost.log` from each `exthost*` subdirectory within a session
+ * directory.
  *
- * In VS Code Remote / WSL environments the extension host runs inside a
- * remote process and writes its log to `<session>/remoteexthost.log` rather
- * than (or in addition to) a normal `exthost` subdirectory.  This file often
- * contains MCP server messages and agentic-loop signals that are otherwise
- * absent from the regular copilot log directories.
- *
- * The file is read into memory at once (consistent with other log parsing in
- * this module).  It silently skips the file if it does not exist.
+ * In VS Code Remote / WSL environments the extension host runs inside a per-
+ * workspace remote process.  VS Code creates one or more numbered `exthost<N>`
+ * subdirectories under the session root (e.g. `20260228T180728/exthost1/`) and
+ * writes `remoteexthost.log` inside each of them — NOT at the session root.
+ * This function iterates over all `exthost*` siblings and parses every
+ * `remoteexthost.log` it finds, silently skipping missing or unreadable files.
  */
 export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
-  const filePath = path.join(sessionDir, "remoteexthost.log");
+  let entries: string[];
   try {
-    await fs.access(filePath);
+    entries = await fs.readdir(sessionDir);
   } catch {
-    // File does not exist — skip silently
     return;
   }
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    parseLogContent(content, ctx);
-    ctx.logFilesFound++;
-  } catch {
-    // Skip unreadable file
+  for (const entry of entries) {
+    if (!/^exthost/i.test(entry)) {
+      continue;
+    }
+    const filePath = path.join(sessionDir, entry, "remoteexthost.log");
+    try {
+      await fs.access(filePath);
+    } catch {
+      continue;
+    }
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      parseLogContent(content, ctx);
+      ctx.logFilesFound++;
+    } catch {
+      // Skip unreadable file
+    }
   }
 }

@@ -582,7 +582,7 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
  */
 function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolean {
   const lower = line.toLowerCase();
-  if (!lower.includes("[toolcallingloop]") || !lower.includes("shouldcontinue=false")) {
+  if (!lower.includes("[toolcallingloop]") || !/shouldcontinue\s*=\s*false/.test(lower)) {
     return false;
   }
   ctx.subagentLoops++;
@@ -639,6 +639,11 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
+  // Planning & Execution stats are checked first so that workspace/editFile
+  // and apply_patch lines are not shadowed by the context provider parser
+  // (which would consume any line containing the word "workspace").
+  trackPlanningStats(lineCtx.lower, ctx);
+
   if (parseToolCallingLoopStopLine(line, ctx)) {
     return;
   }
@@ -654,8 +659,6 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   if (parseContextProviderLine(line, lineCtx.lower, ctx)) {
     return;
   }
-  // Planning & Execution: check plain-text lines for plan/execution signals.
-  trackPlanningStats(lineCtx.lower, ctx);
   parseLegacyKeywordLine(line, lineCtx.lower, lineCtx.dateKey, ctx);
 }
 

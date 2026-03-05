@@ -1,10 +1,10 @@
-import * as assert from "assert";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as assert from "assert";
 import { findCopilotDirs, parseRemoteExthostLog } from "../../src/log/logFileReader";
-import { findSessionRoot } from "../../src/utils/logPaths";
 import type { ParsingContext } from "../../src/types";
+import { findSessionRoot } from "../../src/utils/logPaths";
 
 suite("findSessionRoot", () => {
   // NOTE: findSessionRoot uses path.sep to split the path, so it correctly
@@ -235,28 +235,62 @@ suite("parseRemoteExthostLog", () => {
     };
   }
 
-  test("silently skips when remoteexthost.log does not exist", async () => {
+  test("silently skips when no exthost subdirectories exist", async () => {
+    // Empty session dir — no exthost* dirs at all
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(ctx.logFilesFound, 0);
   });
 
-  test("parses remoteexthost.log and increments logFilesFound", async () => {
-    // Write a minimal log line that the parser recognizes
+  test("silently skips when exthost dirs exist but contain no remoteexthost.log", async () => {
+    // exthost1 present but no remoteexthost.log inside
+    await fs.mkdir(path.join(tmpDir, "exthost1"));
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 0);
+  });
+
+  test("parses remoteexthost.log inside exthost1 and increments logFilesFound", async () => {
+    // Real layout: <session>/exthost1/remoteexthost.log
     const logContent = '{"envelope":{"type":"completion/shown","requestId":"r1"}}\n';
-    await fs.writeFile(path.join(tmpDir, "remoteexthost.log"), logContent, "utf-8");
+    await fs.mkdir(path.join(tmpDir, "exthost1"));
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), logContent, "utf-8");
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(ctx.logFilesFound, 1);
   });
 
-  test("parses log content from remoteexthost.log (acceptance counted)", async () => {
-    const shown = '{"envelope":{"type":"completion/shown","requestId":"r1"}}\n';
-    const accepted = '{"envelope":{"type":"completion/accepted","requestId":"r1"}}\n';
-    await fs.writeFile(path.join(tmpDir, "remoteexthost.log"), shown + accepted, "utf-8");
+  test("parses remoteexthost.log content (acceptance counted) from exthost subdir", async () => {
+    // Use the plain-text format that parseLegacyKeywordLine recognises.
+    const shown = "suggestion shown\n";
+    const accepted = "suggestion accepted\n";
+    await fs.mkdir(path.join(tmpDir, "exthost1"));
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), shown + accepted, "utf-8");
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(ctx.totalShown, 1);
     assert.strictEqual(ctx.totalAccepted, 1);
+  });
+
+  test("parses remoteexthost.log from multiple numbered exthost dirs (e.g. exthost1 and exthost82)", async () => {
+    // Session with multiple exthost processes — each has its own remoteexthost.log
+    const logContent = "suggestion shown\n";
+    await fs.mkdir(path.join(tmpDir, "exthost1"));
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), logContent, "utf-8");
+    await fs.mkdir(path.join(tmpDir, "exthost82"));
+    await fs.writeFile(path.join(tmpDir, "exthost82", "remoteexthost.log"), logContent, "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 2);
+    assert.strictEqual(ctx.totalShown, 2);
+  });
+
+  test("ignores non-exthost sibling directories in session dir", async () => {
+    // remoteagent.log and ptyhost.log live next to exthost dirs — should be ignored
+    await fs.mkdir(path.join(tmpDir, "somedir"));
+    await fs.writeFile(path.join(tmpDir, "somedir", "remoteexthost.log"), "anything\n", "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 0);
   });
 });
