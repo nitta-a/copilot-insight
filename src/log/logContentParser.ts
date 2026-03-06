@@ -213,7 +213,22 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Per-language stats: extract languageId from completion events.
-  const rawLanguage = data.languageId ?? data.language ?? data.lang;
+  // Also check nested structures used by some Copilot telemetry versions
+  // (e.g. data.properties.languageId, data.payload.languageId).
+  const props =
+    typeof data.properties === "object" && data.properties !== null
+      ? (data.properties as Record<string, unknown>)
+      : null;
+  const payload_ =
+    typeof data.payload === "object" && data.payload !== null ? (data.payload as Record<string, unknown>) : null;
+  const rawLanguage =
+    data.languageId ??
+    data.language ??
+    data.lang ??
+    props?.languageId ??
+    props?.language ??
+    payload_?.languageId ??
+    payload_?.language;
   if (typeof rawLanguage === "string") {
     if (isShown) {
       incrementStatCount(ctx.byLanguage, rawLanguage, "shown");

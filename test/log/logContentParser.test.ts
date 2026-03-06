@@ -265,6 +265,28 @@ suite("logContentParser", () => {
       processJsonEntry({ event: "suggestion_shown" }, stats);
       assert.strictEqual(stats.byLanguage.size, 0);
     });
+
+    test("falls back to properties.languageId when top-level fields are absent", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown", properties: { languageId: "rust" } }, stats);
+      assert.strictEqual(stats.byLanguage.get("rust")?.shown, 1);
+    });
+
+    test("falls back to payload.languageId when top-level and properties fields are absent", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_accepted", payload: { languageId: "go" } }, stats);
+      assert.strictEqual(stats.byLanguage.get("go")?.accepted, 1);
+    });
+
+    test("prefers top-level languageId over nested properties.languageId", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        { event: "suggestion_shown", languageId: "typescript", properties: { languageId: "python" } },
+        stats,
+      );
+      assert.strictEqual(stats.byLanguage.get("typescript")?.shown, 1);
+      assert.strictEqual(stats.byLanguage.has("python"), false);
+    });
   });
 
   suite("tryParseJsonLogLine", () => {

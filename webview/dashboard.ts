@@ -29,11 +29,8 @@ import {
   Tooltip,
   type TooltipItem,
 } from "chart.js";
-import { createRoot, type Root } from "react-dom/client";
 import { createElement } from "react";
-import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
-import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
-
+import { createRoot, type Root } from "react-dom/client";
 import type {
   AgentIntelligenceOverview,
   DashboardPayload,
@@ -43,6 +40,8 @@ import type {
   WebviewToHostMessage,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
+import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
+import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
@@ -147,9 +146,7 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   const typingHours = (summary.typingMinutesSaved / 60).toFixed(1);
   const agenticHours = (summary.agenticMinutesSaved / 60).toFixed(1);
   const roiDetail =
-    summary.agenticMinutesSaved > 0
-      ? `Typing: ${typingHours}h + AI: ${agenticHours}h`
-      : `Typing: ${typingHours}h`;
+    summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
   const bestModelStr = summary.bestModel ?? "—";
 
   el.innerHTML = `
@@ -539,6 +536,57 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 }
 
 // ---------------------------------------------------------------------------
+// Language stats
+// ---------------------------------------------------------------------------
+
+function renderLanguageStats(byLanguage: DashboardPayload["byLanguage"]): void {
+  const el = document.getElementById("db-language-container");
+  if (!el) {
+    return;
+  }
+  const top = byLanguage.slice(0, 10);
+  if (top.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+  const maxShown = Math.max(...top.map((l) => l.shown), 1);
+  const rows = top
+    .map(({ language, shown, accepted, rate }) => {
+      const rateStr = rate.toFixed(1);
+      const shownPct = ((shown / maxShown) * 100).toFixed(0);
+      const acceptedPct = shown > 0 ? ((accepted / shown) * 100 * (shown / maxShown)).toFixed(0) : "0";
+      return `<tr>
+        <td>${escHtml(language)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;background:var(--vscode-editor-inactiveSelectionBackground);border-radius:2px;height:6px">
+              <div style="width:${shownPct}%;background:var(--vscode-charts-blue);height:6px;border-radius:2px"></div>
+            </div>
+            <span style="min-width:36px;text-align:right">${shown}</span>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;background:var(--vscode-editor-inactiveSelectionBackground);border-radius:2px;height:6px">
+              <div style="width:${acceptedPct}%;background:var(--vscode-charts-green);height:6px;border-radius:2px"></div>
+            </div>
+            <span style="min-width:36px;text-align:right">${accepted}</span>
+          </div>
+        </td>
+        <td>${rateStr}%</td>
+      </tr>`;
+    })
+    .join("");
+  el.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🌐 Top Languages by Acceptance Rate</h2>
+    <table class="db-lang-table">
+      <thead><tr><th>Language</th><th>Shown</th><th>Accepted</th><th>Rate</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ---------------------------------------------------------------------------
 // Export buttons
 // ---------------------------------------------------------------------------
 
@@ -629,25 +677,22 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   const overview: AgentIntelligenceOverview = agenticStats.agentIntelligenceOverview;
   const ratioStr = agenticStats.agenticRatio.toFixed(1);
   const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
-  const completionStr =
-    overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
+  const completionStr = overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
   const durationCell =
     agenticStats.autonomousDurationMs > 0
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
       : "";
 
   const modelRows = overview.autonomousRatioByModel
-    .map(
-      ({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
-        const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
-        return `<tr>
+    .map(({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
+      const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
+      return `<tr>
           <td>${escHtml(trunc(model, 30))}</td>
           <td>${subagentCount} / ${totalCount}</td>
           <td>${ratio.toFixed(1)}%</td>
           <td>${velocityStr}</td>
         </tr>`;
-      },
-    )
+    })
     .join("");
 
   const modelTable = modelRows
@@ -720,6 +765,7 @@ function render(payload: DashboardPayload): void {
   renderSummaryCards(payload.summary);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
+  renderLanguageStats(payload.byLanguage);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
   renderVelocityChart(payload.velocityPoints);

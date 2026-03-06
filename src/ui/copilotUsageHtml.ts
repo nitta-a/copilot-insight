@@ -1,7 +1,7 @@
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -227,6 +227,7 @@ export function getHtmlContent(
       <div id="db-summary-cards" class="stats-grid"></div>
       <div id="db-insights-container"></div>
       <div id="db-weekly-trend-container"></div>
+      <div id="db-language-container"></div>
       <div id="db-agent-intelligence-container"></div>
     </div>
 

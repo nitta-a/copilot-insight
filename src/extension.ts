@@ -7,11 +7,11 @@ import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
-import { todayDateString } from "./utils";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
-import { StatusBarIndicator } from "./ui/statusBarIndicator";
 import { buildDashboardPayload } from "./ui/dashboardPayload";
+import { StatusBarIndicator } from "./ui/statusBarIndicator";
+import { todayDateString } from "./utils";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 
@@ -70,6 +70,15 @@ export function activate(context: vscode.ExtensionContext) {
   /** Parse logs, cache result, and update TreeView + Panel. */
   async function refreshStats(): Promise<CopilotUsageStats> {
     const stats = await parseCopilotLogs(context.logUri);
+    // Merge real-time language stats from the inline tracker.
+    // The log files never contain languageId, so this is the only reliable source.
+    for (const [lang, counts] of inlineTracker.stats.byLanguage) {
+      const existing = stats.byLanguage.get(lang) ?? { shown: 0, accepted: 0 };
+      stats.byLanguage.set(lang, {
+        shown: existing.shown + counts.shown,
+        accepted: existing.accepted + counts.accepted,
+      });
+    }
     cachedStats = stats;
     treeProvider.updateStats(stats);
     return stats;
