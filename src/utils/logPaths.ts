@@ -1,7 +1,7 @@
 import * as path from "node:path";
 
 /** Pattern for VS Code session directory names (e.g. `20260304T120000`). */
-const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
+export const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
 
 /**
  * Locate the VS Code session root directory from `fsPath` by splitting on the

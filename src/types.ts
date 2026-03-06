@@ -152,4 +152,10 @@ export interface ParsingContext extends CopilotUsageStats {
   loopDistributionByModel: Map<string, LoopActionBuckets>;
   /** True when a plan has been proposed but not yet followed by an edit/patch action. */
   activePlanPending: boolean;
+  /**
+   * Absolute paths of log files that have already been parsed in this run.
+   * Used to prevent double-counting when the same file is reachable via
+   * multiple session directories or scan paths.
+   */
+  processedFilePaths: Set<string>;
 }

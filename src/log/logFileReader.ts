@@ -2,10 +2,11 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ParsingContext } from "../types";
+import { SESSION_DIR_PATTERN } from "../utils/logPaths";
 import { parseLogContent } from "./logContentParser";
 
 function getMaxSessionDirs(): number {
-  return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
+  return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 0);
 }
 
 export async function isDirectory(dirPath: string): Promise<boolean> {
@@ -23,14 +24,21 @@ export async function isDirectory(dirPath: string): Promise<boolean> {
 export async function getSortedSessionDirs(logBaseDir: string, fallback: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(logBaseDir);
-    const fullPaths = entries.map((entry) => path.join(logBaseDir, entry));
     const dirs: string[] = [];
-    for (const dirPath of fullPaths) {
+    for (const entry of entries) {
+      // Only consider directories whose names match the YYYYMMDDTHHMMSS session pattern.
+      if (!SESSION_DIR_PATTERN.test(entry)) {
+        continue;
+      }
+      const dirPath = path.join(logBaseDir, entry);
       if (await isDirectory(dirPath)) {
         dirs.push(dirPath);
       }
     }
-    return dirs.sort().reverse().slice(0, getMaxSessionDirs());
+    const sorted = dirs.sort().reverse();
+    const limit = getMaxSessionDirs();
+    // A limit of 0 means "scan all sessions" (unlimited).
+    return limit > 0 ? sorted.slice(0, limit) : sorted;
   } catch {
     return [fallback];
   }
@@ -74,6 +82,10 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
     const files = entries.filter((f) => f.endsWith(".log"));
     for (const file of files) {
       const filePath = path.join(logDir, file);
+      if (ctx.processedFilePaths.has(filePath)) {
+        continue;
+      }
+      ctx.processedFilePaths.add(filePath);
       try {
         const content = await fs.readFile(filePath, "utf-8");
         parseLogContent(content, ctx);
@@ -124,6 +136,10 @@ export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingCont
         continue;
       }
       const filePath = path.join(exthostDir, logFile);
+      if (ctx.processedFilePaths.has(filePath)) {
+        continue;
+      }
+      ctx.processedFilePaths.add(filePath);
       try {
         const content = await fs.readFile(filePath, "utf-8");
         parseLogContent(content, ctx);

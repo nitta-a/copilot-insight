@@ -67,6 +67,7 @@ function makeEmptyStats(): ParsingContext {
     executedPlanCount: 0,
     userChoicesInPlan: 0,
     activePlanPending: false,
+    processedFilePaths: new Set<string>(),
   };
 }
 

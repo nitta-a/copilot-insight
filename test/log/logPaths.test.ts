@@ -2,7 +2,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as assert from "assert";
-import { findCopilotDirs, parseRemoteExthostLog } from "../../src/log/logFileReader";
+import {
+  findCopilotDirs,
+  getSortedSessionDirs,
+  parseLogDirectory,
+  parseRemoteExthostLog,
+} from "../../src/log/logFileReader";
 import type { ParsingContext } from "../../src/types";
 import { findSessionRoot } from "../../src/utils/logPaths";
 
@@ -262,6 +267,7 @@ suite("parseRemoteExthostLog", () => {
       executedPlanCount: 0,
       userChoicesInPlan: 0,
       activePlanPending: false,
+      processedFilePaths: new Set<string>(),
     };
   }
 
@@ -343,6 +349,166 @@ suite("parseRemoteExthostLog", () => {
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     // Only the .log file should be counted
+    assert.strictEqual(ctx.logFilesFound, 1);
+    assert.strictEqual(ctx.totalShown, 1);
+  });
+});
+
+suite("getSortedSessionDirs", () => {
+  let tmpDir: string;
+
+  setup(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-session-dirs-"));
+  });
+
+  teardown(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test("returns only YYYYMMDDTHHMMSS-pattern directories, ignoring non-session dirs", async () => {
+    await fs.mkdir(path.join(tmpDir, "20260301T100000"));
+    await fs.mkdir(path.join(tmpDir, "20260302T120000"));
+    await fs.mkdir(path.join(tmpDir, "node_modules"));
+    await fs.mkdir(path.join(tmpDir, "some-other-dir"));
+
+    const results = await getSortedSessionDirs(tmpDir, tmpDir);
+
+    assert.strictEqual(results.length, 2);
+    assert.ok(results.includes(path.join(tmpDir, "20260301T100000")));
+    assert.ok(results.includes(path.join(tmpDir, "20260302T120000")));
+    assert.ok(!results.some((r) => r.includes("node_modules")));
+    assert.ok(!results.some((r) => r.includes("some-other-dir")));
+  });
+
+  test("returns sessions sorted in descending order (most recent first)", async () => {
+    await fs.mkdir(path.join(tmpDir, "20260301T100000"));
+    await fs.mkdir(path.join(tmpDir, "20260304T120000"));
+    await fs.mkdir(path.join(tmpDir, "20260302T080000"));
+
+    const results = await getSortedSessionDirs(tmpDir, tmpDir);
+
+    assert.strictEqual(results.length, 3);
+    assert.ok(results[0].endsWith("20260304T120000"));
+    assert.ok(results[1].endsWith("20260302T080000"));
+    assert.ok(results[2].endsWith("20260301T100000"));
+  });
+
+  test("falls back to fallback path when logBaseDir is unreadable", async () => {
+    const fallback = path.join(tmpDir, "20260301T100000");
+    await fs.mkdir(fallback);
+    const nonExistent = path.join(tmpDir, "does-not-exist");
+
+    const results = await getSortedSessionDirs(nonExistent, fallback);
+
+    assert.deepStrictEqual(results, [fallback]);
+  });
+
+  test("returns empty array when no YYYYMMDDTHHMMSS dirs exist and fallback is not returned on success", async () => {
+    // logBaseDir exists but has no session dirs — returns empty array (not fallback)
+    await fs.mkdir(path.join(tmpDir, "some-dir"));
+
+    const results = await getSortedSessionDirs(tmpDir, path.join(tmpDir, "fallback"));
+
+    assert.deepStrictEqual(results, []);
+  });
+});
+
+suite("deduplication in parseLogDirectory", () => {
+  let tmpDir: string;
+
+  setup(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-dedup-"));
+  });
+
+  teardown(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeEmptyCtx(): ParsingContext {
+    return {
+      totalShown: 0,
+      totalAccepted: 0,
+      totalRejected: 0,
+      totalChat: 0,
+      acceptanceRate: 0,
+      avgLatencyMs: 0,
+      byDate: new Map(),
+      byModel: new Map(),
+      byChatModel: new Map(),
+      byHour: new Map(),
+      byChatIntent: new Map(),
+      logFilesFound: 0,
+      chatByDate: new Map(),
+      chatByHour: new Map(),
+      totalErrors: 0,
+      errorsByType: new Map(),
+      latencies: [],
+      chatLatencies: [],
+      latencyP50: 0,
+      latencyP95: 0,
+      latencyP99: 0,
+      chatAvgLatencyMs: 0,
+      chatLatencyP50: 0,
+      chatLatencyP95: 0,
+      bySession: new Map(),
+      byContextSource: new Map(),
+      byContextEffectiveness: new Map(),
+      subagentRequests: 0,
+      agenticRatio: 0,
+      autonomousDurationMs: 0,
+      toolUsageStats: new Map(),
+      subagentLoops: 0,
+      subagentLoopsStarted: 0,
+      completionRate: 0,
+      subagentByModel: new Map(),
+      autonomousDurationByModel: new Map(),
+      agenticDepthByModel: new Map(),
+      latencySum: 0,
+      latencyCount: 0,
+      chatLatencySum: 0,
+      chatLatencyCount: 0,
+      currentSessionId: "",
+      activeSubagentLoop: null,
+      activeSubagentLoopModel: null,
+      activeSubagentLoopActionCount: 0,
+      loopsStartedByModel: new Map(),
+      loopsCompletedByModel: new Map(),
+      totalLoopActionsByModel: new Map(),
+      loopDistributionByModel: new Map(),
+      planCount: 0,
+      executedPlanCount: 0,
+      userChoicesInPlan: 0,
+      activePlanPending: false,
+      processedFilePaths: new Set<string>(),
+    };
+  }
+
+  test("does not double-count a log file when parseLogDirectory is called twice on the same directory", async () => {
+    await fs.writeFile(path.join(tmpDir, "copilot.log"), "suggestion shown\nsuggestion accepted\n", "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseLogDirectory(tmpDir, ctx);
+    await parseLogDirectory(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 1);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 1);
+  });
+
+  test("does not double-count when the same log file path is in processedFilePaths already", async () => {
+    const filePath = path.join(tmpDir, "copilot.log");
+    await fs.writeFile(filePath, "suggestion shown\n", "utf-8");
+    const ctx = makeEmptyCtx();
+    ctx.processedFilePaths.add(filePath);
+    await parseLogDirectory(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 0);
+    assert.strictEqual(ctx.totalShown, 0);
+  });
+
+  test("does not double-count in parseRemoteExthostLog when called twice on the same exthost dir", async () => {
+    await fs.mkdir(path.join(tmpDir, "exthost1"));
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), "suggestion shown\n", "utf-8");
+    const ctx = makeEmptyCtx();
+    await parseRemoteExthostLog(tmpDir, ctx);
+    await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(ctx.logFilesFound, 1);
     assert.strictEqual(ctx.totalShown, 1);
   });

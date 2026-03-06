@@ -73,6 +73,7 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     executedPlanCount: 0,
     userChoicesInPlan: 0,
     activePlanPending: false,
+    processedFilePaths: new Set<string>(),
   };
 
   try {

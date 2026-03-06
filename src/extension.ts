@@ -212,12 +212,18 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
+    inlineTracker,
     treeProvider,
     copilotUsageTreeView,
     eventTracker,
     statusBar,
     configWatcher,
     { dispose: () => clearInterval(statusBarTimer) },
+    {
+      dispose: () => {
+        void dbWorker?.close();
+      },
+    },
     showCopilotUsageDisposable,
     refreshDisposable,
     exportCsvDisposable,
