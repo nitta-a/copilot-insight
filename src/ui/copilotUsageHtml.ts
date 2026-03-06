@@ -1,7 +1,7 @@
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -246,17 +246,7 @@ export function getHtmlContent(
     </div>
 
     <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
-      <div id="db-velocity-section">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <h2 style="margin:0">🌊 Flow &amp; Velocity Correlation</h2>
-          <button id="db-btn-export-png-flow" class="db-export-btn">🖼️ Save Chart (PNG)</button>
-        </div>
-        <p class="stat-detail" style="margin:-4px 0 8px;opacity:0.7;">
-          Scatter of typing speed (KPM) vs relative completion activity.
-          Red dots indicate windows where Copilot completions coincided with a significant KPM drop.
-        </p>
-        <canvas id="db-velocity-chart" style="max-height:240px"></canvas>
-      </div>
+      <div id="model-autonomy-leverage-map"></div>
       ${hourSection}
       ${chatHourSection}
       ${contextInsightsSection}

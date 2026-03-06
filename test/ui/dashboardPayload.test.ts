@@ -485,5 +485,68 @@ suite("buildDashboardPayload", () => {
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.planSuccessRate, 0);
     });
+
+    test("autonomousRatioByModel.acceptanceRate is 0 when no inline completion data for model", () => {
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([["gpt-4o", 5]]),
+        byModel: new Map(),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.strictEqual(byModel[0].acceptanceRate, 0);
+      assert.strictEqual(byModel[0].totalAccepted, 0);
+    });
+
+    test("autonomousRatioByModel.acceptanceRate is accepted/shown * 100 from byModel", () => {
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([["gpt-4o", 5]]),
+        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
+      assert.strictEqual(byModel[0].totalAccepted, 40);
+    });
+
+    test("autonomousRatioByModel.totalTimeSaved includes typing and agentic components", () => {
+      // typing: 40 accepted * 40 chars / 200 cpm = 8 min
+      // agentic: 120000ms / 60000 * 0.5 = 1 min
+      // total: 9 min
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([["gpt-4o", 5]]),
+        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
+        autonomousDurationByModel: new Map([["gpt-4o", 120000]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      assert.ok(Math.abs(byModel[0].totalTimeSaved - 9) < 0.01);
+    });
+
+    test("autonomousRatioByModel.totalTimeSaved merges inline stats for same normalized model", () => {
+      // Two deployment aliases of gpt-4o that normalize to the same key
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o -> a", 5],
+          ["gpt-4o -> b", 5],
+        ]),
+        subagentByModel: new Map([["gpt-4o -> a", 3]]),
+        byModel: new Map([
+          ["gpt-4o -> a", { shown: 60, accepted: 30 }],
+          ["gpt-4o -> b", { shown: 40, accepted: 10 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      assert.strictEqual(byModel.length, 1);
+      // merged: shown=100, accepted=40 → acceptanceRate=40%, totalAccepted=40
+      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
+      assert.strictEqual(byModel[0].totalAccepted, 40);
+    });
   });
 });
