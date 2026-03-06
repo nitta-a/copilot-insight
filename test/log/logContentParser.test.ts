@@ -785,6 +785,34 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.toolUsageStats.size, 0);
     });
 
+    test("detects tool/runSubagent-Explore intent and increments subagentRequests", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:3f21ad7f.copilotmd | success | claude-haiku-4.5 -> claude-haiku-4-5-20251001 | 3236ms | [tool/runSubagent-Explore]",
+        stats,
+      );
+      assert.strictEqual(stats.subagentRequests, 1);
+      assert.strictEqual(stats.toolUsageStats.get("runSubagent-Explore"), 1);
+    });
+
+    test("tool/runSubagent-Explore is tracked in subagentByModel", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:5651ba39.copilotmd | success | claude-haiku-4.5 -> claude-haiku-4-5-20251001 | 33641ms | [tool/runSubagent-Explore]",
+        stats,
+      );
+      assert.ok(stats.subagentByModel.size > 0, "subagentByModel should have an entry");
+    });
+
+    test("tool/runSubagent-ToolCaller variant also counts as subagent intent", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:aabbcc | success | gpt-4o | 2000ms | [tool/runSubagent-ToolCaller]",
+        stats,
+      );
+      assert.strictEqual(stats.subagentRequests, 1);
+    });
+
     test("ToolCallingLoop stop line closes active loop and accumulates autonomousDurationMs", () => {
       const stats = makeEmptyStats();
       // Start a subagent loop

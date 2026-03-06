@@ -14,6 +14,11 @@ const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 /** Intent tags that identify subagent-initiated requests. */
 const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
 
+/** Returns true if the intent is a known subagent intent or a tool/runSubagent-* variant. */
+function isSubagentIntent(intent: string): boolean {
+  return SUBAGENT_INTENTS.has(intent) || intent.startsWith("tool/runSubagent-");
+}
+
 /**
  * Normalize a raw model name by stripping deployment paths and internal IDs.
  *
@@ -359,8 +364,8 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
   // Track per-model subagent calls for autonomous ratio calculation.
   if (model) {
-    const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
-    if (intentMatch && SUBAGENT_INTENTS.has(intentMatch[1])) {
+    const intentMatch = line.match(/\| \[([a-zA-Z0-9/\-]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/\-]+)\]\s*$/);
+    if (intentMatch && isSubagentIntent(intentMatch[1])) {
       incrementCount(ctx.subagentByModel, model);
     }
   }
@@ -376,7 +381,7 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
 /** Extract and record the chat intent tag from a ccreq success line. */
 function trackChatIntent(line: string, ctx: ParsingContext, model: string): void {
-  const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
+  const intentMatch = line.match(/\| \[([a-zA-Z0-9/\-]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/\-]+)\]\s*$/);
   if (!intentMatch) {
     return;
   }
@@ -390,7 +395,7 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
     ctx.planCount++;
     ctx.activePlanPending = true;
   }
-  if (SUBAGENT_INTENTS.has(rawIntent)) {
+  if (isSubagentIntent(rawIntent)) {
     // If a plan was pending execution, the first agentic request fulfils it.
     if (ctx.activePlanPending) {
       ctx.executedPlanCount++;
