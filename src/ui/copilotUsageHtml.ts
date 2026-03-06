@@ -1,7 +1,7 @@
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
@@ -246,7 +246,7 @@ export function getHtmlContent(
     </div>
 
     <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
-      <div id="model-efficiency-map"></div>
+      <div id="model-autonomy-leverage-map"></div>
       ${hourSection}
       ${chatHourSection}
       ${contextInsightsSection}

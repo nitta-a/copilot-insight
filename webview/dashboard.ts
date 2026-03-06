@@ -5,7 +5,7 @@
  * - Render two Chart.js visualisations:
  *   1. True Acceptance Rate Timeline (bar + line combo)
  * - Render React-based charts:
- *   2. Model ROI Efficiency Map (Recharts ScatterChart)
+ *   2. Model Autonomy Leverage Map (Recharts ScatterChart)
  * - Handle export button interactions.
  * - Persist UI state (selected tab) across tab switches via
  *   `vscode.getState()` / `vscode.setState()`.
@@ -40,8 +40,8 @@ import type {
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
+import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
-import { ModelROIEfficiencyMap } from "./charts/ModelROIEfficiencyMap";
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
@@ -84,7 +84,7 @@ let timelineChart: Chart | null = null;
 let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
-let modelROIMapRoot: Root | null = null;
+let modelAutonomyMapRoot: Root | null = null;
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -371,23 +371,23 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Model ROI Efficiency Map
+// Model Autonomy Leverage Map
 // ---------------------------------------------------------------------------
 
-function renderModelROIEfficiencyMap(agenticStats: DashboardPayload["agenticStats"]): void {
-  const el = document.getElementById("model-efficiency-map");
+function renderModelAutonomyLeverageMap(agenticStats: DashboardPayload["agenticStats"]): void {
+  const el = document.getElementById("model-autonomy-leverage-map");
   if (!el) {
     return;
   }
   const modelData = agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
   if (modelData.length === 0) {
-    modelROIMapRoot = unmountRoot(modelROIMapRoot);
+    modelAutonomyMapRoot = unmountRoot(modelAutonomyMapRoot);
     el.innerHTML = "";
     return;
   }
-  modelROIMapRoot = unmountRoot(modelROIMapRoot);
-  modelROIMapRoot = createRoot(el);
-  modelROIMapRoot.render(createElement(ModelROIEfficiencyMap, { data: modelData }));
+  modelAutonomyMapRoot = unmountRoot(modelAutonomyMapRoot);
+  modelAutonomyMapRoot = createRoot(el);
+  modelAutonomyMapRoot.render(createElement(ModelAutonomyLeverageMap, { data: modelData }));
 }
 
 // ---------------------------------------------------------------------------
@@ -689,7 +689,7 @@ function render(payload: DashboardPayload): void {
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
-  renderModelROIEfficiencyMap(payload.agenticStats);
+  renderModelAutonomyLeverageMap(payload.agenticStats);
 }
 
 // ---------------------------------------------------------------------------
