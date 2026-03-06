@@ -126,6 +126,23 @@ export interface CopilotUsageStats {
   executedPlanCount: number;
   /** Number of in-plan user choice interactions (choice_selected). */
   userChoicesInPlan: number;
+
+  /** Number of browser-tool related events observed in logs. */
+  browserToolInvocations: number;
+  /** Browser-tool events grouped by detected action or subtype. */
+  browserToolsByType: Map<string, number>;
+  /** Number of plugin or skill related events observed in logs. */
+  pluginOrSkillInvocations: number;
+  /** Plugin or skill events grouped by detected name or subtype. */
+  pluginOrSkillByName: Map<string, number>;
+  /** Number of session-memory or compaction related events observed in logs. */
+  memoryManagementEvents: number;
+  /** Session-memory or compaction events grouped by detected subtype. */
+  memoryManagementByType: Map<string, number>;
+  /** Number of agent-debug or step-execution related events observed in logs. */
+  agentDebugEvents: number;
+  /** Agent-debug events grouped by detected subtype. */
+  agentDebugByType: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

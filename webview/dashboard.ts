@@ -560,10 +560,34 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
     return;
   }
 
-  if (agenticStats.subagentRequests === 0) {
+  const featureCards = [
+    {
+      label: "Browser Tools",
+      total: agenticStats.featureSignals.browserTools.total,
+      detail: agenticStats.featureSignals.browserTools.breakdown,
+    },
+    {
+      label: "Plugins / Skills",
+      total: agenticStats.featureSignals.pluginOrSkills.total,
+      detail: agenticStats.featureSignals.pluginOrSkills.breakdown,
+    },
+    {
+      label: "Session Memory / Compact",
+      total: agenticStats.featureSignals.memoryManagement.total,
+      detail: agenticStats.featureSignals.memoryManagement.breakdown,
+    },
+    {
+      label: "Agent Debug",
+      total: agenticStats.featureSignals.agentDebug.total,
+      detail: agenticStats.featureSignals.agentDebug.breakdown,
+    },
+  ];
+  const hasFeatureSignals = featureCards.some((card) => card.total > 0);
+
+  if (agenticStats.subagentRequests === 0 && !hasFeatureSignals) {
     depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
     scatterPlotRoot = unmountRoot(scatterPlotRoot);
-    el.innerHTML = '<p class="no-data">No autonomous activity detected in this period.</p>';
+    el.innerHTML = '<p class="no-data">No autonomous activity or 1.110 feature signals detected in this period.</p>';
     return;
   }
 
@@ -626,6 +650,26 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
        </table>`
     : "";
 
+  const featureSection = hasFeatureSignals
+    ? `<hr class="db-section-sep">
+       <h3 style="font-size:1em;margin:16px 0 10px">🧪 VS Code 1.110 Feature Signals</h3>
+       <div class="stats-grid">
+         ${featureCards
+           .map((card) => {
+             const top = card.detail
+               .slice(0, 2)
+               .map((entry) => `${escHtml(entry.name)} (${entry.count})`)
+               .join(" · ");
+             return `<div class="stat-card">
+               <div class="stat-value">${card.total}</div>
+               <div class="stat-label">${escHtml(card.label)}</div>
+               <div class="stat-detail">${top || "detected log signals"}</div>
+             </div>`;
+           })
+           .join("")}
+       </div>`
+    : "";
+
   el.innerHTML = `
     <hr class="db-section-sep">
     <h2>🤖 Agent Intelligence Overview</h2>
@@ -658,6 +702,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
       ${durationCell}
     </div>
     ${modelTable}
+    ${featureSection}
     ${planningSection}
     <div id="db-model-depth-chart" style="margin-top:16px"></div>
     <div id="db-agentic-scatter" style="margin-top:4px"></div>`;
@@ -666,17 +711,21 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   const modelData = overview.autonomousRatioByModel;
 
   const depthEl = document.getElementById("db-model-depth-chart");
-  if (depthEl) {
+  if (depthEl && modelData.length > 0) {
     depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
     depthVelocityChartRoot = createRoot(depthEl);
     depthVelocityChartRoot.render(createElement(ModelDepthVelocityChart, { data: modelData }));
+  } else {
+    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
   }
 
   const scatterEl = document.getElementById("db-agentic-scatter");
-  if (scatterEl) {
+  if (scatterEl && modelData.length > 0) {
     scatterPlotRoot = unmountRoot(scatterPlotRoot);
     scatterPlotRoot = createRoot(scatterEl);
     scatterPlotRoot.render(createElement(AgenticEfficiencyScatterPlot, { data: modelData }));
+  } else {
+    scatterPlotRoot = unmountRoot(scatterPlotRoot);
   }
 }
 

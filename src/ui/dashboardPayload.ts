@@ -11,7 +11,9 @@ import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metri
 import type { AgenticDepthStat, CopilotUsageStats } from "../types";
 import type {
   AgentIntelligenceOverview,
+  AgenticFeatureSignals,
   AgenticStats,
+  CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
   SummaryData,
@@ -42,6 +44,12 @@ const MIN_SHOWN_FOR_ANOMALY = 10;
 
 /** z-score magnitude above which a data point is considered an anomaly. */
 const ANOMALY_Z_THRESHOLD = 2;
+
+function toSortedBreakdown(source: Map<string, number>): CountBreakdownEntry[] {
+  return Array.from(source.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
 
 /**
  * Convert raw Copilot stats + optional advanced-metrics into the data shape
@@ -261,12 +269,32 @@ export function buildDashboardPayload(
     autonomousRatioByModel,
   };
 
+  const featureSignals: AgenticFeatureSignals = {
+    browserTools: {
+      total: stats.browserToolInvocations,
+      breakdown: toSortedBreakdown(stats.browserToolsByType),
+    },
+    pluginOrSkills: {
+      total: stats.pluginOrSkillInvocations,
+      breakdown: toSortedBreakdown(stats.pluginOrSkillByName),
+    },
+    memoryManagement: {
+      total: stats.memoryManagementEvents,
+      breakdown: toSortedBreakdown(stats.memoryManagementByType),
+    },
+    agentDebug: {
+      total: stats.agentDebugEvents,
+      breakdown: toSortedBreakdown(stats.agentDebugByType),
+    },
+  };
+
   const agenticStats: AgenticStats = {
     subagentRequests: stats.subagentRequests,
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats,
     agentIntelligenceOverview,
+    featureSignals,
   };
 
   return {

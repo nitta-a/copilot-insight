@@ -80,6 +80,14 @@ function makeStats(): CopilotUsageStats {
     planCount: 1,
     executedPlanCount: 1,
     userChoicesInPlan: 0,
+    browserToolInvocations: 2,
+    browserToolsByType: new Map([["screenshot", 2]]),
+    pluginOrSkillInvocations: 3,
+    pluginOrSkillByName: new Map([["code-search", 3]]),
+    memoryManagementEvents: 1,
+    memoryManagementByType: new Map([["compact", 1]]),
+    agentDebugEvents: 4,
+    agentDebugByType: new Map([["step-execution", 4]]),
   };
 }
 
@@ -104,6 +112,22 @@ suite("StatsSnapshotStorage", () => {
       assert.deepStrictEqual(
         [...(restored?.byDateAgenticDepth.entries() ?? [])],
         [...expected.byDateAgenticDepth.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.browserToolsByType.entries() ?? [])],
+        [...expected.browserToolsByType.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.pluginOrSkillByName.entries() ?? [])],
+        [...expected.pluginOrSkillByName.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.memoryManagementByType.entries() ?? [])],
+        [...expected.memoryManagementByType.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.agentDebugByType.entries() ?? [])],
+        [...expected.agentDebugByType.entries()],
       );
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });

@@ -54,6 +54,14 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
+    browserToolInvocations: 0,
+    browserToolsByType: new Map(),
+    pluginOrSkillInvocations: 0,
+    pluginOrSkillByName: new Map(),
+    memoryManagementEvents: 0,
+    memoryManagementByType: new Map(),
+    agentDebugEvents: 0,
+    agentDebugByType: new Map(),
     ...overrides,
   };
 }
@@ -146,6 +154,21 @@ suite("exportStats", () => {
       const csv = exportAsCsv(makeStats({ byHour: new Map(), chatByHour: new Map() }));
       assert.ok(!csv.includes("# Activity by Hour"));
     });
+
+    test("includes feature signal sections when present", () => {
+      const csv = exportAsCsv(
+        makeStats({
+          browserToolInvocations: 2,
+          browserToolsByType: new Map([["screenshot", 2]]),
+          memoryManagementEvents: 1,
+          memoryManagementByType: new Map([["compact", 1]]),
+        }),
+      );
+      assert.ok(csv.includes("# Browser Tool Signals"));
+      assert.ok(csv.includes("screenshot,2"));
+      assert.ok(csv.includes("# Session Memory Signals"));
+      assert.ok(csv.includes("compact,1"));
+    });
   });
 
   suite("exportAsJson", () => {
@@ -198,6 +221,19 @@ suite("exportStats", () => {
       const parsed = JSON.parse(exportAsJson(stats));
       assert.deepStrictEqual(parsed.byModel, {});
       assert.strictEqual(parsed.sessions.length, 0);
+    });
+
+    test("includes featureSignals object", () => {
+      const parsed = JSON.parse(
+        exportAsJson(
+          makeStats({
+            pluginOrSkillInvocations: 2,
+            pluginOrSkillByName: new Map([["code-search", 2]]),
+          }),
+        ),
+      );
+      assert.strictEqual(parsed.featureSignals.pluginOrSkills.total, 2);
+      assert.strictEqual(parsed.featureSignals.pluginOrSkills.breakdown["code-search"], 2);
     });
   });
 });

@@ -91,6 +91,14 @@ export async function parseCopilotLogs(
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
+    browserToolInvocations: 0,
+    browserToolsByType: new Map(),
+    pluginOrSkillInvocations: 0,
+    pluginOrSkillByName: new Map(),
+    memoryManagementEvents: 0,
+    memoryManagementByType: new Map(),
+    agentDebugEvents: 0,
+    agentDebugByType: new Map(),
     activePlanPending: false,
   };
 

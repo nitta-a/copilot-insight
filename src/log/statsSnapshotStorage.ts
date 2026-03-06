@@ -49,6 +49,14 @@ interface SerializedCopilotUsageStats {
   planCount: number;
   executedPlanCount: number;
   userChoicesInPlan: number;
+  browserToolInvocations: number;
+  browserToolsByType: Array<[string, number]>;
+  pluginOrSkillInvocations: number;
+  pluginOrSkillByName: Array<[string, number]>;
+  memoryManagementEvents: number;
+  memoryManagementByType: Array<[string, number]>;
+  agentDebugEvents: number;
+  agentDebugByType: Array<[string, number]>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -102,6 +110,14 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     planCount: stats.planCount,
     executedPlanCount: stats.executedPlanCount,
     userChoicesInPlan: stats.userChoicesInPlan,
+    browserToolInvocations: stats.browserToolInvocations,
+    browserToolsByType: mapEntries(stats.browserToolsByType),
+    pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
+    pluginOrSkillByName: mapEntries(stats.pluginOrSkillByName),
+    memoryManagementEvents: stats.memoryManagementEvents,
+    memoryManagementByType: mapEntries(stats.memoryManagementByType),
+    agentDebugEvents: stats.agentDebugEvents,
+    agentDebugByType: mapEntries(stats.agentDebugByType),
   };
 }
 
@@ -148,6 +164,14 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     planCount: stats.planCount,
     executedPlanCount: stats.executedPlanCount,
     userChoicesInPlan: stats.userChoicesInPlan,
+    browserToolInvocations: stats.browserToolInvocations,
+    browserToolsByType: toMap(stats.browserToolsByType),
+    pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
+    pluginOrSkillByName: toMap(stats.pluginOrSkillByName),
+    memoryManagementEvents: stats.memoryManagementEvents,
+    memoryManagementByType: toMap(stats.memoryManagementByType),
+    agentDebugEvents: stats.agentDebugEvents,
+    agentDebugByType: toMap(stats.agentDebugByType),
   };
 }
 
