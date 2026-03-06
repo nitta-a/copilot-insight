@@ -8,6 +8,10 @@ function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
 }
 
+interface SessionDirOptions {
+  limit?: number;
+}
+
 export async function isDirectory(dirPath: string): Promise<boolean> {
   try {
     const stat = await fs.lstat(dirPath);
@@ -20,7 +24,11 @@ export async function isDirectory(dirPath: string): Promise<boolean> {
   }
 }
 
-export async function getSortedSessionDirs(logBaseDir: string, fallback: string): Promise<string[]> {
+export async function getSortedSessionDirs(
+  logBaseDir: string,
+  fallback: string,
+  options?: SessionDirOptions,
+): Promise<string[]> {
   try {
     const entries = await fs.readdir(logBaseDir);
     const fullPaths = entries.map((entry) => path.join(logBaseDir, entry));
@@ -30,10 +38,16 @@ export async function getSortedSessionDirs(logBaseDir: string, fallback: string)
         dirs.push(dirPath);
       }
     }
-    return dirs.sort().reverse().slice(0, getMaxSessionDirs());
+    const sortedDirs = dirs.sort().reverse();
+    const limit = options?.limit ?? getMaxSessionDirs();
+    return limit > 0 ? sortedDirs.slice(0, limit) : sortedDirs;
   } catch {
     return [fallback];
   }
+}
+
+export async function getAllSessionDirs(logBaseDir: string, fallback: string): Promise<string[]> {
+  return getSortedSessionDirs(logBaseDir, fallback, { limit: 0 });
 }
 
 /**

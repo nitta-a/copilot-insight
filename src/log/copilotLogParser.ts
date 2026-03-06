@@ -2,9 +2,19 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 import { findSessionRoot } from "../utils/logPaths";
-import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory, parseRemoteExthostLog } from "./logFileReader";
+import {
+  findCopilotDirs,
+  getAllSessionDirs,
+  getSortedSessionDirs,
+  parseLogDirectory,
+  parseRemoteExthostLog,
+} from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
+
+export interface ParseCopilotLogsOptions {
+  scanAllSessions?: boolean;
+}
 
 /** Lazy output channel for diagnostic logging. */
 let _outputChannel: vscode.OutputChannel | undefined;
@@ -18,7 +28,10 @@ function getOutputChannel(): vscode.OutputChannel {
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
 const MAX_LATENCY_SAMPLES = 10_000;
 
-export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsageStats> {
+export async function parseCopilotLogs(
+  logUri: vscode.Uri,
+  options?: ParseCopilotLogsOptions,
+): Promise<CopilotUsageStats> {
   const ctx: ParsingContext = {
     totalShown: 0,
     totalAccepted: 0,
@@ -98,7 +111,9 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
 
     channel.appendLine(`Searching for logs in: ${logBaseDir}`);
 
-    const sessionDirs = await getSortedSessionDirs(logBaseDir, fallbackSessionDir);
+    const sessionDirs = options?.scanAllSessions
+      ? await getAllSessionDirs(logBaseDir, fallbackSessionDir)
+      : await getSortedSessionDirs(logBaseDir, fallbackSessionDir);
 
     for (const sessDir of sessionDirs) {
       try {

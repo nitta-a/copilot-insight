@@ -5,13 +5,14 @@ import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
 import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
+import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
 import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
-import { todayDateString } from "./utils";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
-import { StatusBarIndicator } from "./ui/statusBarIndicator";
 import { buildDashboardPayload } from "./ui/dashboardPayload";
+import { StatusBarIndicator } from "./ui/statusBarIndicator";
+import { todayDateString } from "./utils";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 
@@ -54,6 +55,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Phase 3: Real-time status bar indicator showing current-session
   // Copilot contribution (acceptance rate + counts).
   const statusBar = new StatusBarIndicator();
+  const statsSnapshotStorage = new StatsSnapshotStorage(context.globalStorageUri.fsPath);
 
   // Periodically refresh the status bar from the inline tracker.
   const statusBarRefreshMs = 3_000;
@@ -67,12 +69,34 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: treeProvider,
   });
 
-  /** Parse logs, cache result, and update TreeView + Panel. */
-  async function refreshStats(): Promise<CopilotUsageStats> {
-    const stats = await parseCopilotLogs(context.logUri);
+  void statsSnapshotStorage.read().then((stats) => {
+    if (!stats) {
+      return;
+    }
     cachedStats = stats;
     treeProvider.updateStats(stats);
+  });
+
+  /** Parse logs, cache result, and update TreeView + Panel. */
+  async function refreshStats(): Promise<CopilotUsageStats> {
+    const stats = await parseCopilotLogs(context.logUri, { scanAllSessions: true });
+    cachedStats = stats;
+    treeProvider.updateStats(stats);
+    await statsSnapshotStorage.write(stats);
     return stats;
+  }
+
+  async function ensureStatsLoaded(): Promise<CopilotUsageStats> {
+    if (cachedStats) {
+      return cachedStats;
+    }
+    const persistedStats = await statsSnapshotStorage.read();
+    if (persistedStats) {
+      cachedStats = persistedStats;
+      treeProvider.updateStats(persistedStats);
+      return persistedStats;
+    }
+    return refreshStats();
   }
 
   /** Compute advanced metrics (best-effort) from tracked events. */
@@ -124,10 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const exportCsvDisposable = vscode.commands.registerCommand("copilot-insight.exportCsv", async () => {
-    if (!cachedStats) {
-      vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
-      return;
-    }
+    const stats = await ensureStatsLoaded();
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: workspaceFolder
@@ -136,17 +157,14 @@ export function activate(context: vscode.ExtensionContext) {
       filters: { csv: ["csv"] },
     });
     if (uri) {
-      const content = exportAsCsv(cachedStats);
+      const content = exportAsCsv(stats);
       await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
       vscode.window.showInformationMessage(`Exported to ${uri.fsPath}`);
     }
   });
 
   const exportJsonDisposable = vscode.commands.registerCommand("copilot-insight.exportJson", async () => {
-    if (!cachedStats) {
-      vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
-      return;
-    }
+    const stats = await ensureStatsLoaded();
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: workspaceFolder
@@ -155,7 +173,7 @@ export function activate(context: vscode.ExtensionContext) {
       filters: { json: ["json"] },
     });
     if (uri) {
-      const content = exportAsJson(cachedStats);
+      const content = exportAsJson(stats);
       await vscode.workspace.fs.writeFile(uri, Buffer.from(content, "utf-8"));
       vscode.window.showInformationMessage(`Exported to ${uri.fsPath}`);
     }
@@ -163,17 +181,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Phase 3: Export Markdown report with ROI estimation.
   const exportReportDisposable = vscode.commands.registerCommand("copilot-insight.exportReport", async () => {
-    if (!cachedStats) {
-      vscode.window.showWarningMessage('No usage data available. Run "Show Usage" first.');
-      return;
-    }
+    const stats = await ensureStatsLoaded();
 
     // Gather events for advanced metrics (best-effort).
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
 
-    const trueAcceptance =
-      allEvents.length > 0 ? computeTrueAcceptanceRate(allEvents, cachedStats.totalShown) : undefined;
+    const trueAcceptance = allEvents.length > 0 ? computeTrueAcceptanceRate(allEvents, stats.totalShown) : undefined;
     const velocity = allEvents.length > 0 ? computeVelocityAnalysis(allEvents) : undefined;
     const modelPerformance = allEvents.length > 0 ? computeModelPerformance(allEvents) : undefined;
 
@@ -182,14 +196,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Build the dashboard payload to obtain consistent pre-computed ROI values and
     // auto-generated insights — this ensures the report numbers match the dashboard.
-    const dashboardPayload = buildDashboardPayload(cachedStats, trueAcceptance, velocity, modelPerformance);
+    const dashboardPayload = buildDashboardPayload(stats, trueAcceptance, velocity, modelPerformance);
     const { typingMinutesSaved, agenticMinutesSaved } = dashboardPayload.summary;
     const insights = dashboardPayload.insights;
 
     const content = generateMarkdownReport({
       period,
       projectName,
-      stats: cachedStats,
+      stats,
       trueAcceptance,
       velocity,
       modelPerformance,
