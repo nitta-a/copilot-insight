@@ -4,6 +4,18 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.13] - 2026-03-06
+
+### Added
+- 🗺️ **Model Autonomy Leverage Map** — new bubble scatter chart in the Agent Intelligence tab correlating Autonomous Ratio (X) with Autonomous Duration (Y); bubble size encodes the number of autonomous actions; the top-right "High Leverage" quadrant highlights models that are invoked autonomously most often and stay active for longer stretches
+- 📈 **Autonomy Evolution Chart** — daily trend chart showing Autonomous Volume (min, bars) alongside Thinking Depth (avg steps/loop, line) on dual Y-axes; surfaces how agentic workload and complexity evolve over time
+- 📅 **Per-day agentic-depth tracking** — `byDateAgenticDepth` map added to `CopilotUsageStats`; `logContentParser` accumulates daily `totalDepth` / `loopCount` so the Autonomy Evolution Chart can plot accurate day-by-day thinking-depth averages
+- 💾 **Persistent stats snapshot** — `StatsSnapshotStorage` serialises `CopilotUsageStats` to `globalStoragePath/usage-stats.json`; subsequent extension activations load the cached snapshot so usage history survives VS Code restarts without re-parsing all log files
+
+### Changed
+- 🗺️ **Model ROI Efficiency Map** — replaces the previous Flow/Velocity scatter plot in the Flow tab; plots per-model Acceptance Rate (X) vs Time Saved (Y) with bubble size proportional to total accepted completions; a shaded "High Efficiency" area highlights models that are both accurate and saving the most developer time
+- 🍎 **macOS log path fix** — `logFileReader` and `copilotLogParser` now correctly resolve the VS Code extension-host log directory on macOS, where the path layout differs from Linux and Windows
+
 ## [1.0.12] - 2026-03-06
 
 ### Added
