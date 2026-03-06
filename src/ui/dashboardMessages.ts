@@ -157,7 +157,18 @@ export interface DashboardDataMessage {
   payload: DashboardPayload;
 }
 
-export type HostToWebviewMessage = DashboardDataMessage;
+/** Notify the WebView that an export operation has finished (or was cancelled). */
+export interface ExportCompleteMessage {
+  type: "exportComplete";
+  /** Which export triggered this completion event. */
+  exportType: "markdown" | "png";
+  /** Chart ID for PNG exports; undefined for markdown. */
+  chartId?: "timeline" | "velocity" | "overview";
+  /** True when the file was actually written; false when cancelled or failed. */
+  success: boolean;
+}
+
+export type HostToWebviewMessage = DashboardDataMessage | ExportCompleteMessage;
 
 // ---------------------------------------------------------------------------
 // Message types — WebView → Extension Host

@@ -29,11 +29,8 @@ import {
   Tooltip,
   type TooltipItem,
 } from "chart.js";
-import { createRoot, type Root } from "react-dom/client";
 import { createElement } from "react";
-import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
-import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
-
+import { createRoot, type Root } from "react-dom/client";
 import type {
   AgentIntelligenceOverview,
   DashboardPayload,
@@ -43,6 +40,8 @@ import type {
   WebviewToHostMessage,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
+import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
+import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
@@ -147,9 +146,7 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   const typingHours = (summary.typingMinutesSaved / 60).toFixed(1);
   const agenticHours = (summary.agenticMinutesSaved / 60).toFixed(1);
   const roiDetail =
-    summary.agenticMinutesSaved > 0
-      ? `Typing: ${typingHours}h + AI: ${agenticHours}h`
-      : `Typing: ${typingHours}h`;
+    summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
   const bestModelStr = summary.bestModel ?? "—";
 
   el.innerHTML = `
@@ -542,6 +539,21 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 // Export buttons
 // ---------------------------------------------------------------------------
 
+const EXPORT_BUTTON_LABELS: Record<string, string> = {
+  "db-btn-export-md": "📄 Export Report (Markdown)",
+  "db-btn-export-png-health": "🖼️ Save Chart (PNG)",
+  "db-btn-export-png-flow": "🖼️ Save Chart (PNG)",
+};
+
+function setExportLoading(btnId: string, loading: boolean): void {
+  const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+  if (!btn) {
+    return;
+  }
+  btn.disabled = loading;
+  btn.textContent = loading ? "⏳ Exporting…" : (EXPORT_BUTTON_LABELS[btnId] ?? btn.textContent);
+}
+
 function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "overview"): void {
   const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const imageData = canvas?.toDataURL("image/png") ?? "";
@@ -550,14 +562,17 @@ function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "
 
 function setupExportButtons(): void {
   document.getElementById("db-btn-export-md")?.addEventListener("click", () => {
+    setExportLoading("db-btn-export-md", true);
     vscode.postMessage({ type: "exportMarkdown" } satisfies WebviewToHostMessage);
   });
 
   document.getElementById("db-btn-export-png-health")?.addEventListener("click", () => {
+    setExportLoading("db-btn-export-png-health", true);
     exportChartAsPng("db-timeline-chart", "timeline");
   });
 
   document.getElementById("db-btn-export-png-flow")?.addEventListener("click", () => {
+    setExportLoading("db-btn-export-png-flow", true);
     exportChartAsPng("db-velocity-chart", "velocity");
   });
 }
@@ -629,8 +644,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   const overview: AgentIntelligenceOverview = agenticStats.agentIntelligenceOverview;
   const ratioStr = agenticStats.agenticRatio.toFixed(1);
   const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
-  const completionStr =
-    overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
+  const completionStr = overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
   const durationCell =
     agenticStats.autonomousDurationMs > 0
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
@@ -638,8 +652,9 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
 
   // Planning & Execution stats
   const planSuccessStr = overview.planCount > 0 ? `${overview.planSuccessRate.toFixed(1)}%` : "—";
-  const planningSection = overview.planCount > 0
-    ? `<hr class="db-section-sep">
+  const planningSection =
+    overview.planCount > 0
+      ? `<hr class="db-section-sep">
        <h3 style="font-size:1em;margin:16px 0 10px">📋 Planning &amp; Execution</h3>
        <div class="stats-grid">
          <div class="stat-card">
@@ -663,20 +678,18 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
            <div class="stat-detail">in-plan interactions</div>
          </div>
        </div>`
-    : "";
+      : "";
 
   const modelRows = overview.autonomousRatioByModel
-    .map(
-      ({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
-        const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
-        return `<tr>
+    .map(({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
+      const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
+      return `<tr>
           <td>${escHtml(trunc(model, 30))}</td>
           <td>${subagentCount} / ${totalCount}</td>
           <td>${ratio.toFixed(1)}%</td>
           <td>${velocityStr}</td>
         </tr>`;
-      },
-    )
+    })
     .join("");
 
   const modelTable = modelRows
@@ -763,6 +776,14 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
   const msg = event.data;
   if (msg.type === "dashboardData") {
     render(msg.payload);
+  } else if (msg.type === "exportComplete") {
+    const btnId =
+      msg.exportType === "markdown"
+        ? "db-btn-export-md"
+        : msg.chartId === "timeline"
+          ? "db-btn-export-png-health"
+          : "db-btn-export-png-flow";
+    setExportLoading(btnId, false);
   }
 });
 
