@@ -17,7 +17,7 @@ import type {
   AgentIntelligenceOverview,
 } from "./dashboardMessages";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import { mergeCountByNormalizedModel } from "../log/logContentParser";
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 /** Average characters per accepted completion (used for ROI estimation). */
 const AVG_CHARS_PER_COMPLETION = 40;
@@ -195,6 +195,7 @@ export function buildDashboardPayload(
   const normalizedChatModel = mergeCountByNormalizedModel(stats.byChatModel);
   const normalizedSubagentByModel = mergeCountByNormalizedModel(stats.subagentByModel);
   const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
+  const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
 
   const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
   for (const [model, totalCount] of normalizedChatModel) {
@@ -208,6 +209,11 @@ export function buildDashboardPayload(
     const depthStat = stats.agenticDepthByModel.get(model);
     const avgLoopActions = depthStat?.avgLoopActions ?? 0;
     const modelCompletionRate = depthStat?.completionRate ?? 0;
+    const inlineStat = normalizedInlineByModel.get(model) ?? { shown: 0, accepted: 0 };
+    const modelAcceptanceRate = inlineStat.shown > 0 ? (inlineStat.accepted / inlineStat.shown) * 100 : 0;
+    const modelTotalAccepted = inlineStat.accepted;
+    const modelTypingMinutesSaved = (modelTotalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
+    const modelAgenticMinutesSaved = (durationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
     autonomousRatioByModel.push({
       model,
       subagentCount,
@@ -217,6 +223,9 @@ export function buildDashboardPayload(
       avgLoopActions,
       completionRate: modelCompletionRate,
       autonomousDurationMs: durationMs,
+      acceptanceRate: modelAcceptanceRate,
+      totalTimeSaved: modelTypingMinutesSaved + modelAgenticMinutesSaved,
+      totalAccepted: modelTotalAccepted,
     });
   }
   autonomousRatioByModel.sort((a, b) => b.ratio - a.ratio);

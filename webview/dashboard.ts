@@ -4,7 +4,8 @@
  * Responsibilities:
  * - Render two Chart.js visualisations:
  *   1. True Acceptance Rate Timeline (bar + line combo)
- *   2. Flow & Velocity Correlation scatter plot
+ * - Render React-based charts:
+ *   2. Model ROI Efficiency Map (Recharts ScatterChart)
  * - Handle export button interactions.
  * - Persist UI state (selected tab) across tab switches via
  *   `vscode.getState()` / `vscode.setState()`.
@@ -24,7 +25,6 @@ import {
   LineController,
   LineElement,
   PointElement,
-  ScatterController,
   Title,
   Tooltip,
   type TooltipItem,
@@ -36,12 +36,12 @@ import type {
   DashboardPayload,
   HostToWebviewMessage,
   TimelineEntry,
-  VelocityPoint,
   WebviewToHostMessage,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
+import { ModelROIEfficiencyMap } from "./charts/ModelROIEfficiencyMap";
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
@@ -52,7 +52,6 @@ Chart.register(
   PointElement,
   BarController,
   LineController,
-  ScatterController,
   Title,
   Tooltip,
   Legend,
@@ -82,10 +81,10 @@ const vscode = acquireVsCodeApi();
 // ---------------------------------------------------------------------------
 
 let timelineChart: Chart | null = null;
-let velocityChart: Chart | null = null;
 let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
+let modelROIMapRoot: Root | null = null;
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -372,90 +371,23 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Velocity / flow correlation scatter chart
+// Model ROI Efficiency Map
 // ---------------------------------------------------------------------------
 
-function renderVelocityChart(points: VelocityPoint[]): void {
-  const section = document.getElementById("db-velocity-section");
-  const canvas = document.getElementById("db-velocity-chart") as HTMLCanvasElement | null;
-
-  if (points.length === 0) {
-    if (section) {
-      section.style.display = "none";
-    }
+function renderModelROIEfficiencyMap(agenticStats: DashboardPayload["agenticStats"]): void {
+  const el = document.getElementById("model-efficiency-map");
+  if (!el) {
     return;
   }
-
-  if (section) {
-    section.style.display = "";
-  }
-  if (!canvas) {
+  const modelData = agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+  if (modelData.length === 0) {
+    modelROIMapRoot = unmountRoot(modelROIMapRoot);
+    el.innerHTML = "";
     return;
   }
-
-  const c = getColors();
-  const maxComp = Math.max(...points.map((p) => p.completionsAccepted), 1);
-  const normal = points.filter((p) => !p.flowDisrupted);
-  const disrupted = points.filter((p) => p.flowDisrupted);
-
-  if (velocityChart) {
-    velocityChart.destroy();
-  }
-
-  velocityChart = new Chart(canvas, {
-    type: "scatter",
-    data: {
-      datasets: [
-        {
-          label: "Normal Flow",
-          data: normal.map((p) => ({ x: p.kpm, y: (p.completionsAccepted / maxComp) * 100 })),
-          backgroundColor: `${c.blue}cc`,
-          pointRadius: 5,
-        },
-        {
-          label: "Flow Disrupted",
-          data: disrupted.map((p) => ({ x: p.kpm, y: (p.completionsAccepted / maxComp) * 100 })),
-          backgroundColor: `${c.red}cc`,
-          pointRadius: 5,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { labels: { color: c.foreground } },
-        tooltip: {
-          callbacks: {
-            label: (item) => {
-              const pt = item.raw as { x: number; y: number };
-              const src = item.datasetIndex === 0 ? normal : disrupted;
-              const srcPt = src[item.dataIndex];
-              const timeStr = srcPt ? new Date(srcPt.windowStart).toLocaleTimeString() : "";
-              const lines = [`KPM: ${pt.x.toFixed(0)}`, `Completions: ${srcPt?.completionsAccepted ?? 0}`];
-              if (timeStr) {
-                lines.push(`Time: ${timeStr}`);
-              }
-              return lines;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          title: { display: true, text: "Keystrokes Per Minute (KPM)", color: c.foreground },
-          ticks: { color: c.foreground },
-          grid: { color: c.grid },
-        },
-        y: {
-          title: { display: true, text: "Relative Completion Activity (%)", color: c.foreground },
-          beginAtZero: true,
-          max: 100,
-          ticks: { color: c.foreground, callback: (v) => `${v}%` },
-          grid: { color: c.grid },
-        },
-      },
-    },
-  });
+  modelROIMapRoot = unmountRoot(modelROIMapRoot);
+  modelROIMapRoot = createRoot(el);
+  modelROIMapRoot.render(createElement(ModelROIEfficiencyMap, { data: modelData }));
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +474,6 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 const EXPORT_BUTTON_LABELS: Record<string, string> = {
   "db-btn-export-md": "📄 Export Report (Markdown)",
   "db-btn-export-png-health": "🖼️ Save Chart (PNG)",
-  "db-btn-export-png-flow": "🖼️ Save Chart (PNG)",
 };
 
 function setExportLoading(btnId: string, loading: boolean): void {
@@ -570,11 +501,6 @@ function setupExportButtons(): void {
     setExportLoading("db-btn-export-png-health", true);
     exportChartAsPng("db-timeline-chart", "timeline");
   });
-
-  document.getElementById("db-btn-export-png-flow")?.addEventListener("click", () => {
-    setExportLoading("db-btn-export-png-flow", true);
-    exportChartAsPng("db-velocity-chart", "velocity");
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -600,8 +526,6 @@ function switchTab(tabId: string): void {
   // Trigger resize so Chart.js renders correctly after becoming visible.
   if (tabId === "health" && timelineChart) {
     timelineChart.resize();
-  } else if (tabId === "flow" && velocityChart) {
-    velocityChart.resize();
   }
 }
 
@@ -765,7 +689,7 @@ function render(payload: DashboardPayload): void {
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderTimelineChart(payload.timeline);
-  renderVelocityChart(payload.velocityPoints);
+  renderModelROIEfficiencyMap(payload.agenticStats);
 }
 
 // ---------------------------------------------------------------------------
@@ -777,12 +701,8 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
   if (msg.type === "dashboardData") {
     render(msg.payload);
   } else if (msg.type === "exportComplete") {
-    const btnId =
-      msg.exportType === "markdown"
-        ? "db-btn-export-md"
-        : msg.chartId === "timeline"
-          ? "db-btn-export-png-health"
-          : "db-btn-export-png-flow";
+    // Only markdown and timeline PNG exports are currently supported.
+    const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";
     setExportLoading(btnId, false);
   }
 });

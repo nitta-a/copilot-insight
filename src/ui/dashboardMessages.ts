@@ -127,6 +127,12 @@ export interface AgentIntelligenceOverview {
     completionRate: number;
     /** Total autonomous duration in milliseconds for this model. */
     autonomousDurationMs: number;
+    /** Inline completion acceptance rate for this model (0–100). 0 when no inline data. */
+    acceptanceRate: number;
+    /** Total minutes saved for this model (typing + agentic). */
+    totalTimeSaved: number;
+    /** Total inline completions accepted for this model. */
+    totalAccepted: number;
   }>;
 }
 
