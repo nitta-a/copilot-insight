@@ -45,6 +45,7 @@ interface SerializedCopilotUsageStats {
   subagentByModel: Array<[string, number]>;
   autonomousDurationByModel: Array<[string, number]>;
   agenticDepthByModel: Array<[string, AgenticDepthStat]>;
+  byDateAgenticDepth: Array<[string, AgenticDepthStat]>;
   planCount: number;
   executedPlanCount: number;
   userChoicesInPlan: number;
@@ -97,6 +98,7 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     subagentByModel: mapEntries(stats.subagentByModel),
     autonomousDurationByModel: mapEntries(stats.autonomousDurationByModel),
     agenticDepthByModel: mapEntries(stats.agenticDepthByModel),
+    byDateAgenticDepth: mapEntries(stats.byDateAgenticDepth),
     planCount: stats.planCount,
     executedPlanCount: stats.executedPlanCount,
     userChoicesInPlan: stats.userChoicesInPlan,
@@ -142,6 +144,7 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     subagentByModel: toMap(stats.subagentByModel),
     autonomousDurationByModel: toMap(stats.autonomousDurationByModel),
     agenticDepthByModel: toMap(stats.agenticDepthByModel),
+    byDateAgenticDepth: toMap(stats.byDateAgenticDepth),
     planCount: stats.planCount,
     executedPlanCount: stats.executedPlanCount,
     userChoicesInPlan: stats.userChoicesInPlan,

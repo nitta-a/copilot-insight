@@ -69,6 +69,16 @@ export interface WeeklyTrendData {
   rateDiff: number;
 }
 
+export interface EvolutionPoint {
+  date: string;
+  /** Thinking depth: average actions per completed loop. */
+  avgDepth: number;
+  /** Total autonomous volume for the day in minutes. */
+  totalDurationMin: number;
+  /** Daily episode completion rate (0-100). */
+  completionRate: number;
+}
+
 /** Agentic (subagent) activity statistics. */
 export interface AgenticStats {
   /** Number of requests identified as subagent-initiated. */
@@ -145,6 +155,8 @@ export interface DashboardPayload {
   summary: SummaryData;
   timeline: TimelineEntry[];
   velocityPoints: VelocityPoint[];
+  /** Daily agentic autonomy evolution series for the overview chart. */
+  evolutionData: EvolutionPoint[];
   /** Auto-generated insight strings (plain text, safe to render as text content). */
   insights: string[];
   /** Weekly trend comparison data (null when insufficient data). */

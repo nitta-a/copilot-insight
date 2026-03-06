@@ -1,11 +1,27 @@
 import * as assert from "assert";
-import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
-import type { CopilotUsageStats } from "../../src/types";
 import type {
+  ModelPerformanceResult,
   TrueAcceptanceResult,
   VelocityAnalysisResult,
-  ModelPerformanceResult,
 } from "../../src/metrics/metricsEngine";
+import type { CopilotUsageStats } from "../../src/types";
+import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
+
+function fmt(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getMonday(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {
@@ -51,6 +67,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    byDateAgenticDepth: new Map(),
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
@@ -202,6 +219,109 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.velocityPoints[0].kpm, 120);
       assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
       assert.strictEqual(payload.velocityPoints[1].flowDisrupted, true);
+    });
+  });
+
+  suite("evolutionData", () => {
+    test("maps byDateAgenticDepth into sorted autonomy evolution points", () => {
+      const stats = makeStats({
+        byDateAgenticDepth: new Map([
+          [
+            "2026-02-27",
+            {
+              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 2,
+              completionRate: 50,
+              velocityMsPerAction: 30000,
+            },
+          ],
+          [
+            "2026-02-26",
+            {
+              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 3,
+              completionRate: 100,
+              velocityMsPerAction: 10000,
+            },
+          ],
+        ]),
+      });
+
+      const payload = buildDashboardPayload(stats);
+      assert.deepStrictEqual(
+        payload.evolutionData.map((point) => point.date),
+        ["2026-02-26", "2026-02-27"],
+      );
+      assert.strictEqual(payload.evolutionData[0].avgDepth, 3);
+      assert.strictEqual(payload.evolutionData[0].totalDurationMin, 1);
+      assert.strictEqual(payload.evolutionData[0].completionRate, 100);
+      assert.strictEqual(payload.evolutionData[1].totalDurationMin, 1);
+    });
+
+    test("does not synthesize missing dates in evolutionData", () => {
+      const stats = makeStats({
+        byDateAgenticDepth: new Map([
+          [
+            "2026-02-24",
+            {
+              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 1,
+              completionRate: 100,
+              velocityMsPerAction: 5000,
+            },
+          ],
+          [
+            "2026-02-27",
+            {
+              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 2,
+              completionRate: 100,
+              velocityMsPerAction: 10000,
+            },
+          ],
+        ]),
+      });
+
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.evolutionData.length, 2);
+      assert.deepStrictEqual(
+        payload.evolutionData.map((point) => point.date),
+        ["2026-02-24", "2026-02-27"],
+      );
+    });
+
+    test("adds complex-task insight when avg depth grows more than 20% week over week", () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const thisMonday = getMonday(today);
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+
+      const stats = makeStats({
+        byDateAgenticDepth: new Map([
+          [
+            fmt(lastMonday),
+            {
+              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 2,
+              completionRate: 100,
+              velocityMsPerAction: 5000,
+            },
+          ],
+          [
+            fmt(thisMonday),
+            {
+              loopDistribution: { bucket1: 0, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
+              avgLoopActions: 3,
+              completionRate: 100,
+              velocityMsPerAction: 5000,
+            },
+          ],
+        ]),
+      });
+
+      const payload = buildDashboardPayload(stats);
+      assert.ok(payload.insights.includes("🤖 AI is handling more complex tasks (+20% avg. depth vs last week)"));
     });
   });
 

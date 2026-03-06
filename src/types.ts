@@ -116,6 +116,8 @@ export interface CopilotUsageStats {
    * - velocity (avg ms per action)
    */
   agenticDepthByModel: Map<string, AgenticDepthStat>;
+  /** Per-date agentic depth statistics for autonomy evolution. */
+  byDateAgenticDepth: Map<string, AgenticDepthStat>;
 
   // Planning & Execution tracking
   /** Total number of plans proposed by the agent (agent/plan or strategy/propose). */
@@ -150,6 +152,16 @@ export interface ParsingContext extends CopilotUsageStats {
   totalLoopActionsByModel: Map<string, number>;
   /** Per-model histogram of action counts for completed loops. */
   loopDistributionByModel: Map<string, LoopActionBuckets>;
+  /** Per-date count of loops that have been started. */
+  loopsStartedByDate: Map<string, number>;
+  /** Per-date count of loops that completed with shouldContinue=false. */
+  loopsCompletedByDate: Map<string, number>;
+  /** Per-date total number of actions across all completed loops. */
+  totalLoopActionsByDate: Map<string, number>;
+  /** Per-date histogram of action counts for completed loops. */
+  loopDistributionByDate: Map<string, LoopActionBuckets>;
+  /** Per-date total autonomous duration in milliseconds. */
+  autonomousDurationByDate: Map<string, number>;
   /** True when a plan has been proposed but not yet followed by an edit/patch action. */
   activePlanPending: boolean;
 }

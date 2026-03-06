@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import type { DateStat } from "../../src/types";
-import { calculateWeeklyTrend } from "../../src/metrics/weeklyTrend";
+import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../../src/metrics/weeklyTrend";
+import type { AgenticDepthStat, DateStat } from "../../src/types";
 
 /** Helper: format a Date to YYYY-MM-DD. */
 function fmt(date: Date): string {
@@ -171,6 +171,57 @@ suite("weeklyTrend", () => {
       // Two weeks ago data should not appear in either week
       assert.strictEqual(result.lastWeek.shown, 0);
       assert.strictEqual(result.thisWeek.shown, 10);
+    });
+  });
+
+  suite("calculateWeeklyAgenticDepthTrend", () => {
+    test("returns zeroed stats when no daily agentic data exists", () => {
+      const result = calculateWeeklyAgenticDepthTrend(new Map());
+      assert.strictEqual(result.thisWeek.completedLoops, 0);
+      assert.strictEqual(result.thisWeek.totalActions, 0);
+      assert.strictEqual(result.thisWeek.avgDepth, 0);
+      assert.strictEqual(result.lastWeek.avgDepth, 0);
+      assert.strictEqual(result.depthDiff, 0);
+      assert.strictEqual(result.depthGrowthRate, 0);
+    });
+
+    test("computes weighted avg depth across this week and last week", () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const thisMonday = getMonday(today);
+      const lastMonday = new Date(thisMonday);
+      lastMonday.setDate(thisMonday.getDate() - 7);
+
+      const byDateAgenticDepth = new Map<string, AgenticDepthStat>([
+        [
+          fmt(lastMonday),
+          {
+            loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
+            avgLoopActions: 2,
+            completionRate: 100,
+            velocityMsPerAction: 1000,
+          },
+        ],
+        [
+          fmt(thisMonday),
+          {
+            loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
+            avgLoopActions: 3,
+            completionRate: 100,
+            velocityMsPerAction: 1000,
+          },
+        ],
+      ]);
+
+      const result = calculateWeeklyAgenticDepthTrend(byDateAgenticDepth);
+      assert.strictEqual(result.lastWeek.completedLoops, 1);
+      assert.strictEqual(result.lastWeek.totalActions, 2);
+      assert.strictEqual(result.lastWeek.avgDepth, 2);
+      assert.strictEqual(result.thisWeek.completedLoops, 2);
+      assert.strictEqual(result.thisWeek.totalActions, 6);
+      assert.strictEqual(result.thisWeek.avgDepth, 3);
+      assert.strictEqual(result.depthDiff, 1);
+      assert.strictEqual(result.depthGrowthRate, 0.5);
     });
   });
 });

@@ -1,11 +1,11 @@
 import * as assert from "assert";
-import type { CopilotUsageStats } from "../../src/types";
+import { generateMarkdownReport } from "../../src/export/reportGenerator";
 import type {
+  ModelPerformanceResult,
   TrueAcceptanceResult,
   VelocityAnalysisResult,
-  ModelPerformanceResult,
 } from "../../src/metrics/metricsEngine";
-import { generateMarkdownReport } from "../../src/export/reportGenerator";
+import type { CopilotUsageStats } from "../../src/types";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {
@@ -46,6 +46,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    byDateAgenticDepth: new Map(),
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,

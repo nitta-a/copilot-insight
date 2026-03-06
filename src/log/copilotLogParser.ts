@@ -70,6 +70,7 @@ export async function parseCopilotLogs(
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    byDateAgenticDepth: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -82,6 +83,11 @@ export async function parseCopilotLogs(
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    loopsStartedByDate: new Map(),
+    loopsCompletedByDate: new Map(),
+    totalLoopActionsByDate: new Map(),
+    loopDistributionByDate: new Map(),
+    autonomousDurationByDate: new Map(),
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
@@ -180,6 +186,27 @@ export async function parseCopilotLogs(
       bucket11plus: 0,
     };
     ctx.agenticDepthByModel.set(model, {
+      loopDistribution: dist,
+      avgLoopActions: completed > 0 ? totalActions / completed : 0,
+      completionRate: started > 0 ? (completed / started) * 100 : 0,
+      velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+    });
+  }
+
+  const allDateKeys = new Set([...ctx.loopsStartedByDate.keys(), ...ctx.loopsCompletedByDate.keys()]);
+  for (const date of allDateKeys) {
+    const started = ctx.loopsStartedByDate.get(date) ?? 0;
+    const completed = ctx.loopsCompletedByDate.get(date) ?? 0;
+    const totalActions = ctx.totalLoopActionsByDate.get(date) ?? 0;
+    const totalDurationMs = ctx.autonomousDurationByDate.get(date) ?? 0;
+    const dist = ctx.loopDistributionByDate.get(date) ?? {
+      bucket1: 0,
+      bucket2: 0,
+      bucket3to5: 0,
+      bucket6to10: 0,
+      bucket11plus: 0,
+    };
+    ctx.byDateAgenticDepth.set(date, {
       loopDistribution: dist,
       avgLoopActions: completed > 0 ? totalActions / completed : 0,
       completionRate: started > 0 ? (completed / started) * 100 : 0,
