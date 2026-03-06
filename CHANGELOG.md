@@ -4,6 +4,15 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.12] - 2026-03-06
+
+### Added
+- 📋 **Planning Success Rate Analytics** — the Agent Intelligence Overview now includes a dedicated **Planning & Execution** section that surfaces four new metrics: Plans Proposed, Plans Executed (led to file edits), Planning Success Rate, and User Choices (in-plan interactions); the section is shown automatically when plan activity is detected in the logs
+- 🧮 **Planning fields in log parser** — `logContentParser` tracks `planCount`, `executedPlanCount`, and `userChoicesInPlan` by recognising `agent/plan`, `strategy/propose`, and `choice_selected` log events
+- 📊 **Planning stats in dashboard payload** — `buildDashboardPayload` exposes `planCount`, `executedPlanCount`, `planSuccessRate`, and `userChoicesInPlan` in the `AgenticOverview` shape forwarded to the WebView
+- 📝 **Planning section in Markdown report** — `reportGenerator` now emits a Planning & Execution block (strategic plans proposed, plans executed, success rate, user choices) when plan activity is present
+- 🔌 **Typed planning fields** — `AgenticStats` in `dashboardMessages.ts` declares the four new planning fields so both the host and the WebView share the same contract
+
 ## [1.0.11] - 2026-03-04
 
 ### Added
