@@ -60,6 +60,23 @@ function makeStats(): CopilotUsageStats {
         },
       ],
     ]),
+    byDateAgenticDepth: new Map([
+      [
+        "2026-03-01",
+        {
+          loopDistribution: {
+            bucket1: 0,
+            bucket2: 1,
+            bucket3to5: 0,
+            bucket6to10: 0,
+            bucket11plus: 0,
+          },
+          avgLoopActions: 2,
+          completionRate: 50,
+          velocityMsPerAction: 499.5,
+        },
+      ],
+    ]),
     planCount: 1,
     executedPlanCount: 1,
     userChoicesInPlan: 0,
@@ -83,6 +100,10 @@ suite("StatsSnapshotStorage", () => {
       assert.deepStrictEqual(
         [...(restored?.agenticDepthByModel.entries() ?? [])],
         [...expected.agenticDepthByModel.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.byDateAgenticDepth.entries() ?? [])],
+        [...expected.byDateAgenticDepth.entries()],
       );
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });

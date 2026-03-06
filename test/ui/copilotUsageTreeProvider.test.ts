@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { CopilotUsageTreeProvider } from "../../src/ui/copilotUsageTreeProvider";
 import type { CopilotUsageStats } from "../../src/types";
+import { CopilotUsageTreeProvider } from "../../src/ui/copilotUsageTreeProvider";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {
@@ -49,6 +49,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    byDateAgenticDepth: new Map(),
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,

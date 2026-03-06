@@ -40,6 +40,7 @@ import type {
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
+import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 
@@ -85,6 +86,7 @@ let currentTab = "overview";
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let modelAutonomyMapRoot: Root | null = null;
+let autonomyEvolutionRoot: Root | null = null;
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -678,6 +680,33 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   }
 }
 
+function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"]): void {
+  const el = document.getElementById("db-autonomy-evolution-container");
+  if (!el) {
+    return;
+  }
+
+  if (evolutionData.length === 0) {
+    autonomyEvolutionRoot = unmountRoot(autonomyEvolutionRoot);
+    el.innerHTML = '<p class="no-data">No autonomy evolution data available for this period.</p>';
+    return;
+  }
+
+  el.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🧭 Autonomy Evolution</h2>
+    <div id="db-autonomy-evolution-chart" style="margin-top:16px"></div>`;
+
+  const chartEl = document.getElementById("db-autonomy-evolution-chart");
+  if (!chartEl) {
+    return;
+  }
+
+  autonomyEvolutionRoot = unmountRoot(autonomyEvolutionRoot);
+  autonomyEvolutionRoot = createRoot(chartEl);
+  autonomyEvolutionRoot.render(createElement(AutonomyEvolutionChart, { data: evolutionData }));
+}
+
 // ---------------------------------------------------------------------------
 // Full render
 // ---------------------------------------------------------------------------
@@ -688,6 +717,7 @@ function render(payload: DashboardPayload): void {
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
+  renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
 }

@@ -412,6 +412,7 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
         ctx.activeSubagentLoop = tsMatch[1];
         ctx.activeSubagentLoopModel = model ? model : null;
         ctx.subagentLoopsStarted++;
+        incrementCount(ctx.loopsStartedByDate, tsMatch[1].slice(0, 10));
         ctx.activeSubagentLoopActionCount = 1;
         if (model) {
           incrementCount(ctx.loopsStartedByModel, model);
@@ -602,6 +603,8 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   }
   ctx.subagentLoops++;
   if (ctx.activeSubagentLoop !== null) {
+    const dateKey = ctx.activeSubagentLoop.slice(0, 10);
+    const actionCount = ctx.activeSubagentLoopActionCount;
     const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
     if (tsMatch) {
       const startMs = new Date(ctx.activeSubagentLoop.replace(/\s+/g, "T")).getTime();
@@ -609,6 +612,8 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
       if (endMs > startMs) {
         const durationMs = endMs - startMs;
         ctx.autonomousDurationMs += durationMs;
+        const dateDuration = ctx.autonomousDurationByDate.get(dateKey) ?? 0;
+        ctx.autonomousDurationByDate.set(dateKey, dateDuration + durationMs);
         if (ctx.activeSubagentLoopModel) {
           const prev = ctx.autonomousDurationByModel.get(ctx.activeSubagentLoopModel) ?? 0;
           ctx.autonomousDurationByModel.set(ctx.activeSubagentLoopModel, prev + durationMs);
@@ -616,11 +621,33 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
       }
     }
 
+    incrementCount(ctx.loopsCompletedByDate, dateKey);
+    const dateTotalActions = ctx.totalLoopActionsByDate.get(dateKey) ?? 0;
+    ctx.totalLoopActionsByDate.set(dateKey, dateTotalActions + actionCount);
+    const dateDist = ctx.loopDistributionByDate.get(dateKey) ?? {
+      bucket1: 0,
+      bucket2: 0,
+      bucket3to5: 0,
+      bucket6to10: 0,
+      bucket11plus: 0,
+    };
+    if (actionCount === 1) {
+      dateDist.bucket1++;
+    } else if (actionCount === 2) {
+      dateDist.bucket2++;
+    } else if (actionCount <= 5) {
+      dateDist.bucket3to5++;
+    } else if (actionCount <= 10) {
+      dateDist.bucket6to10++;
+    } else {
+      dateDist.bucket11plus++;
+    }
+    ctx.loopDistributionByDate.set(dateKey, dateDist);
+
     // Record per-model completion and action-count histogram.
     const model = ctx.activeSubagentLoopModel;
     if (model) {
       incrementCount(ctx.loopsCompletedByModel, model);
-      const actionCount = ctx.activeSubagentLoopActionCount;
       const prev = ctx.totalLoopActionsByModel.get(model) ?? 0;
       ctx.totalLoopActionsByModel.set(model, prev + actionCount);
       const dist = ctx.loopDistributionByModel.get(model) ?? {

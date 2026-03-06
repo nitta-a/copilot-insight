@@ -5,19 +5,20 @@
  * requiring a VS Code process.
  */
 
-import type { CopilotUsageStats } from "../types";
+import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
+import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
+import type { AgenticDepthStat, CopilotUsageStats } from "../types";
 import type {
+  AgentIntelligenceOverview,
+  AgenticStats,
   DashboardPayload,
+  EvolutionPoint,
   SummaryData,
   TimelineEntry,
   VelocityPoint,
   WeeklyTrendData,
-  AgenticStats,
-  AgentIntelligenceOverview,
 } from "./dashboardMessages";
-import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 
 /** Average characters per accepted completion (used for ROI estimation). */
 const AVG_CHARS_PER_COMPLETION = 40;
@@ -144,8 +145,18 @@ export function buildDashboardPayload(
     windowStart: dp.windowStart,
   }));
 
+  const evolutionData: EvolutionPoint[] = Array.from(stats.byDateAgenticDepth.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, dayStat]) => ({
+      date,
+      avgDepth: Number(dayStat.avgLoopActions.toFixed(2)),
+      totalDurationMin: Number(((dayStat.velocityMsPerAction * countCompletedActions(dayStat)) / 60000).toFixed(2)),
+      completionRate: Number(dayStat.completionRate.toFixed(2)),
+    }));
+
   // ── Weekly trend ─────────────────────────────────────────────────────────
   const trendResult = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
+  const agenticTrendResult = calculateWeeklyAgenticDepthTrend(stats.byDateAgenticDepth);
   const weeklyTrend: WeeklyTrendData | null =
     trendResult.thisWeek.shown > 0 || trendResult.lastWeek.shown > 0 ? trendResult : null;
 
@@ -164,6 +175,14 @@ export function buildDashboardPayload(
         `📉 This week's acceptance rate is ${diff.toFixed(1)}% lower than last week (${trendResult.thisWeek.rate.toFixed(1)}% vs ${trendResult.lastWeek.rate.toFixed(1)}%).`,
       );
     }
+  }
+
+  if (
+    agenticTrendResult.thisWeek.completedLoops > 0 &&
+    agenticTrendResult.lastWeek.completedLoops > 0 &&
+    agenticTrendResult.depthGrowthRate >= 0.2
+  ) {
+    insights.push("🤖 AI is handling more complex tasks (+20% avg. depth vs last week)");
   }
 
   // 2. Peak hour
@@ -256,8 +275,19 @@ export function buildDashboardPayload(
     summary,
     timeline,
     velocityPoints,
+    evolutionData,
     insights,
     weeklyTrend,
     agenticStats,
   };
+}
+
+function countCompletedActions(stat: AgenticDepthStat): number {
+  const completedLoops =
+    stat.loopDistribution.bucket1 +
+    stat.loopDistribution.bucket2 +
+    stat.loopDistribution.bucket3to5 +
+    stat.loopDistribution.bucket6to10 +
+    stat.loopDistribution.bucket11plus;
+  return completedLoops * stat.avgLoopActions;
 }

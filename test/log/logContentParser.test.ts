@@ -50,6 +50,7 @@ function makeEmptyStats(): ParsingContext {
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
     agenticDepthByModel: new Map(),
+    byDateAgenticDepth: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -62,6 +63,11 @@ function makeEmptyStats(): ParsingContext {
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    loopsStartedByDate: new Map(),
+    loopsCompletedByDate: new Map(),
+    totalLoopActionsByDate: new Map(),
+    loopDistributionByDate: new Map(),
+    autonomousDurationByDate: new Map(),
     byContextEffectiveness: new Map(),
     planCount: 0,
     executedPlanCount: 0,
@@ -825,6 +831,24 @@ suite("logContentParser", () => {
       );
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs > 0, "autonomousDurationMs should be > 0 after loop ends");
+    });
+
+    test("agentic loop tracking also updates per-date counters and durations", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
+      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [panel/editAgent]", stats);
+      parseTextLogLine(
+        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
+        stats,
+      );
+
+      assert.strictEqual(stats.loopsStartedByDate.get("2024-06-01"), 1);
+      assert.strictEqual(stats.loopsCompletedByDate.get("2024-06-01"), 1);
+      assert.strictEqual(stats.totalLoopActionsByDate.get("2024-06-01"), 2);
+      assert.ok((stats.autonomousDurationByDate.get("2024-06-01") ?? 0) > 0);
+      const dist = stats.loopDistributionByDate.get("2024-06-01");
+      assert.ok(dist);
+      assert.strictEqual(dist?.bucket2, 1);
     });
 
     test("ToolCallingLoop stop line without active loop does not throw", () => {
