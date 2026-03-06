@@ -91,6 +91,25 @@ export interface AgenticStats {
   toolUsageStats: Array<{ intent: string; count: number }>;
   /** High-level "Agent Intelligence Overview" summary. */
   agentIntelligenceOverview: AgentIntelligenceOverview;
+  /** Emerging 1.110 feature signals grouped by category. */
+  featureSignals: AgenticFeatureSignals;
+}
+
+export interface CountBreakdownEntry {
+  name: string;
+  count: number;
+}
+
+export interface FeatureSignalCategory {
+  total: number;
+  breakdown: CountBreakdownEntry[];
+}
+
+export interface AgenticFeatureSignals {
+  browserTools: FeatureSignalCategory;
+  pluginOrSkills: FeatureSignalCategory;
+  memoryManagement: FeatureSignalCategory;
+  agentDebug: FeatureSignalCategory;
 }
 
 /**

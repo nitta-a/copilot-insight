@@ -14,9 +14,9 @@
  * 6. ROI Estimation — estimated time saved
  */
 
-import type { CopilotUsageStats } from "../types";
-import type { TrueAcceptanceResult, VelocityAnalysisResult, ModelPerformanceResult } from "../metrics/metricsEngine";
 import { mergeCountByNormalizedModel } from "../log/logContentParser";
+import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
+import type { CopilotUsageStats } from "../types";
 
 /** Input options for report generation. */
 export interface ReportOptions {
@@ -151,6 +151,32 @@ export function generateMarkdownReport(options: ReportOptions): string {
       `| Episode Completion Rate | ${stats.completionRate > 0 ? `${stats.completionRate.toFixed(1)}%` : "—"} |`,
     );
     lines.push("");
+  }
+
+  const featureSections: Array<[string, number, Map<string, number>]> = [
+    ["Browser Tools", stats.browserToolInvocations, stats.browserToolsByType],
+    ["Plugins / Skills", stats.pluginOrSkillInvocations, stats.pluginOrSkillByName],
+    ["Session Memory / Compact", stats.memoryManagementEvents, stats.memoryManagementByType],
+    ["Agent Debug", stats.agentDebugEvents, stats.agentDebugByType],
+  ];
+  const hasFeatureSignals = featureSections.some(([, total]) => total > 0);
+  if (hasFeatureSignals) {
+    lines.push("## VS Code 1.110 Feature Signals");
+    lines.push("");
+    for (const [title, total, breakdown] of featureSections) {
+      if (total === 0) {
+        continue;
+      }
+      lines.push(`### ${title}`);
+      lines.push("");
+      lines.push(`- **Total Observed Events**: ${total}`);
+      for (const [name, count] of Array.from(breakdown.entries()).sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )) {
+        lines.push(`- **${name}**: ${count}`);
+      }
+      lines.push("");
+    }
   }
 
   // --- 3. Agent Intelligence Details ---

@@ -107,6 +107,26 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
     lines.push("");
   }
 
+  const featureSections: Array<[string, number, Map<string, number>]> = [
+    ["# Browser Tool Signals", stats.browserToolInvocations, stats.browserToolsByType],
+    ["# Plugin Or Skill Signals", stats.pluginOrSkillInvocations, stats.pluginOrSkillByName],
+    ["# Session Memory Signals", stats.memoryManagementEvents, stats.memoryManagementByType],
+    ["# Agent Debug Signals", stats.agentDebugEvents, stats.agentDebugByType],
+  ];
+  for (const [title, total, breakdown] of featureSections) {
+    if (total === 0) {
+      continue;
+    }
+    lines.push(title);
+    lines.push("Type,Count");
+    for (const [name, count] of Array.from(breakdown.entries()).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )) {
+      lines.push(`${csvEscape(name)},${count}`);
+    }
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -142,6 +162,24 @@ export function exportAsJson(stats: CopilotUsageStats): string {
     chatByHour: mapToObject<number>(stats.chatByHour),
     errorsByType: mapToObject<number>(stats.errorsByType),
     byContextSource: mapToObject<number>(stats.byContextSource),
+    featureSignals: {
+      browserTools: {
+        total: stats.browserToolInvocations,
+        breakdown: mapToObject<number>(stats.browserToolsByType),
+      },
+      pluginOrSkills: {
+        total: stats.pluginOrSkillInvocations,
+        breakdown: mapToObject<number>(stats.pluginOrSkillByName),
+      },
+      memoryManagement: {
+        total: stats.memoryManagementEvents,
+        breakdown: mapToObject<number>(stats.memoryManagementByType),
+      },
+      agentDebug: {
+        total: stats.agentDebugEvents,
+        breakdown: mapToObject<number>(stats.agentDebugByType),
+      },
+    },
     sessions: Array.from(stats.bySession.values()).sort((a, b) => b.sessionId.localeCompare(a.sessionId)),
   };
 

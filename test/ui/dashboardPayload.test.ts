@@ -71,6 +71,14 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
+    browserToolInvocations: 0,
+    browserToolsByType: new Map(),
+    pluginOrSkillInvocations: 0,
+    pluginOrSkillByName: new Map(),
+    memoryManagementEvents: 0,
+    memoryManagementByType: new Map(),
+    agentDebugEvents: 0,
+    agentDebugByType: new Map(),
     ...overrides,
   };
 }
@@ -604,6 +612,37 @@ suite("buildDashboardPayload", () => {
       const stats = makeStats({ planCount: 0, executedPlanCount: 0 });
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.planSuccessRate, 0);
+    });
+
+    test("featureSignals exposes sorted browser tool breakdown", () => {
+      const stats = makeStats({
+        browserToolInvocations: 3,
+        browserToolsByType: new Map([
+          ["screenshot", 2],
+          ["playwright", 1],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.agenticStats.featureSignals.browserTools.total, 3);
+      assert.deepStrictEqual(payload.agenticStats.featureSignals.browserTools.breakdown, [
+        { name: "screenshot", count: 2 },
+        { name: "playwright", count: 1 },
+      ]);
+    });
+
+    test("featureSignals includes plugin, memory, and debug totals", () => {
+      const stats = makeStats({
+        pluginOrSkillInvocations: 2,
+        pluginOrSkillByName: new Map([["code-search", 2]]),
+        memoryManagementEvents: 1,
+        memoryManagementByType: new Map([["compact", 1]]),
+        agentDebugEvents: 4,
+        agentDebugByType: new Map([["step-execution", 4]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.agenticStats.featureSignals.pluginOrSkills.total, 2);
+      assert.strictEqual(payload.agenticStats.featureSignals.memoryManagement.total, 1);
+      assert.strictEqual(payload.agenticStats.featureSignals.agentDebug.total, 4);
     });
 
     test("autonomousRatioByModel.acceptanceRate is 0 when no inline completion data for model", () => {

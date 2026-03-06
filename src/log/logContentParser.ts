@@ -14,6 +14,21 @@ const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 /** Intent tags that identify subagent-initiated requests. */
 const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
 
+const FEATURE_VALUE_KEYS = [
+  "event",
+  "eventName",
+  "intent",
+  "toolName",
+  "toolType",
+  "pluginName",
+  "skillName",
+  "command",
+  "action",
+  "category",
+  "sourceType",
+  "contextType",
+] as const;
+
 /** Returns true if the intent is a known subagent intent or a tool/runSubagent-* variant. */
 function isSubagentIntent(intent: string): boolean {
   return SUBAGENT_INTENTS.has(intent) || intent.startsWith("tool/runSubagent-");
@@ -141,6 +156,180 @@ export function incrementStatCount(map: Map<string, LanguageStat>, key: string, 
   map.set(key, existing);
 }
 
+function parseBrowserToolType(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("playwright")) {
+    return "playwright";
+  }
+  if (lower.includes("screenshot")) {
+    return "screenshot";
+  }
+  if (
+    lower.includes("browser-navigate") ||
+    lower.includes("browser_navigate") ||
+    lower.includes("browser tool: navigate")
+  ) {
+    return "navigate";
+  }
+  if (lower.includes("browser tool") || lower.includes("browsertool") || lower.includes("browser-")) {
+    return "browser";
+  }
+  return "browser-tool";
+}
+
+function parsePluginOrSkillType(raw: string): string {
+  const lower = raw.toLowerCase();
+  const namedMatch = raw.match(/(?:agent-plugin|plugin|skill)(?:name)?[:= ]+([a-zA-Z0-9._/-]+)/i);
+  if (namedMatch?.[1]) {
+    return namedMatch[1];
+  }
+  if (lower.includes("agent-plugin")) {
+    return "agent-plugin";
+  }
+  if (lower.includes("skill")) {
+    return "skill";
+  }
+  if (lower.includes("[plugin") || /\bplugin[:= ]/.test(lower)) {
+    return "plugin";
+  }
+  if (lower.includes("tool-call") || lower.includes("tool_call")) {
+    return "tool-call";
+  }
+  if (lower.includes("toolinvocation") || lower.includes("tool invocation")) {
+    return "tool-invocation";
+  }
+  if (lower.includes("invoketool") || lower.includes("invoke_tool")) {
+    return "invoke-tool";
+  }
+  return "plugin-or-skill";
+}
+
+function parseMemoryManagementType(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("/compact")) {
+    return "compact";
+  }
+  if (lower.includes("context_limit") || lower.includes("context limit")) {
+    return "context-limit";
+  }
+  if (lower.includes("summarize_context") || lower.includes("summarize context")) {
+    return "summarize";
+  }
+  if (lower.includes("session_memory") || lower.includes("session memory")) {
+    return "session-memory";
+  }
+  if (lower.includes("compaction")) {
+    return "compaction";
+  }
+  return "memory";
+}
+
+function parseAgentDebugType(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("step-execution") || lower.includes("step execution")) {
+    return "step-execution";
+  }
+  if (lower.includes("breakpoint")) {
+    return "breakpoint";
+  }
+  if (lower.includes("agent-debug") || lower.includes("agent debug")) {
+    return "agent-debug";
+  }
+  if (lower.includes("agent trace")) {
+    return "trace";
+  }
+  return "debug";
+}
+
+function recordBrowserToolSignal(ctx: ParsingContext, raw: string): void {
+  ctx.browserToolInvocations++;
+  incrementCount(ctx.browserToolsByType, parseBrowserToolType(raw));
+}
+
+function recordPluginOrSkillSignal(ctx: ParsingContext, raw: string): void {
+  ctx.pluginOrSkillInvocations++;
+  incrementCount(ctx.pluginOrSkillByName, parsePluginOrSkillType(raw));
+}
+
+function recordMemoryManagementSignal(ctx: ParsingContext, raw: string): void {
+  ctx.memoryManagementEvents++;
+  incrementCount(ctx.memoryManagementByType, parseMemoryManagementType(raw));
+}
+
+function recordAgentDebugSignal(ctx: ParsingContext, raw: string): void {
+  ctx.agentDebugEvents++;
+  incrementCount(ctx.agentDebugByType, parseAgentDebugType(raw));
+}
+
+function getJsonFeatureText(data: Record<string, unknown>): string {
+  const values = FEATURE_VALUE_KEYS.map((key) => data[key]).filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+  return values.join(" ");
+}
+
+function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext): boolean {
+  const lower = raw.toLowerCase();
+  let matched = false;
+
+  const hasBrowserSignal =
+    lower.includes("playwright") ||
+    lower.includes("browser tool") ||
+    lower.includes("browsertool") ||
+    lower.includes("browser-") ||
+    lower.includes("browser_") ||
+    lower.includes("screenshot");
+  if (hasBrowserSignal) {
+    recordBrowserToolSignal(ctx, raw);
+    matched = true;
+  }
+
+  const hasPluginOrSkillSignal =
+    lower.includes("agent-plugin") ||
+    lower.includes("[plugin") ||
+    lower.includes("[skill") ||
+    /\bplugin[:= ]/.test(lower) ||
+    /\bskill[:= ]/.test(lower) ||
+    lower.includes("tool-call") ||
+    lower.includes("tool_call") ||
+    lower.includes("tool invocation") ||
+    lower.includes("toolinvocation") ||
+    lower.includes("invoketool") ||
+    lower.includes("invoke_tool");
+  if (hasPluginOrSkillSignal) {
+    recordPluginOrSkillSignal(ctx, raw);
+    matched = true;
+  }
+
+  const hasMemorySignal =
+    lower.includes("/compact") ||
+    lower.includes("session memory") ||
+    lower.includes("session_memory") ||
+    lower.includes("context_limit") ||
+    lower.includes("context limit") ||
+    lower.includes("summarize_context") ||
+    lower.includes("summarize context") ||
+    lower.includes("compaction");
+  if (hasMemorySignal) {
+    recordMemoryManagementSignal(ctx, raw);
+    matched = true;
+  }
+
+  const hasAgentDebugSignal =
+    lower.includes("agent-debug") ||
+    lower.includes("agent debug") ||
+    lower.includes("step-execution") ||
+    lower.includes("step execution") ||
+    lower.includes("breakpoint") ||
+    lower.includes("agent trace");
+  if (hasAgentDebugSignal) {
+    recordAgentDebugSignal(ctx, raw);
+    matched = true;
+  }
+
+  return matched;
+}
+
 // --- Session tracking ---
 
 function getOrCreateSession(ctx: ParsingContext) {
@@ -194,6 +383,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   const event = (data.event as string | undefined) ?? (data.eventName as string | undefined) ?? "";
   const timestamp = (data.timestamp as string | undefined) ?? "";
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
+  const featureText = getJsonFeatureText(data);
 
   const eventLower = event.toLowerCase();
   const isShown = eventLower.includes("shown") || eventLower.includes("displayed") || eventLower.includes("triggered");
@@ -250,6 +440,10 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
         incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
       }
     }
+  }
+
+  if (featureText) {
+    maybeRecordFeatureSignals(featureText, ctx);
   }
 
   // Planning & Execution: check event name for plan/execution signals.
@@ -574,6 +768,9 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
     [/embedding/i, "Workspace"],
     [/\bmcp\b/i, "MCP / External Docs"],
     [/externaldoc/i, "MCP / External Docs"],
+    [/(agent-plugin|plugin|skill)/i, "Plugin / Skill"],
+    [/(browsertool|browser tool|playwright|screenshot)/i, "Browser Tool"],
+    [/(session_memory|session memory|compact|compaction)/i, "Session Memory"],
     [/currentfile/i, "Current File"],
     [/snippet/i, "Snippet"],
   ];
@@ -685,6 +882,8 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   // and apply_patch lines are not shadowed by the context provider parser
   // (which would consume any line containing the word "workspace").
   trackPlanningStats(lineCtx.lower, ctx);
+
+  maybeRecordFeatureSignals(line, ctx);
 
   if (parseToolCallingLoopStopLine(line, ctx)) {
     return;

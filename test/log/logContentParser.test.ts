@@ -72,6 +72,14 @@ function makeEmptyStats(): ParsingContext {
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
+    browserToolInvocations: 0,
+    browserToolsByType: new Map(),
+    pluginOrSkillInvocations: 0,
+    pluginOrSkillByName: new Map(),
+    memoryManagementEvents: 0,
+    memoryManagementByType: new Map(),
+    agentDebugEvents: 0,
+    agentDebugByType: new Map(),
     activePlanPending: false,
   };
 }
@@ -106,6 +114,20 @@ suite("logContentParser", () => {
   });
 
   suite("processJsonEntry", () => {
+    test("records browser tool signals from JSON event fields", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry(
+        {
+          event: "browser_screenshot",
+          toolName: "playwright",
+          timestamp: "2026-03-07T10:00:00Z",
+        },
+        stats,
+      );
+      assert.strictEqual(stats.browserToolInvocations, 1);
+      assert.strictEqual(stats.browserToolsByType.get("playwright"), 1);
+    });
+
     test("increments totalShown for shown event", () => {
       const stats = makeEmptyStats();
       processJsonEntry(
@@ -261,6 +283,27 @@ suite("logContentParser", () => {
   });
 
   suite("parseTextLogLine", () => {
+    test("records plugin or skill signals from text lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("[PluginTool] invokeTool plugin: code-search", stats);
+      assert.strictEqual(stats.pluginOrSkillInvocations, 1);
+      assert.strictEqual(stats.pluginOrSkillByName.get("code-search"), 1);
+    });
+
+    test("records memory management signals from text lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("/compact summarize_context context_limit reached", stats);
+      assert.strictEqual(stats.memoryManagementEvents, 1);
+      assert.strictEqual(stats.memoryManagementByType.get("compact"), 1);
+    });
+
+    test("records agent debug signals from text lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("[AgentDebug] step-execution breakpoint paused", stats);
+      assert.strictEqual(stats.agentDebugEvents, 1);
+      assert.strictEqual(stats.agentDebugByType.get("step-execution"), 1);
+    });
+
     test("increments totalShown for 'suggestion shown'", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-01-15 suggestion shown language: typescript", stats);

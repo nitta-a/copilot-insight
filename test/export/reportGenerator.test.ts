@@ -50,6 +50,14 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     planCount: 0,
     executedPlanCount: 0,
     userChoicesInPlan: 0,
+    browserToolInvocations: 0,
+    browserToolsByType: new Map(),
+    pluginOrSkillInvocations: 0,
+    pluginOrSkillByName: new Map(),
+    memoryManagementEvents: 0,
+    memoryManagementByType: new Map(),
+    agentDebugEvents: 0,
+    agentDebugByType: new Map(),
     ...overrides,
   };
 }
@@ -221,6 +229,22 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("Autonomous Duration"));
     assert.ok(md.includes("Episode Completion Rate"));
     assert.ok(md.includes("AI Autonomous Time"));
+  });
+
+  test("includes 1.110 feature signal section when present", () => {
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        browserToolInvocations: 2,
+        browserToolsByType: new Map([["screenshot", 2]]),
+        agentDebugEvents: 1,
+        agentDebugByType: new Map([["step-execution", 1]]),
+      }),
+    });
+    assert.ok(md.includes("## VS Code 1.110 Feature Signals"));
+    assert.ok(md.includes("### Browser Tools"));
+    assert.ok(md.includes("**screenshot**: 2"));
+    assert.ok(md.includes("### Agent Debug"));
   });
 
   test("omits agentic ROI section when no subagent activity", () => {
