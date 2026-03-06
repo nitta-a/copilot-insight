@@ -1,8 +1,8 @@
+import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as vscode from "vscode";
-import { parseLogContent } from "./logContentParser";
 import type { ParsingContext } from "../types";
+import { parseLogContent } from "./logContentParser";
 
 function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
@@ -84,5 +84,53 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
     }
   } catch {
     // Skip if directory is not readable
+  }
+}
+
+/**
+ * Parse `remoteexthost.log` from each `exthost*` subdirectory within a session
+ * directory.
+ *
+ * In VS Code Remote / WSL environments the extension host runs inside a per-
+ * workspace remote process.  VS Code creates one or more numbered `exthost<N>`
+ * subdirectories under the session root (e.g. `20260228T180728/exthost1/`) and
+ * writes log files inside each of them — NOT at the session root.
+ * This function iterates over all `exthost*` siblings and parses every
+ * `.log` file it finds directly inside them, silently skipping missing or
+ * unreadable files.
+ */
+export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(sessionDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!/^exthost/i.test(entry)) {
+      continue;
+    }
+    // Parse all .log files directly inside the exthost<N> directory.
+    // fs.readdir naturally rejects non-directories, so no explicit isDirectory check is needed.
+    const exthostDir = path.join(sessionDir, entry);
+    let logFiles: string[];
+    try {
+      logFiles = await fs.readdir(exthostDir);
+    } catch {
+      continue;
+    }
+    for (const logFile of logFiles) {
+      if (!logFile.endsWith(".log")) {
+        continue;
+      }
+      const filePath = path.join(exthostDir, logFile);
+      try {
+        const content = await fs.readFile(filePath, "utf-8");
+        parseLogContent(content, ctx);
+        ctx.logFilesFound++;
+      } catch {
+        // Skip unreadable file
+      }
+    }
   }
 }

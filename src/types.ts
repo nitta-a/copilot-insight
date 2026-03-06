@@ -116,6 +116,14 @@ export interface CopilotUsageStats {
    * - velocity (avg ms per action)
    */
   agenticDepthByModel: Map<string, AgenticDepthStat>;
+
+  // Planning & Execution tracking
+  /** Total number of plans proposed by the agent (agent/plan or strategy/propose). */
+  planCount: number;
+  /** Number of plans that were followed by a file edit or patch application. */
+  executedPlanCount: number;
+  /** Number of in-plan user choice interactions (choice_selected). */
+  userChoicesInPlan: number;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */
@@ -142,4 +150,6 @@ export interface ParsingContext extends CopilotUsageStats {
   totalLoopActionsByModel: Map<string, number>;
   /** Per-model histogram of action counts for completed loops. */
   loopDistributionByModel: Map<string, LoopActionBuckets>;
+  /** True when a plan has been proposed but not yet followed by an edit/patch action. */
+  activePlanPending: boolean;
 }

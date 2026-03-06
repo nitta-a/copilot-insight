@@ -63,6 +63,10 @@ function makeEmptyStats(): ParsingContext {
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
     byContextEffectiveness: new Map(),
+    planCount: 0,
+    executedPlanCount: 0,
+    userChoicesInPlan: 0,
+    activePlanPending: false,
   };
 }
 
@@ -781,6 +785,34 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.toolUsageStats.size, 0);
     });
 
+    test("detects tool/runSubagent-Explore intent and increments subagentRequests", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:3f21ad7f.copilotmd | success | claude-haiku-4.5 -> claude-haiku-4-5-20251001 | 3236ms | [tool/runSubagent-Explore]",
+        stats,
+      );
+      assert.strictEqual(stats.subagentRequests, 1);
+      assert.strictEqual(stats.toolUsageStats.get("runSubagent-Explore"), 1);
+    });
+
+    test("tool/runSubagent-Explore is tracked in subagentByModel", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:5651ba39.copilotmd | success | claude-haiku-4.5 -> claude-haiku-4-5-20251001 | 33641ms | [tool/runSubagent-Explore]",
+        stats,
+      );
+      assert.ok(stats.subagentByModel.size > 0, "subagentByModel should have an entry");
+    });
+
+    test("tool/runSubagent-ToolCaller variant also counts as subagent intent", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine(
+        "2024-06-01 10:00:00.000 ccreq:aabbcc | success | gpt-4o | 2000ms | [tool/runSubagent-ToolCaller]",
+        stats,
+      );
+      assert.strictEqual(stats.subagentRequests, 1);
+    });
+
     test("ToolCallingLoop stop line closes active loop and accumulates autonomousDurationMs", () => {
       const stats = makeEmptyStats();
       // Start a subagent loop
@@ -1043,6 +1075,29 @@ suite("normalizeModelName", () => {
   test("does not strip leading hash (edge case)", () => {
     assert.strictEqual(normalizeModelName("#weird"), "#weird");
   });
+
+  // Rule 4: -copilot vendor suffix stripping
+  test("strips -copilot vendor suffix", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-copilot"), "gpt-41");
+  });
+
+  test("strips -copilot suffix case-insensitively", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-Copilot"), "gpt-41");
+  });
+
+  test("strips -copilot suffix after arrow removal", () => {
+    assert.strictEqual(normalizeModelName("gpt-41-copilot -> azure/eastus"), "gpt-41");
+  });
+
+  test("does not strip -copilot when it is not a suffix", () => {
+    // "copilot" appears in the middle but is not a trailing -copilot suffix
+    assert.strictEqual(normalizeModelName("copilot-model"), "copilot-model");
+  });
+
+  test("does not strip -copilot when it is embedded in the middle", () => {
+    // '-copilot' in the middle should not be stripped
+    assert.strictEqual(normalizeModelName("model-copilot-v2"), "model-copilot-v2");
+  });
 });
 
 suite("model name normalization in ccreq parsing", () => {
@@ -1261,5 +1316,376 @@ suite("processJsonEntry model extraction", () => {
     processJsonEntry({ event: "completionRejected", model: "gpt-4o", timestamp: "2024-06-01T10:00:00Z" }, stats);
     assert.strictEqual(stats.byChatModel.size, 0);
     assert.strictEqual(stats.byModel.size, 0);
+  });
+});
+
+suite("planning stats", () => {
+  test("planCount increments on agent/plan text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 [Agent] agent/plan proposed for task X", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("planCount increments on strategy/propose text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 [Strategy] strategy/propose applied", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("executedPlanCount increments when workspace/editFile follows a plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("executedPlanCount increments when apply_patch follows a plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    parseTextLogLine("2024-06-01 10:00:01 apply_patch to file", ctx);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("executedPlanCount does not increment when editFile appears with no preceding plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+  });
+
+  test("activePlanPending is cleared after editFile follows plan", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
+    assert.strictEqual(ctx.activePlanPending, true);
+    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("userChoicesInPlan increments on choice_selected text line", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2024-06-01 10:00:00 user choice_selected option A", ctx);
+    assert.strictEqual(ctx.userChoicesInPlan, 1);
+  });
+
+  test("plan from JSON event increments planCount", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.planCount, 1);
+  });
+
+  test("apply_patch from JSON event triggers executedPlanCount after plan", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    processJsonEntry({ event: "apply_patch", timestamp: "2024-06-01T10:00:01Z" }, ctx);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+
+  test("multiple plans each independently tracked for execution", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("agent/plan 1", ctx);
+    parseTextLogLine("workspace/editFile a", ctx);
+    parseTextLogLine("agent/plan 2", ctx);
+    // second plan not yet executed
+    assert.strictEqual(ctx.planCount, 2);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Evidence-driven tests: real log lines sampled from WSL environment
+// (session 20260228T180728, file exthost82/GitHub.copilot-chat/GitHub Copilot
+//  Chat.log) — these tests prove the parser handles the actual log format.
+// ---------------------------------------------------------------------------
+
+suite("real log format: ccreq with .copilotmd suffix", () => {
+  test("chat ccreq with .copilotmd suffix increments totalChat", () => {
+    // Real line: ccreq:4c750e0c.copilotmd | success | gpt-4o-mini -> gpt-4o-mini-2024-07-18 | 748ms | [copilotLanguageModelWrapper]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-02-28 19:23:06.453 [info] ccreq:4c750e0c.copilotmd | success | gpt-4o-mini -> gpt-4o-mini-2024-07-18 | 748ms | [copilotLanguageModelWrapper]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalChat, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
+    assert.strictEqual(ctx.byChatModel.get("gpt-4o-mini"), 1);
+  });
+
+  test("panel/editAgent ccreq increments subagentRequests and starts loop", () => {
+    // Real line: ccreq:abbf7348.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 25016ms | [panel/editAgent]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-02-28 19:25:27.878 [info] ccreq:abbf7348.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 25016ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.subagentRequests, 1);
+    assert.strictEqual(ctx.subagentLoopsStarted, 1);
+    assert.strictEqual(ctx.activeSubagentLoop, "2026-02-28 19:25:27.878");
+  });
+
+  test("XtabProvider ccreq increments totalAccepted (inline completion)", () => {
+    // Real line: ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:36:15.954 [info] ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalChat, 0);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted, 1);
+  });
+
+  test("nes.nextCursorPosition ccreq increments totalAccepted (inline completion)", () => {
+    // Real line: ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:36:16.514 [info] ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalChat, 0);
+  });
+
+  test("ccreq markdown-only line (no success) does not count as chat or accepted", () => {
+    // Real line: ccreq:8ff6cb0b.copilotmd | markdown
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2026-02-28 19:21:47.848 [info] ccreq:8ff6cb0b.copilotmd | markdown", ctx);
+    assert.strictEqual(ctx.totalChat, 0);
+    assert.strictEqual(ctx.totalAccepted, 0);
+    assert.strictEqual(ctx.totalErrors, 0);
+  });
+
+  test("'Latest entry: ccreq:latest.copilotmd' line does not count as error", () => {
+    // Real line: Latest entry: ccreq:latest.copilotmd
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2026-02-28 19:21:47.847 [info] Latest entry: ccreq:latest.copilotmd", ctx);
+    assert.strictEqual(ctx.totalErrors, 0);
+    assert.strictEqual(ctx.totalChat, 0);
+  });
+
+  test("negative latency ccreq is handled gracefully (no latency recorded)", () => {
+    // Real line: ccreq:20ce1418.copilotmd | success | copilot-nes-oct | -161ms | [XtabProvider]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:38:04.104 [info] ccreq:20ce1418.copilotmd | success | copilot-nes-oct | -161ms | [XtabProvider]",
+      ctx,
+    );
+    // Should still count as accepted, but no latency recorded
+    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.latencies.length, 0);
+    assert.strictEqual(ctx.latencyCount, 0);
+  });
+
+  test("ccreq with oswe-vscode-prime model extracts model name correctly", () => {
+    // Real line: ccreq:520a97e5.copilotmd | success | oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime | 6892ms | [panel/editAgent]
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:29:37.128 [info] ccreq:520a97e5.copilotmd | success | oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime | 6892ms | [panel/editAgent]",
+      ctx,
+    );
+    // Model: "oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime" normalizes to "oswe-vscode-prime"
+    assert.strictEqual(ctx.byChatModel.get("oswe-vscode-prime"), 1);
+  });
+});
+
+suite("real log format: [fetchCompletions] with angle-bracket URL", () => {
+  test("fetchCompletions 200 with gpt-41-copilot in URL increments totalShown", () => {
+    // Real line: [fetchCompletions] Request ecf0d455-... at <https://proxy.individual.githubcopilot.com/v1/engines/gpt-41-copilot/completions> finished with 200 status after 349.06ms
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:36:12.577 [info] [fetchCompletions] Request ecf0d455-0331-42dd-a84e-bee60e578e5d at <https://proxy.individual.githubcopilot.com/v1/engines/gpt-41-copilot/completions> finished with 200 status after 349.06753800000297ms",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.byModel.get("gpt-41-copilot")?.shown, 1);
+    assert.ok(ctx.latencyCount > 0, "latency should be recorded");
+    assert.ok(ctx.latencies[0] > 300, "latency should be ~349ms");
+  });
+
+  test("fetchCompletions 200 increments totalShown and records latency from fractional ms", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-04 19:38:01.133 [info] [fetchCompletions] Request 33d20c0f-eb9d-4b92-9974-7f40ba18f2b7 at <https://proxy.individual.githubcopilot.com/v1/engines/gpt-41-copilot/completions> finished with 200 status after 167.84552699996857ms",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.latencyCount, 1);
+  });
+});
+
+suite("real log format: [ToolCallingLoop] shouldContinue=false", () => {
+  test("real ToolCallingLoop stop line closes loop and computes autonomousDurationMs", () => {
+    // Sampled start + stop pair from real session 20260228T180728/exthost82
+    const ctx = makeEmptyStats();
+    // Start: first panel/editAgent request at 19:29:37.128
+    parseTextLogLine(
+      "2026-03-04 19:29:37.128 [info] ccreq:520a97e5.copilotmd | success | oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime | 6892ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.subagentLoopsStarted, 1);
+    assert.ok(ctx.activeSubagentLoop !== null, "loop should be active after first editAgent request");
+
+    // Stop: [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined at 19:32:23.244
+    parseTextLogLine(
+      "2026-03-04 19:32:23.244 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
+      ctx,
+    );
+    assert.strictEqual(ctx.subagentLoops, 1, "loop should be completed");
+    assert.strictEqual(ctx.activeSubagentLoop, null, "active loop should be cleared");
+    // Duration: 19:32:23.244 - 19:29:37.128 = 166,116ms
+    assert.ok(ctx.autonomousDurationMs > 160_000, "duration should be ~166s");
+    assert.ok(ctx.autonomousDurationMs < 170_000, "duration should be ~166s");
+  });
+
+  test("shouldContinue=false with trailing comma and reasons (real format) is detected", () => {
+    // Real format includes ', reasons=undefined' suffix — ensure the pattern still matches
+    const ctx = makeEmptyStats();
+    ctx.activeSubagentLoop = "2026-03-04 19:00:00.000";
+    ctx.activeSubagentLoopModel = "test-model";
+    ctx.activeSubagentLoopActionCount = 1;
+    ctx.subagentLoopsStarted = 1;
+    parseTextLogLine(
+      "2026-03-04 19:01:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
+      ctx,
+    );
+    assert.strictEqual(ctx.subagentLoops, 1);
+  });
+
+  test("shouldContinue=false with spaces around equals is also detected (defensive)", () => {
+    const ctx = makeEmptyStats();
+    ctx.activeSubagentLoop = "2026-03-04 19:00:00.000";
+    ctx.activeSubagentLoopModel = "test-model";
+    ctx.activeSubagentLoopActionCount = 1;
+    ctx.subagentLoopsStarted = 1;
+    parseTextLogLine("2026-03-04 19:01:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue = false", ctx);
+    assert.strictEqual(ctx.subagentLoops, 1);
+  });
+});
+
+suite("real log format: WorkspaceChunk and MCP context detection", () => {
+  test("WorkspaceChunkSearchService line is counted as Workspace context", () => {
+    // Real line: WorkspaceChunkSearchService: using embedding type metis-1024-I16-Binary
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-02-28 19:21:46.722 [info] WorkspaceChunkSearchService: using embedding type metis-1024-I16-Binary",
+      ctx,
+    );
+    assert.strictEqual(ctx.byContextSource.get("Workspace"), 1);
+  });
+
+  test("MCP server URI line is counted as MCP / External Docs context", () => {
+    // Real line: [CopilotCLI] Server URI: unix:/tmp/mcp-PzMmsS/mcp.sock#%2Fmcp
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-02-28 19:21:45.673 [info] [CopilotCLI] Server URI: unix:/tmp/mcp-PzMmsS/mcp.sock#%2Fmcp",
+      ctx,
+    );
+    assert.strictEqual(ctx.byContextSource.get("MCP / External Docs"), 1);
+  });
+});
+
+suite("real log format: agenticMinutesSaved end-to-end data flow", () => {
+  test("autonomousDurationMs accumulates across multiple completed loops", () => {
+    const ctx = makeEmptyStats();
+    // Loop 1: 1 minute duration
+    parseTextLogLine(
+      "2026-03-04 19:00:00.000 [info] ccreq:aaaa.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-04 19:01:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
+      ctx,
+    );
+    // Loop 2: 2 minute duration
+    parseTextLogLine(
+      "2026-03-04 19:02:00.000 [info] ccreq:bbbb.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-04 19:04:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
+      ctx,
+    );
+    assert.strictEqual(ctx.subagentLoops, 2);
+    // 60s + 120s = 180s = 180,000ms
+    assert.ok(Math.abs(ctx.autonomousDurationMs - 180_000) < 100, "total duration should be ~180s");
+  });
+});
+
+suite("planning tracking from ccreq intents", () => {
+  test("panel/unknown ccreq increments planCount and sets activePlanPending", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.activePlanPending, true);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+  });
+
+  test("panel/editAgent after panel/unknown increments executedPlanCount and clears activePlanPending", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 1);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("panel/editAgent without prior panel/unknown does not increment executedPlanCount", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 0);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+    assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("panel/unknown followed by non-agentic ccreq leaves executedPlanCount at 0", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    // A regular chat request — not an agentic execution
+    parseTextLogLine(
+      "2026-03-06 09:00:03.000 [info] ccreq:chat01.copilotmd | success | gpt-5-mini | 800ms | [copilotLanguageModelWrapper]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 1);
+    assert.strictEqual(ctx.executedPlanCount, 0);
+    assert.strictEqual(ctx.activePlanPending, true);
+  });
+
+  test("multiple plan/execute cycles accumulate correctly", () => {
+    const ctx = makeEmptyStats();
+    // Cycle 1
+    parseTextLogLine(
+      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    // Cycle 2
+    parseTextLogLine(
+      "2026-03-06 09:01:00.000 [info] ccreq:plan02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-06 09:01:05.000 [info] ccreq:edit02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    assert.strictEqual(ctx.planCount, 2);
+    assert.strictEqual(ctx.executedPlanCount, 2);
+    assert.strictEqual(ctx.activePlanPending, false);
   });
 });

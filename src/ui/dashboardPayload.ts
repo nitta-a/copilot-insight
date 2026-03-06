@@ -226,6 +226,10 @@ export function buildDashboardPayload(
     agenticLoopCount,
     avgCallsPerLoop,
     completionRate: stats.completionRate,
+    planCount: stats.planCount,
+    executedPlanCount: stats.executedPlanCount,
+    planSuccessRate: stats.planCount > 0 ? (stats.executedPlanCount / stats.planCount) * 100 : 0,
+    userChoicesInPlan: stats.userChoicesInPlan,
     autonomousRatioByModel,
   };
 

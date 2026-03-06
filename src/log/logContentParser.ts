@@ -14,6 +14,11 @@ const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 /** Intent tags that identify subagent-initiated requests. */
 const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
 
+/** Returns true if the intent is a known subagent intent or a tool/runSubagent-* variant. */
+function isSubagentIntent(intent: string): boolean {
+  return SUBAGENT_INTENTS.has(intent) || intent.startsWith("tool/runSubagent-");
+}
+
 /**
  * Normalize a raw model name by stripping deployment paths and internal IDs.
  *
@@ -24,7 +29,9 @@ const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/s
  *      (e.g. "gpt-5-mini:20241101" → "gpt-5-mini")
  *   3. Strip hash suffix: remove everything from the first `#` onward
  *      (e.g. "claude-3.5-sonnet#abc123" → "claude-3.5-sonnet")
- *   4. Trim surrounding whitespace.
+ *   4. Strip `-copilot` vendor suffix (case-insensitive)
+ *      (e.g. "gpt-41-copilot" → "gpt-41")
+ *   5. Trim surrounding whitespace.
  */
 export function normalizeModelName(model: string): string {
   // Rule 1: strip deployment path after ' -> '
@@ -40,6 +47,11 @@ export function normalizeModelName(model: string): string {
   if (hashIdx > 0) {
     base = base.substring(0, hashIdx).trim();
   }
+  // Rule 4: strip trailing -copilot vendor suffix (e.g. "gpt-41-copilot" → "gpt-41")
+  if (base.toLowerCase().endsWith("-copilot")) {
+    base = base.slice(0, -"-copilot".length).trim();
+  }
+  // Rule 5: final whitespace trim (already applied above after each rule, kept for clarity)
   return base;
 }
 
@@ -239,6 +251,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       }
     }
   }
+
+  // Planning & Execution: check event name for plan/execution signals.
+  trackPlanningStats(eventLower, ctx);
 }
 
 export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean {
@@ -349,8 +364,8 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
   // Track per-model subagent calls for autonomous ratio calculation.
   if (model) {
-    const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
-    if (intentMatch && SUBAGENT_INTENTS.has(intentMatch[1])) {
+    const intentMatch = line.match(/\| \[([a-zA-Z0-9/\-]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/\-]+)\]\s*$/);
+    if (intentMatch && isSubagentIntent(intentMatch[1])) {
       incrementCount(ctx.subagentByModel, model);
     }
   }
@@ -366,7 +381,7 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
 
 /** Extract and record the chat intent tag from a ccreq success line. */
 function trackChatIntent(line: string, ctx: ParsingContext, model: string): void {
-  const intentMatch = line.match(/\| \[([a-zA-Z0-9/]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/]+)\]\s*$/);
+  const intentMatch = line.match(/\| \[([a-zA-Z0-9/\-]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/\-]+)\]\s*$/);
   if (!intentMatch) {
     return;
   }
@@ -375,7 +390,17 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
     const displayName = INTENT_DISPLAY_NAMES[rawIntent] ?? rawIntent;
     incrementCount(ctx.byChatIntent, displayName);
   }
-  if (SUBAGENT_INTENTS.has(rawIntent)) {
+  // panel/unknown is the Copilot "Plan" mode intent: a plan was proposed.
+  if (rawIntent === "panel/unknown") {
+    ctx.planCount++;
+    ctx.activePlanPending = true;
+  }
+  if (isSubagentIntent(rawIntent)) {
+    // If a plan was pending execution, the first agentic request fulfils it.
+    if (ctx.activePlanPending) {
+      ctx.executedPlanCount++;
+      ctx.activePlanPending = false;
+    }
     ctx.subagentRequests++;
     // Extract the short intent name (e.g. "tool/runSubagent" → "runSubagent")
     const shortIntent = rawIntent.split("/").pop() ?? rawIntent;
@@ -472,7 +497,51 @@ function parseLegacyKeywordLine(line: string, lower: string, dateKey: string, ct
   }
 }
 
-// --- Public API ---
+// --- Planning & Execution tracking ---
+
+/**
+ * Detect plan-proposal events: JSON events with `agent/plan` or `strategy/propose`
+ * signatures, and plain-text log lines containing the same keywords.
+ * Returns true if the line was identified as a plan-proposal.
+ */
+function isPlanProposalLine(lower: string): boolean {
+  return lower.includes("agent/plan") || lower.includes("strategy/propose");
+}
+
+/**
+ * Detect plan-execution events: JSON events with `workspace/editfile` or `apply_patch`
+ * signatures, and plain-text log lines containing the same keywords.
+ * Returns true if the line was identified as a plan-execution action.
+ */
+function isPlanExecutionLine(lower: string): boolean {
+  return lower.includes("workspace/editfile") || lower.includes("apply_patch");
+}
+
+/**
+ * Detect in-plan user choice interactions (`choice_selected`).
+ */
+function isChoiceSelectedLine(lower: string): boolean {
+  return lower.includes("choice_selected");
+}
+
+/**
+ * Update plan tracking state for a single log line (plain-text or JSON-derived).
+ */
+function trackPlanningStats(lower: string, ctx: ParsingContext): void {
+  if (isPlanProposalLine(lower)) {
+    ctx.planCount++;
+    ctx.activePlanPending = true;
+  }
+  if (isPlanExecutionLine(lower)) {
+    if (ctx.activePlanPending) {
+      ctx.executedPlanCount++;
+      ctx.activePlanPending = false;
+    }
+  }
+  if (isChoiceSelectedLine(lower)) {
+    ctx.userChoicesInPlan++;
+  }
+}
 
 /**
  * Parse context provider log lines that record which context sources were used.
@@ -528,7 +597,7 @@ function parseContextProviderLine(line: string, lower: string, ctx: ParsingConte
  */
 function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolean {
   const lower = line.toLowerCase();
-  if (!lower.includes("[toolcallingloop]") || !lower.includes("shouldcontinue=false")) {
+  if (!lower.includes("[toolcallingloop]") || !/shouldcontinue\s*=\s*false/.test(lower)) {
     return false;
   }
   ctx.subagentLoops++;
@@ -584,6 +653,11 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
 
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
+
+  // Planning & Execution stats are checked first so that workspace/editFile
+  // and apply_patch lines are not shadowed by the context provider parser
+  // (which would consume any line containing the word "workspace").
+  trackPlanningStats(lineCtx.lower, ctx);
 
   if (parseToolCallingLoopStopLine(line, ctx)) {
     return;

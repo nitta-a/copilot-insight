@@ -1,11 +1,11 @@
-import * as crypto from "node:crypto";
 import * as vscode from "vscode";
-import type { CopilotUsageStats } from "../types";
+import * as crypto from "node:crypto";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
+import type { CopilotUsageStats } from "../types";
+import { todayDateString } from "../utils";
+import { getHtmlContent } from "./copilotUsageHtml";
 import type { WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload } from "./dashboardPayload";
-import { getHtmlContent } from "./copilotUsageHtml";
-import { todayDateString } from "../utils";
 
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
@@ -87,17 +87,23 @@ export class CopilotUsagePanel {
   private _handleWebviewMessage(msg: WebviewToHostMessage): void {
     switch (msg.type) {
       case "exportMarkdown": {
-        vscode.commands.executeCommand("copilot-insight.exportReport");
+        Promise.resolve(vscode.commands.executeCommand("copilot-insight.exportReport"))
+          .then(() => {
+            this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: true });
+          })
+          .catch(() => {
+            this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: false });
+          });
         break;
       }
       case "exportPng": {
-        this._savePng(msg.payload.imageData);
+        this._savePng(msg.payload.imageData, msg.payload.chartId);
         break;
       }
     }
   }
 
-  private _savePng(dataUri: string): void {
+  private _savePng(dataUri: string, chartId: "timeline" | "velocity" | "overview"): void {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     vscode.window
       .showSaveDialog({
@@ -108,6 +114,7 @@ export class CopilotUsagePanel {
       })
       .then((uri) => {
         if (!uri) {
+          this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: false });
           return;
         }
         // Strip the data: prefix (e.g. "data:image/png;base64,...")
@@ -116,9 +123,11 @@ export class CopilotUsagePanel {
         Promise.resolve(vscode.workspace.fs.writeFile(uri, buffer))
           .then(() => {
             vscode.window.showInformationMessage(`Dashboard chart exported to ${uri.fsPath}`);
+            this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: true });
           })
           .catch((err: Error) => {
             vscode.window.showErrorMessage(`Failed to export chart: ${err.message}`);
+            this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: false });
           });
       });
   }

@@ -1,8 +1,8 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
-import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory } from "./logFileReader";
-import { findSessionRoot } from "../utils/logPaths";
+import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
+import { findSessionRoot } from "../utils/logPaths";
+import { findCopilotDirs, getSortedSessionDirs, parseLogDirectory, parseRemoteExthostLog } from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
 
@@ -69,6 +69,10 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
     loopsCompletedByModel: new Map(),
     totalLoopActionsByModel: new Map(),
     loopDistributionByModel: new Map(),
+    planCount: 0,
+    executedPlanCount: 0,
+    userChoicesInPlan: 0,
+    activePlanPending: false,
   };
 
   try {
@@ -107,13 +111,22 @@ export async function parseCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsage
         }
         for (const copilotLogDir of copilotDirs) {
           channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
+          const beforeFiles = ctx.logFilesFound;
           await parseLogDirectory(copilotLogDir, ctx);
+          channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
         }
+
+        // Also parse all .log files inside exthost<N>/ subdirectories — present in
+        // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
+        await parseRemoteExthostLog(sessDir, ctx);
       } catch {
         // Skip unreadable session directories
         channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
       }
     }
+    channel.appendLine(
+      `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
+    );
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }
