@@ -24,7 +24,7 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
   - Auto-generated **Insights** summary (best language, peak hour, weekly trend, chat/inline ratio)
 - **Three-tab dashboard** — content is organised into focused tabs:
   - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
-  - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown, **Agent Intelligence Overview** (autonomous action count, loop completion rate, per-model agentic depth and velocity)
+  - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown, **Agent Intelligence Overview** (autonomous action count, loop completion rate, per-model agentic depth and velocity, **Planning & Execution** stats — Plans Proposed / Executed / Success Rate / User Choices)
   - 🌊 **Flow (Velocity)**: KPM vs completions scatter plot, activity heatmaps, **Context Effectiveness** breakdown by Copilot context source (Active File, Workspace, Symbol, Embeddings, etc.)
 - **Real-time Status Bar** — live acceptance rate indicator in the VS Code status bar (`$(copilot) 73% (42/58)`); updates every 3 seconds during your coding session and opens the dashboard on click
 - **MCP Server** — built-in Model Context Protocol server lets external AI agents (Claude Desktop, VS Code Copilot Chat, etc.) query your usage statistics via `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; no cloud or external network access required
@@ -90,7 +90,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - 自動生成される **Insights** サマリー (最も受け入れ率が高い言語・ピーク時間帯・週次トレンド・Chat/Inline 比率)
 - **3タブダッシュボード** — コンテンツを目的別の3タブに整理:
   - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
-  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳・**Agent Intelligence Overview** (自律アクション数・ループ完了率・モデル別エージェント深度と速度)
+  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳・**Agent Intelligence Overview** (自律アクション数・ループ完了率・モデル別エージェント深度と速度・**Planning & Execution** 統計 — 提案プラン数 / 実行プラン数 / 成功率 / ユーザー選択回数)
   - 🌊 **Flow (Velocity)**: KPM vs 補完受け入れ数の散布図・アクティビティヒートマップ・**コンテキスト効果** (Active File・Workspace・Symbol・Embeddings などのコンテキストソース別の貢献度)
 - **リアルタイムステータスバー** — VS Code のステータスバーにライブの受け入れ率インジケーターを表示 (`$(copilot) 73% (42/58)`)。コーディング中に 3 秒ごとに更新され、クリックするとダッシュボードが開く
 - **MCP サーバー** — 組み込みの Model Context Protocol サーバーにより、外部 AI エージェント (Claude Desktop・VS Code Copilot Chat など) が `get_usage_summary`・`get_model_efficiency`・`get_anomaly_report` ツールを通じて使用統計を照会可能。クラウドや外部ネットワークへのアクセス不要
