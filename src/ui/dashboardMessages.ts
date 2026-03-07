@@ -8,9 +8,22 @@
  * cross-context issue.
  */
 
+import type { RefreshAnalysis } from "../types";
+
 // ---------------------------------------------------------------------------
 // Payload data shapes (sent from host → webview)
 // ---------------------------------------------------------------------------
+
+export interface ContextFreshness {
+  score: number;
+  actionCount: number;
+  status: "fresh" | "aging" | "exhausted";
+  actionPenalty: number;
+  trendPenalty: number;
+  suggestedAction: "none" | "compact" | "restart";
+  latestRefreshRoi: number | null;
+  latestRecoveryDelta: number | null;
+}
 
 export interface SummaryData {
   totalShown: number;
@@ -182,6 +195,10 @@ export interface DashboardPayload {
   weeklyTrend: WeeklyTrendData | null;
   /** Agentic (subagent) activity statistics. */
   agenticStats: AgenticStats;
+  /** Refresh ROI analysis around /compact or truncation boundaries. */
+  refreshAnalysis: RefreshAnalysis[];
+  /** Current-session context freshness, or null when unsupported by logs. */
+  freshness: ContextFreshness | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import type {
   TrueAcceptanceResult,
   VelocityAnalysisResult,
 } from "../../src/metrics/metricsEngine";
-import type { CopilotUsageStats } from "../../src/types";
+import type { CopilotUsageStats, RefreshAnalysis } from "../../src/types";
 import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
 
 function fmt(date: Date): string {
@@ -21,6 +21,62 @@ function getMonday(date: Date): Date {
   const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   return d;
+}
+
+function makeRefreshAnalysis(overrides?: Partial<RefreshAnalysis>): RefreshAnalysis {
+  return {
+    event: {
+      timestamp: "2026-03-07T10:00:00Z",
+      type: "compact",
+      rawText: "/compact",
+      sessionId: "s1",
+    },
+    windowMinutes: 15,
+    turnWindowSize: 10,
+    preWindow: {
+      turnCount: 3,
+      rawAccepted: 3,
+      trueAccepted: 2,
+      rawRate: 100,
+      trueRate: 66.7,
+      revertedCount: 1,
+      windowStart: "2026-03-07T09:45:00Z",
+      windowEnd: "2026-03-07T09:59:00Z",
+    },
+    postWindow: {
+      turnCount: 3,
+      rawAccepted: 3,
+      trueAccepted: 3,
+      rawRate: 100,
+      trueRate: 100,
+      revertedCount: 0,
+      windowStart: "2026-03-07T10:01:00Z",
+      windowEnd: "2026-03-07T10:15:00Z",
+    },
+    preTurns: {
+      turnCount: 2,
+      rawAccepted: 2,
+      trueAccepted: 1,
+      rawRate: 100,
+      trueRate: 50,
+      revertedCount: 1,
+      windowStart: "2026-03-07T09:58:00Z",
+      windowEnd: "2026-03-07T09:59:00Z",
+    },
+    postTurns: {
+      turnCount: 2,
+      rawAccepted: 2,
+      trueAccepted: 2,
+      rawRate: 100,
+      trueRate: 100,
+      revertedCount: 0,
+      windowStart: "2026-03-07T10:01:00Z",
+      windowEnd: "2026-03-07T10:02:00Z",
+    },
+    recoveryDelta: 50,
+    refreshRoi: 1,
+    ...overrides,
+  };
 }
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
@@ -75,7 +131,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
-    memoryManagementEvents: 0,
+    memoryManagementEvents: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -156,6 +212,12 @@ suite("buildDashboardPayload", () => {
       const payload = buildDashboardPayload(makeStats(), undefined, undefined, mp);
       assert.strictEqual(payload.summary.bestModel, "gpt-4o");
     });
+
+    test("freshness is null when refresh analysis is unavailable", () => {
+      const payload = buildDashboardPayload(makeStats());
+      assert.strictEqual(payload.freshness, null);
+      assert.deepStrictEqual(payload.refreshAnalysis, []);
+    });
   });
 
   suite("timeline", () => {
@@ -227,6 +289,49 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.velocityPoints[0].kpm, 120);
       assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
       assert.strictEqual(payload.velocityPoints[1].flowDisrupted, true);
+    });
+  });
+
+  suite("context freshness", () => {
+    test("stays at 100% through the first 50 actions", () => {
+      const stats = makeStats({
+        bySession: new Map([["s2", { sessionId: "s2", shown: 20, accepted: 10, chat: 5, errors: 0 }]]),
+      });
+      const payload = buildDashboardPayload(stats, undefined, undefined, undefined, [makeRefreshAnalysis()]);
+      assert.ok(payload.freshness);
+      assert.strictEqual(payload.freshness?.score, 100);
+      assert.strictEqual(payload.freshness?.status, "fresh");
+    });
+
+    test("decays after 50 actions and exposes refresh analysis", () => {
+      const stats = makeStats({
+        bySession: new Map([["s2", { sessionId: "s2", shown: 45, accepted: 20, chat: 8, errors: 0 }]]),
+      });
+      const trueAcceptance: TrueAcceptanceResult = {
+        rawAccepted: 120,
+        trueAccepted: 84,
+        rawRate: 60,
+        trueRate: 42,
+        revertedCount: 36,
+      };
+      const refreshAnalysis = [makeRefreshAnalysis({ refreshRoi: 0.25, recoveryDelta: 18 })];
+      const payload = buildDashboardPayload(stats, trueAcceptance, undefined, undefined, refreshAnalysis);
+      assert.ok(payload.freshness);
+      assert.ok((payload.freshness?.score ?? 0) < 100);
+      assert.strictEqual(payload.freshness?.suggestedAction, "compact");
+      assert.strictEqual(payload.refreshAnalysis.length, 1);
+      assert.strictEqual(payload.freshness?.latestRefreshRoi, 0.25);
+    });
+
+    test("preserves refresh analysis entries for overview history rendering", () => {
+      const refreshAnalysis = [
+        makeRefreshAnalysis(),
+        makeRefreshAnalysis({ event: { ...makeRefreshAnalysis().event, timestamp: "2026-03-07T11:00:00Z" } }),
+      ];
+      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, refreshAnalysis);
+      assert.strictEqual(payload.refreshAnalysis.length, 2);
+      assert.strictEqual(payload.refreshAnalysis[0].event.type, "compact");
+      assert.strictEqual(payload.refreshAnalysis[1].event.timestamp, "2026-03-07T11:00:00Z");
     });
   });
 
@@ -634,7 +739,14 @@ suite("buildDashboardPayload", () => {
       const stats = makeStats({
         pluginOrSkillInvocations: 2,
         pluginOrSkillByName: new Map([["code-search", 2]]),
-        memoryManagementEvents: 1,
+        memoryManagementEvents: [
+          {
+            timestamp: "2026-03-07T10:00:00Z",
+            type: "compact",
+            rawText: "/compact",
+            sessionId: "session-1",
+          },
+        ],
         memoryManagementByType: new Map([["compact", 1]]),
         agentDebugEvents: 4,
         agentDebugByType: new Map([["step-execution", 4]]),

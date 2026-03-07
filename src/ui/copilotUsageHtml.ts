@@ -207,6 +207,29 @@ export function getHtmlContent(
     }
     .db-tab-pane { display: none; }
     .db-tab-pane.active { display: block; }
+    .db-freshness-card {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 88%, transparent), transparent);
+      border: 1px solid var(--vscode-editor-inactiveSelectionBackground);
+      border-radius: 10px;
+      padding: 16px;
+      margin: 0 0 20px;
+    }
+    .db-freshness-header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+    .db-freshness-status { font-size: 0.85em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .db-freshness-meter { height: 14px; border-radius: 999px; overflow: hidden; background: var(--vscode-editor-inactiveSelectionBackground); margin: 10px 0 14px; }
+    .db-freshness-fill { height: 100%; border-radius: 999px; }
+    .db-freshness-fill.fresh { background: linear-gradient(90deg, #2aa952, #7ecb67); }
+    .db-freshness-fill.aging { background: linear-gradient(90deg, #d2a51d, #f1cc45); }
+    .db-freshness-fill.exhausted { background: linear-gradient(90deg, #d14b3d, #f07b58); }
+    .db-freshness-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 12px; }
+    .db-freshness-meta-card { background: color-mix(in srgb, var(--vscode-editor-background) 82%, transparent); border-radius: 8px; padding: 10px 12px; }
+    .db-freshness-meta-label { font-size: 0.75em; opacity: 0.7; }
+    .db-freshness-meta-value { font-size: 1.05em; font-weight: 700; margin-top: 4px; }
+    .db-refresh-history { margin: 0 0 22px; }
+    .db-refresh-note { font-size: 0.8em; opacity: 0.7; margin: 6px 0 12px; }
+    .db-refresh-roi-positive { color: var(--vscode-charts-green); }
+    .db-refresh-roi-negative { color: var(--vscode-charts-red, #f14c4c); }
+    .db-refresh-roi-neutral { color: var(--vscode-foreground); opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -225,6 +248,8 @@ export function getHtmlContent(
         <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
       </div>
       <div id="db-summary-cards" class="stats-grid"></div>
+      <div id="db-freshness-container"></div>
+      <div id="db-refresh-analysis-container"></div>
       <div id="db-insights-container"></div>
       <div id="db-weekly-trend-container"></div>
       <div id="db-agent-intelligence-container"></div>

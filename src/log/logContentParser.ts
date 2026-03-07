@@ -209,6 +209,12 @@ function parseMemoryManagementType(raw: string): string {
   if (lower.includes("/compact")) {
     return "compact";
   }
+  if (lower.includes("context_limit_reached")) {
+    return "context-limit-reached";
+  }
+  if (lower.includes("truncating_history") || lower.includes("truncating history")) {
+    return "truncating-history";
+  }
   if (lower.includes("context_limit") || lower.includes("context limit")) {
     return "context-limit";
   }
@@ -222,6 +228,19 @@ function parseMemoryManagementType(raw: string): string {
     return "compaction";
   }
   return "memory";
+}
+
+function normalizeTimestamp(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?![A-Za-z+-])/, "$1T$2");
+}
+
+function extractTimestampFromText(raw: string): string {
+  const match = raw.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/);
+  return match ? normalizeTimestamp(match[1]) : "";
 }
 
 function parseAgentDebugType(raw: string): string {
@@ -251,9 +270,18 @@ function recordPluginOrSkillSignal(ctx: ParsingContext, raw: string): void {
   incrementCount(ctx.pluginOrSkillByName, parsePluginOrSkillType(raw));
 }
 
-function recordMemoryManagementSignal(ctx: ParsingContext, raw: string): void {
-  ctx.memoryManagementEvents++;
-  incrementCount(ctx.memoryManagementByType, parseMemoryManagementType(raw));
+function recordMemoryManagementSignal(ctx: ParsingContext, raw: string, timestamp: string): void {
+  const type = parseMemoryManagementType(raw);
+  incrementCount(ctx.memoryManagementByType, type);
+  if (!timestamp) {
+    return;
+  }
+  ctx.memoryManagementEvents.push({
+    timestamp,
+    type,
+    rawText: raw,
+    sessionId: ctx.currentSessionId,
+  });
 }
 
 function recordAgentDebugSignal(ctx: ParsingContext, raw: string): void {
@@ -268,7 +296,7 @@ function getJsonFeatureText(data: Record<string, unknown>): string {
   return values.join(" ");
 }
 
-function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext): boolean {
+function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext, timestamp = ""): boolean {
   const lower = raw.toLowerCase();
   let matched = false;
 
@@ -305,13 +333,16 @@ function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext): boolean {
     lower.includes("/compact") ||
     lower.includes("session memory") ||
     lower.includes("session_memory") ||
+    lower.includes("context_limit_reached") ||
+    lower.includes("truncating_history") ||
+    lower.includes("truncating history") ||
     lower.includes("context_limit") ||
     lower.includes("context limit") ||
     lower.includes("summarize_context") ||
     lower.includes("summarize context") ||
     lower.includes("compaction");
   if (hasMemorySignal) {
-    recordMemoryManagementSignal(ctx, raw);
+    recordMemoryManagementSignal(ctx, raw, timestamp);
     matched = true;
   }
 
@@ -368,6 +399,7 @@ interface LineContext {
   lower: string;
   dateKey: string;
   hourKey: string;
+  timestamp: string;
 }
 
 function extractLineContext(line: string): LineContext {
@@ -376,12 +408,13 @@ function extractLineContext(line: string): LineContext {
   const dateKey = dateMatch ? dateMatch[1] : "";
   const hourMatch = line.match(/\d{4}-\d{2}-\d{2} (\d{2}):/);
   const hourKey = hourMatch ? hourMatch[1] : "";
-  return { lower, dateKey, hourKey };
+  const timestamp = extractTimestampFromText(line);
+  return { lower, dateKey, hourKey, timestamp };
 }
 
-export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingContext): void {
+export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingContext, fallbackTimestamp = ""): void {
   const event = (data.event as string | undefined) ?? (data.eventName as string | undefined) ?? "";
-  const timestamp = (data.timestamp as string | undefined) ?? "";
+  const timestamp = normalizeTimestamp((data.timestamp as string | undefined) ?? fallbackTimestamp);
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
   const featureText = getJsonFeatureText(data);
 
@@ -443,7 +476,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   if (featureText) {
-    maybeRecordFeatureSignals(featureText, ctx);
+    maybeRecordFeatureSignals(featureText, ctx, timestamp);
   }
 
   // Planning & Execution: check event name for plan/execution signals.
@@ -460,7 +493,7 @@ export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean 
       return false;
     }
     const data = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    processJsonEntry(data, ctx);
+    processJsonEntry(data, ctx, extractTimestampFromText(line));
     return true;
   } catch {
     return false;
@@ -883,7 +916,7 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   // (which would consume any line containing the word "workspace").
   trackPlanningStats(lineCtx.lower, ctx);
 
-  maybeRecordFeatureSignals(line, ctx);
+  maybeRecordFeatureSignals(line, ctx, lineCtx.timestamp);
 
   if (parseToolCallingLoopStopLine(line, ctx)) {
     return;

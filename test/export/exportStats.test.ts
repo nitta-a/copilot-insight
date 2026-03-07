@@ -58,7 +58,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
-    memoryManagementEvents: 0,
+    memoryManagementEvents: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -160,7 +160,14 @@ suite("exportStats", () => {
         makeStats({
           browserToolInvocations: 2,
           browserToolsByType: new Map([["screenshot", 2]]),
-          memoryManagementEvents: 1,
+          memoryManagementEvents: [
+            {
+              timestamp: "2026-03-07T10:00:00Z",
+              type: "compact",
+              rawText: "/compact",
+              sessionId: "session-1",
+            },
+          ],
           memoryManagementByType: new Map([["compact", 1]]),
         }),
       );

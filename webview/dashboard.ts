@@ -33,6 +33,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type {
   AgentIntelligenceOverview,
+  ContextFreshness,
   DashboardPayload,
   HostToWebviewMessage,
   TimelineEntry,
@@ -414,6 +415,172 @@ function renderInsights(insights: string[]): void {
   el.innerHTML = `<h2>💡 Insights</h2>\n<div class="insights-section">${cards}</div>`;
 }
 
+function renderContextFreshness(
+  freshness: ContextFreshness | null,
+  refreshAnalysis: DashboardPayload["refreshAnalysis"],
+): void {
+  const el = document.getElementById("db-freshness-container");
+  if (!el) {
+    return;
+  }
+  if (!freshness || refreshAnalysis.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const latestRefresh = refreshAnalysis.at(-1) ?? null;
+  const score = Math.max(0, Math.min(100, freshness.score));
+  const statusLabel = freshness.status === "fresh" ? "Fresh" : freshness.status === "aging" ? "Aging" : "Exhausted";
+  const statusDetail =
+    freshness.status === "fresh"
+      ? "AI は絶好調"
+      : freshness.status === "aging"
+        ? "/compact を検討してください"
+        : "セッションの再起動を推奨";
+  const suggestion =
+    freshness.suggestedAction === "none"
+      ? "今はリフレッシュ不要です。"
+      : freshness.suggestedAction === "compact"
+        ? "次の大きなタスク前に /compact を挟むのが妥当です。"
+        : "新しいセッションを開始した方が回復しやすい状態です。";
+  const latestRoi = freshness.latestRefreshRoi !== null ? `+${(freshness.latestRefreshRoi * 100).toFixed(1)}%` : "N/A";
+  const latestRecovery =
+    freshness.latestRecoveryDelta !== null ? `${freshness.latestRecoveryDelta.toFixed(1)} pt` : "N/A";
+  const latestEventType = latestRefresh ? latestRefresh.event.type : "memory";
+  const latestTimestamp = latestRefresh ? new Date(latestRefresh.event.timestamp).toLocaleString() : "";
+
+  el.innerHTML = `
+    <h2>🧠 Context Freshness</h2>
+    <div class="db-freshness-card">
+      <div class="db-freshness-header">
+        <div>
+          <div class="db-freshness-status">${escHtml(statusLabel)}</div>
+          <div style="font-size:1.6em;font-weight:800;margin-top:2px">${score.toFixed(0)}%</div>
+        </div>
+        <div style="font-size:0.88em;opacity:0.8;text-align:right">${escHtml(statusDetail)}</div>
+      </div>
+      <div class="db-freshness-meter">
+        <div class="db-freshness-fill ${freshness.status}" style="width:${score}%"></div>
+      </div>
+      <div style="font-size:0.88em;opacity:0.84">${escHtml(suggestion)}</div>
+      <div class="db-freshness-meta">
+        <div class="db-freshness-meta-card">
+          <div class="db-freshness-meta-label">Current Session Actions</div>
+          <div class="db-freshness-meta-value">${freshness.actionCount}</div>
+        </div>
+        <div class="db-freshness-meta-card">
+          <div class="db-freshness-meta-label">Latest Refresh ROI</div>
+          <div class="db-freshness-meta-value">${escHtml(latestRoi)}</div>
+        </div>
+        <div class="db-freshness-meta-card">
+          <div class="db-freshness-meta-label">Recovery Delta</div>
+          <div class="db-freshness-meta-value">${escHtml(latestRecovery)}</div>
+        </div>
+        <div class="db-freshness-meta-card">
+          <div class="db-freshness-meta-label">Latest Boundary</div>
+          <div class="db-freshness-meta-value" title="${escHtml(latestTimestamp)}">${escHtml(trunc(latestEventType, 22))}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function formatSignedPercent(value: number | null): string {
+  if (value === null) {
+    return "N/A";
+  }
+  const signed = value >= 0 ? "+" : "";
+  return `${signed}${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignedPoints(value: number | null): string {
+  if (value === null) {
+    return "N/A";
+  }
+  const signed = value >= 0 ? "+" : "";
+  return `${signed}${value.toFixed(1)} pt`;
+}
+
+function getDeltaClass(value: number | null): string {
+  if (value === null) {
+    return "db-refresh-roi-neutral";
+  }
+  if (value > 0) {
+    return "db-refresh-roi-positive";
+  }
+  if (value < 0) {
+    return "db-refresh-roi-negative";
+  }
+  return "db-refresh-roi-neutral";
+}
+
+function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
+  const el = document.getElementById("db-refresh-analysis-container");
+  if (!el) {
+    return;
+  }
+  if (refreshAnalysis.length === 0) {
+    el.innerHTML = "";
+    return;
+  }
+
+  const roiValues = refreshAnalysis.map((entry) => entry.refreshRoi).filter((value): value is number => value !== null);
+  const avgRoi = roiValues.length > 0 ? roiValues.reduce((sum, value) => sum + value, 0) / roiValues.length : null;
+  const avgRecoveryDelta =
+    refreshAnalysis.reduce((sum, entry) => sum + entry.recoveryDelta, 0) / refreshAnalysis.length;
+  const bestEntry =
+    [...refreshAnalysis].sort((a, b) => (b.refreshRoi ?? -Infinity) - (a.refreshRoi ?? -Infinity))[0] ?? null;
+  const latestEntry = refreshAnalysis.at(-1) ?? null;
+
+  const rows = [...refreshAnalysis]
+    .sort((a, b) => new Date(b.event.timestamp).getTime() - new Date(a.event.timestamp).getTime())
+    .map((entry) => {
+      const timestamp = new Date(entry.event.timestamp).toLocaleString();
+      const recoveryClass = getDeltaClass(entry.recoveryDelta);
+      const roiClass = getDeltaClass(entry.refreshRoi);
+      return `<tr>
+        <td>${escHtml(timestamp)}</td>
+        <td>${escHtml(entry.event.type)}</td>
+        <td>${entry.preTurns.trueRate.toFixed(1)}%</td>
+        <td>${entry.postTurns.trueRate.toFixed(1)}%</td>
+        <td class="${recoveryClass}">${escHtml(formatSignedPoints(entry.recoveryDelta))}</td>
+        <td class="${roiClass}">${escHtml(formatSignedPercent(entry.refreshRoi))}</td>
+      </tr>`;
+    })
+    .join("");
+
+  el.innerHTML = `
+    <div class="db-refresh-history">
+      <h2>🔄 Refresh ROI</h2>
+      <div class="stats-grid">
+        <div class="stat-card db-highlight">
+          <div class="stat-value db-accent">${refreshAnalysis.length}</div>
+          <div class="stat-label">Refresh Events</div>
+          <div class="stat-detail">compact or truncation boundaries</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value ${getDeltaClass(avgRoi)}">${escHtml(formatSignedPercent(avgRoi))}</div>
+          <div class="stat-label">Average ROI</div>
+          <div class="stat-detail">post.trueRate / pre.trueRate - 1</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value ${getDeltaClass(avgRecoveryDelta)}">${escHtml(formatSignedPoints(avgRecoveryDelta))}</div>
+          <div class="stat-label">Average Recovery</div>
+          <div class="stat-detail">post true rate minus pre true rate</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value ${getDeltaClass(bestEntry?.refreshRoi ?? null)}">${escHtml(formatSignedPercent(bestEntry?.refreshRoi ?? null))}</div>
+          <div class="stat-label">Best Refresh</div>
+          <div class="stat-detail">${escHtml(bestEntry?.event.type ?? latestEntry?.event.type ?? "memory")}</div>
+        </div>
+      </div>
+      <div class="db-refresh-note">Compares the last 10 turns before and after each refresh boundary. Older VS Code logs without compact or truncation signals are hidden automatically.</div>
+      <table class="db-lang-table">
+        <tr><th>Time</th><th>Event</th><th>Pre True Rate</th><th>Post True Rate</th><th>Recovery Delta</th><th>Refresh ROI</th></tr>
+        ${rows}
+      </table>
+    </div>`;
+}
+
 function getInsightClass(text: string): string {
   if (/📈/.test(text)) {
     return " positive";
@@ -763,6 +930,8 @@ function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"
 function render(payload: DashboardPayload): void {
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
+  renderContextFreshness(payload.freshness, payload.refreshAnalysis);
+  renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);

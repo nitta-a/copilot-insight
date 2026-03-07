@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import type { MemoryManagementEvent } from "../../src/types";
 import type { DbWorkerClient } from "../../src/worker/dbWorkerClient";
 
 /** Factory that creates a base mock implementing {@link DbWorkerClient}. */
@@ -22,6 +23,14 @@ function createMockClient(overrides?: Partial<DbWorkerClient>): DbWorkerClient {
     async modelPerformance() {
       return { crossTab: [], bestModelByLanguage: new Map() };
     },
+    async getRefreshAnalysis(_options: {
+      memoryEvents: MemoryManagementEvent[];
+      windowMs?: number;
+      turnWindowSize?: number;
+      revertWindowMs?: number;
+    }) {
+      return [];
+    },
     async compact(_ttlMs?: number) {
       return { compacted: 0 };
     },
@@ -39,6 +48,7 @@ suite("DbWorkerClient – interface contract", () => {
       "trueRate",
       "velocity",
       "modelPerformance",
+      "getRefreshAnalysis",
       "compact",
       "close",
     ];

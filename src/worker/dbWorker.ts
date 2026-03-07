@@ -27,12 +27,22 @@ import * as path from "node:path";
 import { parentPort } from "node:worker_threads";
 import { InMemoryAnalyticsDb } from "../db/duckdbClient";
 import type { TrackedEvent } from "../events/eventSchema";
-import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "../metrics/metricsEngine";
+import {
+  computeModelPerformance,
+  computeRefreshAnalysis,
+  computeTrueAcceptanceRate,
+  computeVelocityAnalysis,
+} from "../metrics/metricsEngine";
+import type { MemoryManagementEvent } from "../types";
 
-const db = new InMemoryAnalyticsDb();
+let db = new InMemoryAnalyticsDb();
 
 /** Cached events for metrics-engine functions that require the raw list. */
 let cachedEvents: TrackedEvent[] = [];
+
+function sortEvents(events: TrackedEvent[]): TrackedEvent[] {
+  return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
 
 /**
  * Read all JSONL event files from `<storagePath>/events/`.
@@ -78,7 +88,9 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
     switch (msg.type) {
       case "loadFromJsonl": {
         const { storagePath } = msg.payload as { storagePath: string };
-        const events = loadJsonlDirectory(storagePath);
+        const events = sortEvents(loadJsonlDirectory(storagePath));
+        await db.close();
+        db = new InMemoryAnalyticsDb();
         cachedEvents = events;
         db.ingest(events);
         const baselines = db.calculateBaselines();
@@ -88,8 +100,9 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
 
       case "ingest": {
         const events = msg.payload as TrackedEvent[];
-        cachedEvents = cachedEvents.concat(events);
-        db.ingest(events);
+        const sortedEvents = sortEvents(events);
+        cachedEvents = sortEvents(cachedEvents.concat(sortedEvents));
+        db.ingest(sortedEvents);
         parentPort?.postMessage({ type: "ingest", id: msg.id, result: { ingested: events.length, total: db.size } });
         break;
       }
@@ -126,6 +139,22 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         break;
       }
 
+      case "getRefreshAnalysis": {
+        const opts = (msg.payload ?? {}) as {
+          memoryEvents?: MemoryManagementEvent[];
+          windowMs?: number;
+          turnWindowSize?: number;
+          revertWindowMs?: number;
+        };
+        const result = computeRefreshAnalysis(cachedEvents, opts.memoryEvents ?? [], {
+          windowMs: opts.windowMs,
+          turnWindowSize: opts.turnWindowSize,
+          revertWindowMs: opts.revertWindowMs,
+        });
+        parentPort?.postMessage({ type: "getRefreshAnalysis", id: msg.id, result });
+        break;
+      }
+
       case "baselines": {
         const opts = (msg.payload ?? {}) as { windowDays?: number };
         const result = db.calculateBaselines(opts.windowDays);
@@ -146,6 +175,7 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
 
       case "close": {
         await db.close();
+        db = new InMemoryAnalyticsDb();
         cachedEvents = [];
         parentPort?.postMessage({ type: "close", id: msg.id, result: true });
         break;
