@@ -1,10 +1,12 @@
 import * as assert from "assert";
-import type { TrackedEvent, CompletionAcceptEvent, TextChangeEvent } from "../../src/events/eventSchema";
+import type { CompletionAcceptEvent, TextChangeEvent, TrackedEvent } from "../../src/events/eventSchema";
 import {
   computeModelPerformance,
+  computeRefreshAnalysis,
   computeTrueAcceptanceRate,
   computeVelocityAnalysis,
 } from "../../src/metrics/metricsEngine";
+import type { MemoryManagementEvent } from "../../src/types";
 
 suite("metricsEngine", () => {
   suite("computeTrueAcceptanceRate", () => {
@@ -92,6 +94,34 @@ suite("metricsEngine", () => {
       const result = computeVelocityAnalysis(events, 60_000);
       assert.ok(result.timeSeries.length >= 2);
       // The second window should have much lower KPM
+    });
+  });
+
+  suite("computeRefreshAnalysis", () => {
+    test("computes recovery delta around compact boundaries", () => {
+      const events: TrackedEvent[] = [
+        makeAcceptEvent("2026-03-07T10:00:00.000Z", "typescript", 40),
+        makeTextChangeEvent("2026-03-07T10:00:10.000Z", "typescript", 0, 30),
+        makeAcceptEvent("2026-03-07T10:05:00.000Z", "typescript", 40),
+        makeAcceptEvent("2026-03-07T10:06:00.000Z", "typescript", 30),
+      ];
+      const refreshEvents: MemoryManagementEvent[] = [
+        {
+          timestamp: "2026-03-07T10:02:00.000Z",
+          type: "compact",
+          rawText: "/compact",
+          sessionId: "s1",
+        },
+      ];
+
+      const result = computeRefreshAnalysis(events, refreshEvents, { turnWindowSize: 2 });
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].preTurns.turnCount, 1);
+      assert.strictEqual(result[0].postTurns.turnCount, 2);
+      assert.strictEqual(result[0].preTurns.trueRate, 0);
+      assert.strictEqual(result[0].postTurns.trueRate, 100);
+      assert.strictEqual(result[0].recoveryDelta, 100);
+      assert.strictEqual(result[0].refreshRoi, null);
     });
   });
 

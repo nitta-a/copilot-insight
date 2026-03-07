@@ -156,7 +156,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
   const featureSections: Array<[string, number, Map<string, number>]> = [
     ["Browser Tools", stats.browserToolInvocations, stats.browserToolsByType],
     ["Plugins / Skills", stats.pluginOrSkillInvocations, stats.pluginOrSkillByName],
-    ["Session Memory / Compact", stats.memoryManagementEvents, stats.memoryManagementByType],
+    ["Session Memory / Compact", stats.memoryManagementEvents.length, stats.memoryManagementByType],
     ["Agent Debug", stats.agentDebugEvents, stats.agentDebugByType],
   ];
   const hasFeatureSignals = featureSections.some(([, total]) => total > 0);

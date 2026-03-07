@@ -1,9 +1,16 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgenticDepthStat, CopilotUsageStats, DateStat, LanguageStat, SessionStat } from "../types";
+import type {
+  AgenticDepthStat,
+  CopilotUsageStats,
+  DateStat,
+  LanguageStat,
+  MemoryManagementEvent,
+  SessionStat,
+} from "../types";
 
 interface SerializedStatsSnapshot {
-  version: 1;
+  version: 1 | 2;
   stats: SerializedCopilotUsageStats;
 }
 
@@ -53,7 +60,7 @@ interface SerializedCopilotUsageStats {
   browserToolsByType: Array<[string, number]>;
   pluginOrSkillInvocations: number;
   pluginOrSkillByName: Array<[string, number]>;
-  memoryManagementEvents: number;
+  memoryManagementEvents: MemoryManagementEvent[] | number;
   memoryManagementByType: Array<[string, number]>;
   agentDebugEvents: number;
   agentDebugByType: Array<[string, number]>;
@@ -114,7 +121,7 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     browserToolsByType: mapEntries(stats.browserToolsByType),
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
     pluginOrSkillByName: mapEntries(stats.pluginOrSkillByName),
-    memoryManagementEvents: stats.memoryManagementEvents,
+    memoryManagementEvents: [...stats.memoryManagementEvents],
     memoryManagementByType: mapEntries(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: mapEntries(stats.agentDebugByType),
@@ -168,7 +175,7 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     browserToolsByType: toMap(stats.browserToolsByType),
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
     pluginOrSkillByName: toMap(stats.pluginOrSkillByName),
-    memoryManagementEvents: stats.memoryManagementEvents,
+    memoryManagementEvents: Array.isArray(stats.memoryManagementEvents) ? stats.memoryManagementEvents : [],
     memoryManagementByType: toMap(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: toMap(stats.agentDebugByType),
@@ -186,7 +193,7 @@ export class StatsSnapshotStorage {
     try {
       const raw = await fs.readFile(this.snapshotPath, "utf-8");
       const snapshot = JSON.parse(raw) as SerializedStatsSnapshot;
-      if (snapshot.version !== 1) {
+      if (snapshot.version !== 1 && snapshot.version !== 2) {
         return undefined;
       }
       return deserializeStats(snapshot.stats);
@@ -197,7 +204,7 @@ export class StatsSnapshotStorage {
 
   async write(stats: CopilotUsageStats): Promise<void> {
     const payload: SerializedStatsSnapshot = {
-      version: 1,
+      version: 2,
       stats: serializeStats(stats),
     };
     try {

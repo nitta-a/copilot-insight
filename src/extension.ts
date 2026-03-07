@@ -6,7 +6,12 @@ import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
-import { computeModelPerformance, computeTrueAcceptanceRate, computeVelocityAnalysis } from "./metrics/metricsEngine";
+import {
+  computeModelPerformance,
+  computeRefreshAnalysis,
+  computeTrueAcceptanceRate,
+  computeVelocityAnalysis,
+} from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
@@ -100,16 +105,36 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   /** Compute advanced metrics (best-effort) from tracked events. */
-  function getAdvancedMetrics(stats: CopilotUsageStats) {
+  async function getAdvancedMetrics(stats: CopilotUsageStats) {
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
     if (allEvents.length === 0) {
       return {};
     }
+    if (dbWorker) {
+      try {
+        await dbWorker.loadFromJsonl(context.globalStorageUri.fsPath);
+        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
+          dbWorker.trueRate(stats.totalShown),
+          dbWorker.velocity(),
+          dbWorker.modelPerformance(),
+          dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
+        ]);
+        return {
+          trueAcceptance,
+          velocity,
+          modelPerformance,
+          refreshAnalysis,
+        };
+      } catch {
+        // Fall back to in-process computation when the worker is unavailable.
+      }
+    }
     return {
       trueAcceptance: computeTrueAcceptanceRate(allEvents, stats.totalShown),
       velocity: computeVelocityAnalysis(allEvents),
       modelPerformance: computeModelPerformance(allEvents),
+      refreshAnalysis: computeRefreshAnalysis(allEvents, stats.memoryManagementEvents),
     };
   }
 
@@ -127,7 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
       async () => {
         const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats, getAdvancedMetrics(stats));
+        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
       },
     );
   });
@@ -141,7 +166,7 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats, getAdvancedMetrics(stats));
+          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
         }
       },
     );

@@ -95,7 +95,7 @@ export async function parseCopilotLogs(
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
-    memoryManagementEvents: 0,
+    memoryManagementEvents: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),

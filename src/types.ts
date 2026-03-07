@@ -49,6 +49,36 @@ export interface SessionStat {
   errors: number;
 }
 
+export interface MemoryManagementEvent {
+  timestamp: string;
+  type: string;
+  rawText: string;
+  sessionId: string;
+}
+
+export interface RefreshAnalysisSegment {
+  turnCount: number;
+  rawAccepted: number;
+  trueAccepted: number;
+  rawRate: number;
+  trueRate: number;
+  revertedCount: number;
+  windowStart: string | null;
+  windowEnd: string | null;
+}
+
+export interface RefreshAnalysis {
+  event: MemoryManagementEvent;
+  windowMinutes: number;
+  turnWindowSize: number;
+  preWindow: RefreshAnalysisSegment;
+  postWindow: RefreshAnalysisSegment;
+  preTurns: RefreshAnalysisSegment;
+  postTurns: RefreshAnalysisSegment;
+  recoveryDelta: number;
+  refreshRoi: number | null;
+}
+
 export interface CopilotUsageStats {
   totalShown: number;
   totalAccepted: number;
@@ -135,8 +165,8 @@ export interface CopilotUsageStats {
   pluginOrSkillInvocations: number;
   /** Plugin or skill events grouped by detected name or subtype. */
   pluginOrSkillByName: Map<string, number>;
-  /** Number of session-memory or compaction related events observed in logs. */
-  memoryManagementEvents: number;
+  /** Session-memory or compaction events observed in logs with timestamps. */
+  memoryManagementEvents: MemoryManagementEvent[];
   /** Session-memory or compaction events grouped by detected subtype. */
   memoryManagementByType: Map<string, number>;
   /** Number of agent-debug or step-execution related events observed in logs. */

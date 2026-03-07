@@ -8,11 +8,12 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import type { AgenticDepthStat, CopilotUsageStats } from "../types";
+import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat } from "../types";
 import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
+  ContextFreshness,
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
@@ -60,6 +61,7 @@ export function buildDashboardPayload(
   trueAcceptance?: TrueAcceptanceResult,
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
+  refreshAnalysis: RefreshAnalysis[] = [],
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
@@ -205,6 +207,16 @@ export function buildDashboardPayload(
     insights.push(`💬 Chat usage ratio: ${ratio}% of all Copilot interactions are chat requests.`);
   }
 
+  if (refreshAnalysis.length > 0) {
+    const positiveRoi = refreshAnalysis.filter((entry) => (entry.refreshRoi ?? 0) > 0);
+    if (positiveRoi.length > 0) {
+      const averageRoi = positiveRoi.reduce((sum, entry) => sum + (entry.refreshRoi ?? 0), 0) / positiveRoi.length;
+      insights.push(
+        `🧼 Refresh ROI average: +${(averageRoi * 100).toFixed(1)}% true-rate recovery after context refreshes.`,
+      );
+    }
+  }
+
   // ── Agentic stats ─────────────────────────────────────────────────────────
   const toolUsageStats = Array.from(stats.toolUsageStats.entries())
     .map(([intent, count]) => ({ intent, count }))
@@ -279,7 +291,7 @@ export function buildDashboardPayload(
       breakdown: toSortedBreakdown(stats.pluginOrSkillByName),
     },
     memoryManagement: {
-      total: stats.memoryManagementEvents,
+      total: stats.memoryManagementEvents.length,
       breakdown: toSortedBreakdown(stats.memoryManagementByType),
     },
     agentDebug: {
@@ -297,6 +309,8 @@ export function buildDashboardPayload(
     featureSignals,
   };
 
+  const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
+
   return {
     days: timeline.length,
     availableRange,
@@ -307,6 +321,69 @@ export function buildDashboardPayload(
     insights,
     weeklyTrend,
     agenticStats,
+    refreshAnalysis,
+    freshness,
+  };
+}
+
+function getLatestSession(stats: CopilotUsageStats): SessionStat | null {
+  const latestEntry = Array.from(stats.bySession.entries()).sort((a, b) => b[0].localeCompare(a[0]))[0];
+  return latestEntry?.[1] ?? null;
+}
+
+function calculateContextFreshness(
+  stats: CopilotUsageStats,
+  trueAcceptanceRate: number | null,
+  refreshAnalysis: RefreshAnalysis[],
+): ContextFreshness | null {
+  if (refreshAnalysis.length === 0) {
+    return null;
+  }
+
+  const latestSession = getLatestSession(stats);
+  if (!latestSession) {
+    return null;
+  }
+
+  const actionCount = latestSession.shown + latestSession.accepted + latestSession.chat + latestSession.errors;
+  const latestRefresh = refreshAnalysis.at(-1) ?? null;
+  if (actionCount <= 50) {
+    return {
+      score: 100,
+      actionCount,
+      status: "fresh",
+      actionPenalty: 0,
+      trendPenalty: 0,
+      suggestedAction: "none",
+      latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
+      latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
+    };
+  }
+
+  const overflow = actionCount - 50;
+  const actionPenalty = Math.min(overflow * 1.15, 60);
+  const effectiveTrueRate = trueAcceptanceRate ?? stats.acceptanceRate;
+  const fatigueRatio =
+    stats.acceptanceRate > 0 ? Math.max(0, (stats.acceptanceRate - effectiveTrueRate) / stats.acceptanceRate) : 0;
+  const positiveRoi = refreshAnalysis.filter((entry) => (entry.refreshRoi ?? 0) > 0);
+  const averagePositiveRoi =
+    positiveRoi.length > 0
+      ? positiveRoi.reduce((sum, entry) => sum + (entry.refreshRoi ?? 0), 0) / positiveRoi.length
+      : 0;
+  const trendPenalty = Math.min(fatigueRatio * 25 + averagePositiveRoi * 20, 30);
+  const score = Math.max(0, Math.min(100, 100 - actionPenalty - trendPenalty));
+  const status = score >= 70 ? "fresh" : score >= 40 ? "aging" : "exhausted";
+  const suggestedAction = status === "fresh" ? "none" : status === "aging" ? "compact" : "restart";
+
+  return {
+    score,
+    actionCount,
+    status,
+    actionPenalty,
+    trendPenalty,
+    suggestedAction,
+    latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
+    latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
   };
 }
 

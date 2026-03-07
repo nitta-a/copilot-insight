@@ -20,6 +20,7 @@
 import { Worker } from "node:worker_threads";
 import type { TrackedEvent } from "../events/eventSchema";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
+import type { MemoryManagementEvent, RefreshAnalysis } from "../types";
 
 /**
  * Async interface for the DB worker, modelled after {@link DuckDbClient}.
@@ -32,6 +33,12 @@ export interface DbWorkerClient {
   trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult>;
   velocity(windowMs?: number): Promise<VelocityAnalysisResult>;
   modelPerformance(): Promise<ModelPerformanceResult>;
+  getRefreshAnalysis(options: {
+    memoryEvents: MemoryManagementEvent[];
+    windowMs?: number;
+    turnWindowSize?: number;
+    revertWindowMs?: number;
+  }): Promise<RefreshAnalysis[]>;
   compact(ttlMs?: number): Promise<{ compacted: number }>;
   close(): Promise<void>;
 }
@@ -121,6 +128,16 @@ export class DbWorkerClientImpl implements DbWorkerClient {
       crossTab: raw.crossTab,
       bestModelByLanguage: new Map(Object.entries(raw.bestModelByLanguage)),
     };
+  }
+
+  /** Compute refresh-analysis around /compact or context-truncation boundaries. */
+  async getRefreshAnalysis(options: {
+    memoryEvents: MemoryManagementEvent[];
+    windowMs?: number;
+    turnWindowSize?: number;
+    revertWindowMs?: number;
+  }): Promise<RefreshAnalysis[]> {
+    return (await this._send("getRefreshAnalysis", options)) as RefreshAnalysis[];
   }
 
   /** Compact events older than `ttlMs` into daily aggregated stats. */

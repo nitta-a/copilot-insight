@@ -16,7 +16,8 @@
  *    context (equivalent to an ASOF JOIN in DuckDB).
  */
 
-import type { TrackedEvent } from "../events/eventSchema";
+import type { CompletionAcceptEvent, TrackedEvent } from "../events/eventSchema";
+import type { MemoryManagementEvent, RefreshAnalysis, RefreshAnalysisSegment } from "../types";
 
 // ---------------------------------------------------------------------------
 // 1. True Acceptance Rate
@@ -103,6 +104,132 @@ export function computeTrueAcceptanceRate(
   const trueRate = totalShown > 0 ? (trueAccepted / totalShown) * 100 : 0;
 
   return { rawAccepted, trueAccepted, rawRate, trueRate, revertedCount };
+}
+
+function toSortedEvents(events: TrackedEvent[]): TrackedEvent[] {
+  return [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+function toSortedAccepts(events: TrackedEvent[]): CompletionAcceptEvent[] {
+  return toSortedEvents(events).filter(
+    (event): event is CompletionAcceptEvent => event.eventType === "completionAccept",
+  );
+}
+
+function buildSegment(events: TrackedEvent[], totalShown: number, revertWindowMs: number): RefreshAnalysisSegment {
+  const sorted = toSortedEvents(events);
+  const result = computeTrueAcceptanceRate(sorted, totalShown, revertWindowMs);
+  return {
+    turnCount: totalShown,
+    rawAccepted: result.rawAccepted,
+    trueAccepted: result.trueAccepted,
+    rawRate: result.rawRate,
+    trueRate: result.trueRate,
+    revertedCount: result.revertedCount,
+    windowStart: sorted[0]?.timestamp ?? null,
+    windowEnd: sorted.at(-1)?.timestamp ?? null,
+  };
+}
+
+function collectTurnWindowEvents(
+  allEvents: TrackedEvent[],
+  selectedAccepts: CompletionAcceptEvent[],
+  revertWindowMs: number,
+): TrackedEvent[] {
+  if (selectedAccepts.length === 0) {
+    return [];
+  }
+  const firstAcceptMs = new Date(selectedAccepts[0].timestamp).getTime();
+  const lastAcceptMs = new Date(selectedAccepts.at(-1)?.timestamp ?? selectedAccepts[0].timestamp).getTime();
+  const windowEndMs = lastAcceptMs + revertWindowMs;
+  return allEvents.filter((event) => {
+    const eventMs = new Date(event.timestamp).getTime();
+    return eventMs >= firstAcceptMs && eventMs <= windowEndMs;
+  });
+}
+
+export function computeRefreshAnalysis(
+  events: TrackedEvent[],
+  memoryEvents: MemoryManagementEvent[],
+  options?: {
+    windowMs?: number;
+    turnWindowSize?: number;
+    revertWindowMs?: number;
+  },
+): RefreshAnalysis[] {
+  if (events.length === 0 || memoryEvents.length === 0) {
+    return [];
+  }
+
+  const windowMs = options?.windowMs ?? 15 * 60_000;
+  const turnWindowSize = options?.turnWindowSize ?? 10;
+  const revertWindowMs = options?.revertWindowMs ?? DEFAULT_REVERT_WINDOW_MS;
+  const sortedEvents = toSortedEvents(events);
+  const accepts = toSortedAccepts(sortedEvents);
+
+  return [...memoryEvents]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .flatMap((memoryEvent) => {
+      const boundaryMs = new Date(memoryEvent.timestamp).getTime();
+      if (Number.isNaN(boundaryMs)) {
+        return [];
+      }
+
+      const preWindowEvents = sortedEvents.filter((event) => {
+        const eventMs = new Date(event.timestamp).getTime();
+        return eventMs >= boundaryMs - windowMs && eventMs < boundaryMs;
+      });
+      const postWindowEvents = sortedEvents.filter((event) => {
+        const eventMs = new Date(event.timestamp).getTime();
+        return eventMs > boundaryMs && eventMs <= boundaryMs + windowMs;
+      });
+
+      const preTurnAccepts = accepts
+        .filter((event) => new Date(event.timestamp).getTime() < boundaryMs)
+        .slice(-turnWindowSize);
+      const postTurnAccepts = accepts
+        .filter((event) => new Date(event.timestamp).getTime() > boundaryMs)
+        .slice(0, turnWindowSize);
+
+      const preTurnEvents = collectTurnWindowEvents(sortedEvents, preTurnAccepts, revertWindowMs);
+      const postTurnEvents = collectTurnWindowEvents(sortedEvents, postTurnAccepts, revertWindowMs);
+
+      const preWindow = buildSegment(
+        preWindowEvents,
+        preWindowEvents.filter((event) => event.eventType === "completionAccept").length,
+        revertWindowMs,
+      );
+      const postWindow = buildSegment(
+        postWindowEvents,
+        postWindowEvents.filter((event) => event.eventType === "completionAccept").length,
+        revertWindowMs,
+      );
+      const preTurns = buildSegment(preTurnEvents, preTurnAccepts.length, revertWindowMs);
+      const postTurns = buildSegment(postTurnEvents, postTurnAccepts.length, revertWindowMs);
+
+      if (
+        preTurns.turnCount === 0 &&
+        postTurns.turnCount === 0 &&
+        preWindow.turnCount === 0 &&
+        postWindow.turnCount === 0
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          event: memoryEvent,
+          windowMinutes: windowMs / 60_000,
+          turnWindowSize,
+          preWindow,
+          postWindow,
+          preTurns,
+          postTurns,
+          recoveryDelta: postTurns.trueRate - preTurns.trueRate,
+          refreshRoi: preTurns.trueRate > 0 ? postTurns.trueRate / preTurns.trueRate - 1 : null,
+        },
+      ];
+    });
 }
 
 // ---------------------------------------------------------------------------

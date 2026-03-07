@@ -76,7 +76,7 @@ function makeEmptyStats(): ParsingContext {
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
-    memoryManagementEvents: 0,
+    memoryManagementEvents: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -292,9 +292,20 @@ suite("logContentParser", () => {
 
     test("records memory management signals from text lines", () => {
       const stats = makeEmptyStats();
-      parseTextLogLine("/compact summarize_context context_limit reached", stats);
-      assert.strictEqual(stats.memoryManagementEvents, 1);
+      parseTextLogLine("2026-03-07 10:15:30 /compact summarize_context context_limit reached", stats);
+      assert.strictEqual(stats.memoryManagementEvents.length, 1);
       assert.strictEqual(stats.memoryManagementByType.get("compact"), 1);
+      assert.strictEqual(stats.memoryManagementEvents[0]?.timestamp, "2026-03-07T10:15:30");
+      assert.strictEqual(stats.memoryManagementEvents[0]?.type, "compact");
+    });
+
+    test("records context-limit and truncation events with timestamps", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2026-03-07 10:20:00 context_limit_reached before truncating_history", stats);
+      assert.strictEqual(stats.memoryManagementEvents.length, 1);
+      assert.strictEqual(stats.memoryManagementEvents[0]?.timestamp, "2026-03-07T10:20:00");
+      assert.strictEqual(stats.memoryManagementEvents[0]?.type, "context-limit-reached");
+      assert.strictEqual(stats.memoryManagementByType.get("context-limit-reached"), 1);
     });
 
     test("records agent debug signals from text lines", () => {

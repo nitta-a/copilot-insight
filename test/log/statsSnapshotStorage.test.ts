@@ -84,7 +84,14 @@ function makeStats(): CopilotUsageStats {
     browserToolsByType: new Map([["screenshot", 2]]),
     pluginOrSkillInvocations: 3,
     pluginOrSkillByName: new Map([["code-search", 3]]),
-    memoryManagementEvents: 1,
+    memoryManagementEvents: [
+      {
+        timestamp: "2026-03-01T10:00:00Z",
+        type: "compact",
+        rawText: "/compact",
+        sessionId: "session-1",
+      },
+    ],
     memoryManagementByType: new Map([["compact", 1]]),
     agentDebugEvents: 4,
     agentDebugByType: new Map([["step-execution", 4]]),
@@ -125,6 +132,7 @@ suite("StatsSnapshotStorage", () => {
         [...(restored?.memoryManagementByType.entries() ?? [])],
         [...expected.memoryManagementByType.entries()],
       );
+      assert.deepStrictEqual(restored?.memoryManagementEvents, expected.memoryManagementEvents);
       assert.deepStrictEqual(
         [...(restored?.agentDebugByType.entries() ?? [])],
         [...expected.agentDebugByType.entries()],

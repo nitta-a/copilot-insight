@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { CopilotUsageStats } from "../types";
+import type { CopilotUsageStats, RefreshAnalysis } from "../types";
 import { todayDateString } from "../utils";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { WebviewToHostMessage } from "./dashboardMessages";
@@ -17,6 +17,7 @@ export interface AdvancedMetrics {
   trueAcceptance?: TrueAcceptanceResult;
   velocity?: VelocityAnalysisResult;
   modelPerformance?: ModelPerformanceResult;
+  refreshAnalysis?: RefreshAnalysis[];
 }
 
 export class CopilotUsagePanel {
@@ -142,6 +143,7 @@ export class CopilotUsagePanel {
       this._advanced.trueAcceptance,
       this._advanced.velocity,
       this._advanced.modelPerformance,
+      this._advanced.refreshAnalysis,
     );
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 

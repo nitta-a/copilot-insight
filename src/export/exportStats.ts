@@ -110,7 +110,7 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   const featureSections: Array<[string, number, Map<string, number>]> = [
     ["# Browser Tool Signals", stats.browserToolInvocations, stats.browserToolsByType],
     ["# Plugin Or Skill Signals", stats.pluginOrSkillInvocations, stats.pluginOrSkillByName],
-    ["# Session Memory Signals", stats.memoryManagementEvents, stats.memoryManagementByType],
+    ["# Session Memory Signals", stats.memoryManagementEvents.length, stats.memoryManagementByType],
     ["# Agent Debug Signals", stats.agentDebugEvents, stats.agentDebugByType],
   ];
   for (const [title, total, breakdown] of featureSections) {
@@ -172,7 +172,7 @@ export function exportAsJson(stats: CopilotUsageStats): string {
         breakdown: mapToObject<number>(stats.pluginOrSkillByName),
       },
       memoryManagement: {
-        total: stats.memoryManagementEvents,
+        total: stats.memoryManagementEvents.length,
         breakdown: mapToObject<number>(stats.memoryManagementByType),
       },
       agentDebug: {
