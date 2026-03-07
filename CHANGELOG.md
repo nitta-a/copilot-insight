@@ -4,6 +4,14 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.14] - 2026-03-07
+
+### Added
+- 🧠 **Context Freshness Meter** — gauge meter in the Overview tab that shows the AI context state (0–100 %) based on cumulative actions within the session; a fatigue-curve heuristic flags when a `/compact` refresh is recommended
+- 📡 **Memory-management event capture** — `logContentParser` now extracts `/compact` executions and `context_limit_reached` system-log entries with timestamps, recording them as `memoryManagementEvents` for use as time-series boundaries
+- 📈 **Refresh ROI analysis** — `dbWorker` implements a `getRefreshAnalysis` RPC that compares True Acceptance Rate in the 15-minute / 10-turn windows before and after each `/compact` run, quantifying the productivity benefit of context refreshes
+- 🌡️ **Context Freshness scoring** — `buildDashboardPayload` computes a 0–100 % freshness score from the session's accumulated action count and applies the fatigue curve to determine whether a refresh is needed
+
 ## [1.0.13] - 2026-03-06
 
 ### Added
