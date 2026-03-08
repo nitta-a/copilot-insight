@@ -3,6 +3,92 @@ export interface LanguageStat {
   accepted: number;
 }
 
+export interface SessionSummary {
+  sessionId: string;
+  date: string;
+  totalActions: number;
+  trueRate: number;
+  autonomousDuration: number;
+  efficiencyScore: number;
+}
+
+export interface SessionEpisode {
+  episodeId: string;
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  phases: string[];
+  aiActionCount: number;
+  humanActionCount: number;
+  accepted: boolean;
+  contextBoundary: boolean;
+  models: string[];
+  summary: string;
+  fatigueScore: number;
+}
+
+export interface SessionTimelineEntry {
+  id: string;
+  sessionId: string;
+  timestamp: string;
+  actor: "human" | "ai" | "system";
+  phase: "human" | "planning" | "research" | "execution" | "memory";
+  label: string;
+  detail: string;
+  icon: string;
+  accepted: boolean;
+  episodeId: string | null;
+}
+
+export interface SessionThreadSummary {
+  threadId: string;
+  title: string;
+  startedAt: string;
+  estimatedMinutesSaved: number;
+  autonomousDurationMs: number;
+  acceptedChars: number;
+  hasAutonomousRun: boolean;
+}
+
+export interface SessionThreadAction {
+  id: string;
+  threadId: string;
+  sessionId: string;
+  timestamp: string;
+  actor: "human" | "ai" | "system";
+  side: "left" | "right" | "center";
+  phase: "human" | "planning" | "research" | "execution" | "memory";
+  label: string;
+  detail: string;
+  icon: string;
+  episodeId: string | null;
+  intent: string;
+  isAutonomous: boolean;
+  isMemoryRefresh: boolean;
+  children: SessionThreadAction[];
+}
+
+export interface ContextFatigueMarker {
+  timestamp: string;
+  episodeId: string;
+  score: number;
+  reason: string;
+}
+
+export interface SessionDetailPayload {
+  sessionId: string;
+  date: string;
+  totalActions: number;
+  trueRate: number;
+  autonomousDuration: number;
+  efficiencyScore: number;
+  timeline: SessionTimelineEntry[];
+  episodes: SessionEpisode[];
+  fatigueMarker: ContextFatigueMarker | null;
+  threads: SessionThreadSummary[];
+  eventsByThread: Record<string, SessionThreadAction[]>;
+}
+
 /** Histogram buckets for the distribution of action counts per agentic loop. */
 export interface LoopActionBuckets {
   /** Loops that contained exactly 1 action. */
@@ -54,6 +140,15 @@ export interface MemoryManagementEvent {
   type: string;
   rawText: string;
   sessionId: string;
+}
+
+export interface ChatSessionTitleRecord {
+  chatSessionId: string;
+  workspaceId: string;
+  title: string;
+  createdAt: string;
+  lastMessageAt: string | null;
+  firstRequestText: string | null;
 }
 
 export interface RefreshAnalysisSegment {
@@ -167,6 +262,10 @@ export interface CopilotUsageStats {
   pluginOrSkillByName: Map<string, number>;
   /** Session-memory or compaction events observed in logs with timestamps. */
   memoryManagementEvents: MemoryManagementEvent[];
+  /** Synthetic session-level signal events derived from parsed Copilot logs. */
+  sessionSignals: import("./events/eventSchema").SessionSignalEvent[];
+  /** Chat titles recovered from workspaceStorage chatSessions files. */
+  chatSessionTitles?: ChatSessionTitleRecord[];
   /** Session-memory or compaction events grouped by detected subtype. */
   memoryManagementByType: Map<string, number>;
   /** Number of agent-debug or step-execution related events observed in logs. */

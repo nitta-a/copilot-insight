@@ -55,6 +55,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
     memoryManagementEvents: [],
+    sessionSignals: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),

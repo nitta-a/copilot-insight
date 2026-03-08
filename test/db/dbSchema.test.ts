@@ -164,6 +164,11 @@ function makeRecord(overrides: Partial<EventRecord>): EventRecord {
     isSubagent: false,
     intent: "",
     contextSources: [],
+    signalType: "",
+    actor: "",
+    phase: "",
+    rawText: "",
+    success: true,
     ...overrides,
   };
 }

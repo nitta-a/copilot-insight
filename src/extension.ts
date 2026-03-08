@@ -114,17 +114,23 @@ export function activate(context: vscode.ExtensionContext) {
     if (dbWorker) {
       try {
         await dbWorker.loadFromJsonl(context.globalStorageUri.fsPath);
-        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
+        if (stats.sessionSignals.length > 0) {
+          await dbWorker.ingest(stats.sessionSignals);
+        }
+        await dbWorker.setChatSessionTitles(stats.chatSessionTitles ?? []);
+        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis, sessionSummaries] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
           dbWorker.modelPerformance(),
           dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
+          dbWorker.getSessionList(),
         ]);
         return {
           trueAcceptance,
           velocity,
           modelPerformance,
           refreshAnalysis,
+          sessionSummaries,
         };
       } catch {
         // Fall back to in-process computation when the worker is unavailable.
@@ -152,7 +158,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
       async () => {
         const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
+        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
       },
     );
   });
@@ -166,7 +172,7 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
+          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
         }
       },
     );

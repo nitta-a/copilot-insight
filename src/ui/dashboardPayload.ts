@@ -8,7 +8,7 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat } from "../types";
+import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat, SessionSummary } from "../types";
 import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
@@ -52,6 +52,25 @@ function toSortedBreakdown(source: Map<string, number>): CountBreakdownEntry[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary[] {
+  return Array.from(stats.bySession.values())
+    .map((session) => {
+      const trueRate = session.shown > 0 ? (session.accepted / session.shown) * 100 : 0;
+      const totalActions = session.shown + session.accepted + session.chat + session.errors;
+      const dateMatch = session.sessionId.match(/(\d{4})(\d{2})(\d{2})/);
+      const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : session.sessionId;
+      return {
+        sessionId: session.sessionId,
+        date,
+        totalActions,
+        trueRate,
+        autonomousDuration: 0,
+        efficiencyScore: trueRate,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.totalActions - a.totalActions);
+}
+
 /**
  * Convert raw Copilot stats + optional advanced-metrics into the data shape
  * consumed by the dashboard WebView.
@@ -62,7 +81,11 @@ export function buildDashboardPayload(
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
   refreshAnalysis: RefreshAnalysis[] = [],
+  sessionSummaries: SessionSummary[] = [],
 ): DashboardPayload {
+  const effectiveSessionSummaries =
+    sessionSummaries.length > 0 ? sessionSummaries : buildFallbackSessionSummaries(stats);
+
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
   // Agentic contribution: AGENTIC_COGNITIVE_WEIGHT of autonomous duration represents developer time freed up.
@@ -323,6 +346,7 @@ export function buildDashboardPayload(
     agenticStats,
     refreshAnalysis,
     freshness,
+    sessionSummaries: effectiveSessionSummaries,
   };
 }
 

@@ -18,7 +18,7 @@ export interface EventRecord {
   id: number;
   sessionId: string;
   timestamp: string;
-  eventType: "textChange" | "completionAccept" | "editorSwitch";
+  eventType: "textChange" | "completionAccept" | "editorSwitch" | "sessionSignal";
   languageId: string;
   charsAdded: number;
   charsDeleted: number;
@@ -33,6 +33,16 @@ export interface EventRecord {
   intent: string;
   /** Context sources referenced in this completion event (e.g. "Open Tabs", "Workspace"). Empty array when unknown. */
   contextSources: string[];
+  /** Session-level signal subtype when `eventType === "sessionSignal"`. */
+  signalType: string;
+  /** Timeline actor for synthetic session signals. */
+  actor: string;
+  /** Episode phase for synthetic session signals. */
+  phase: string;
+  /** Raw source log text for synthetic session signals. */
+  rawText: string;
+  /** Whether the underlying signal represents a successful action. */
+  success: boolean;
 }
 
 /** Row in the `file_metadata` table — aggregated per-file statistics. */
@@ -119,6 +129,11 @@ export function normaliseEvent(
     isSubagent?: boolean;
     intent?: string;
     contextSources?: string[];
+    signalType?: string;
+    actor?: string;
+    phase?: string;
+    rawText?: string;
+    success?: boolean;
   },
   id: number,
 ): EventRecord {
@@ -138,6 +153,11 @@ export function normaliseEvent(
     isSubagent: raw.isSubagent ?? false,
     intent: raw.intent ?? "",
     contextSources: raw.contextSources ?? [],
+    signalType: raw.signalType ?? "",
+    actor: raw.actor ?? "",
+    phase: raw.phase ?? "",
+    rawText: raw.rawText ?? "",
+    success: raw.success ?? true,
   };
 }
 

@@ -8,7 +8,7 @@
  * cross-context issue.
  */
 
-import type { RefreshAnalysis } from "../types";
+import type { RefreshAnalysis, SessionDetailPayload as SessionDetailData, SessionSummary } from "../types";
 
 // ---------------------------------------------------------------------------
 // Payload data shapes (sent from host → webview)
@@ -199,6 +199,8 @@ export interface DashboardPayload {
   refreshAnalysis: RefreshAnalysis[];
   /** Current-session context freshness, or null when unsupported by logs. */
   freshness: ContextFreshness | null;
+  /** Precomputed session summaries for the Sessions master list. */
+  sessionSummaries: SessionSummary[];
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +224,13 @@ export interface ExportCompleteMessage {
   success: boolean;
 }
 
-export type HostToWebviewMessage = DashboardDataMessage | ExportCompleteMessage;
+/** Send session detail after the WebView selects a session. */
+export interface SessionDetailDataMessage {
+  type: "sessionDetailData";
+  payload: SessionDetailData | null;
+}
+
+export type HostToWebviewMessage = DashboardDataMessage | ExportCompleteMessage | SessionDetailDataMessage;
 
 // ---------------------------------------------------------------------------
 // Message types — WebView → Extension Host
@@ -249,4 +257,12 @@ export interface ExportPngMessage {
   };
 }
 
-export type WebviewToHostMessage = ExportMarkdownMessage | ExportPngMessage;
+/** User selected a session in the Session Intelligence Explorer. */
+export interface RequestSessionDetailMessage {
+  type: "requestSessionDetail";
+  payload: {
+    sessionId: string;
+  };
+}
+
+export type WebviewToHostMessage = ExportMarkdownMessage | ExportPngMessage | RequestSessionDetailMessage;

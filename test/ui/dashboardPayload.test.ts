@@ -4,7 +4,7 @@ import type {
   TrueAcceptanceResult,
   VelocityAnalysisResult,
 } from "../../src/metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis } from "../../src/types";
+import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
 import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
 
 function fmt(date: Date): string {
@@ -132,6 +132,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
     memoryManagementEvents: [],
+    sessionSignals: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -211,6 +212,21 @@ suite("buildDashboardPayload", () => {
       };
       const payload = buildDashboardPayload(makeStats(), undefined, undefined, mp);
       assert.strictEqual(payload.summary.bestModel, "gpt-4o");
+    });
+
+    test("sessionSummaries are forwarded into the payload", () => {
+      const summaries: SessionSummary[] = [
+        {
+          sessionId: "s1",
+          date: "2026-03-07",
+          totalActions: 12,
+          trueRate: 58.5,
+          autonomousDuration: 12_000,
+          efficiencyScore: 63.2,
+        },
+      ];
+      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], summaries);
+      assert.deepStrictEqual(payload.sessionSummaries, summaries);
     });
 
     test("freshness is null when refresh analysis is unavailable", () => {

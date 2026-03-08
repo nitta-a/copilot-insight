@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 import { findSessionRoot } from "../utils/logPaths";
+import { readChatSessionTitleRecords, resolveWorkspaceStorageRoot } from "./chatSessionTitleReader";
 import {
   findCopilotDirs,
   getAllSessionDirs,
@@ -96,6 +97,8 @@ export async function parseCopilotLogs(
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
     memoryManagementEvents: [],
+    sessionSignals: [],
+    chatSessionTitles: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -156,6 +159,10 @@ export async function parseCopilotLogs(
     channel.appendLine(
       `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
     );
+
+    const workspaceStorageRoot = resolveWorkspaceStorageRoot(logBaseDir);
+    ctx.chatSessionTitles = await readChatSessionTitleRecords(workspaceStorageRoot);
+    channel.appendLine(`Recovered ${ctx.chatSessionTitles.length} workspace chat titles`);
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }

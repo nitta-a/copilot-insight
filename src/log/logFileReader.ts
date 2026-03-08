@@ -5,7 +5,7 @@ import type { ParsingContext } from "../types";
 import { parseLogContent } from "./logContentParser";
 
 function getMaxSessionDirs(): number {
-  return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 5);
+  return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 10);
 }
 
 interface SessionDirOptions {

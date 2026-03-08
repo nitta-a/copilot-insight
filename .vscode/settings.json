@@ -26,7 +26,10 @@
     // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
     "typescript.tsc.autoDetect": "off",
     "cSpell.words": [
-        "duckdb"
+        "duckdb",
+        "inext",
+        "modelcontextprotocol",
+        "nitta"
     ],
     "editor.formatOnSave": true
 }

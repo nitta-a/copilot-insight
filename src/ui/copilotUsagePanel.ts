@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis } from "../types";
+import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
 import { todayDateString } from "../utils";
+import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload } from "./dashboardPayload";
@@ -18,6 +19,7 @@ export interface AdvancedMetrics {
   velocity?: VelocityAnalysisResult;
   modelPerformance?: ModelPerformanceResult;
   refreshAnalysis?: RefreshAnalysis[];
+  sessionSummaries?: SessionSummary[];
 }
 
 export class CopilotUsagePanel {
@@ -28,14 +30,21 @@ export class CopilotUsagePanel {
   private readonly _disposables: vscode.Disposable[] = [];
   private _stats: CopilotUsageStats;
   private _advanced: AdvancedMetrics;
+  private _dbWorker: DbWorkerClient | undefined;
 
-  public static createOrShow(extensionUri: vscode.Uri, stats: CopilotUsageStats, advanced: AdvancedMetrics = {}): void {
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    stats: CopilotUsageStats,
+    advanced: AdvancedMetrics = {},
+    dbWorker?: DbWorkerClient,
+  ): void {
     const column = vscode.window.activeTextEditor?.viewColumn;
 
     if (CopilotUsagePanel.currentPanel) {
       CopilotUsagePanel.currentPanel._panel.reveal(column);
       CopilotUsagePanel.currentPanel._stats = stats;
       CopilotUsagePanel.currentPanel._advanced = advanced;
+      CopilotUsagePanel.currentPanel._dbWorker = dbWorker;
       CopilotUsagePanel.currentPanel._update();
       return;
     }
@@ -52,7 +61,7 @@ export class CopilotUsagePanel {
       },
     );
 
-    CopilotUsagePanel.currentPanel = new CopilotUsagePanel(panel, extensionUri, stats, advanced);
+    CopilotUsagePanel.currentPanel = new CopilotUsagePanel(panel, extensionUri, stats, advanced, dbWorker);
   }
 
   private constructor(
@@ -60,11 +69,13 @@ export class CopilotUsagePanel {
     extensionUri: vscode.Uri,
     stats: CopilotUsageStats,
     advanced: AdvancedMetrics,
+    dbWorker?: DbWorkerClient,
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._stats = stats;
     this._advanced = advanced;
+    this._dbWorker = dbWorker;
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -99,6 +110,21 @@ export class CopilotUsagePanel {
       }
       case "exportPng": {
         this._savePng(msg.payload.imageData, msg.payload.chartId);
+        break;
+      }
+      case "requestSessionDetail": {
+        if (!this._dbWorker) {
+          void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+          break;
+        }
+        void this._dbWorker
+          .getSessionDetail(msg.payload.sessionId)
+          .then((payload) => {
+            void this._panel.webview.postMessage({ type: "sessionDetailData", payload });
+          })
+          .catch(() => {
+            void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+          });
         break;
       }
     }
@@ -144,6 +170,7 @@ export class CopilotUsagePanel {
       this._advanced.velocity,
       this._advanced.modelPerformance,
       this._advanced.refreshAnalysis,
+      this._advanced.sessionSummaries,
     );
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 
