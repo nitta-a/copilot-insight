@@ -419,7 +419,7 @@ suite("dbWorker session detail", () => {
     const detail = buildSessionDetail("session-1", events);
     assert.ok(detail);
     assert.strictEqual(detail?.threads.length, 1);
-    assert.match(detail?.threads[0]?.title ?? "", /^Execution thread · /);
+    assert.match(detail?.threads[0]?.title ?? "", /^Editing session · /);
     assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, false);
   });
 

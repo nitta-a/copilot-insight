@@ -1051,7 +1051,7 @@ function sortThreadsNewestFirst(threads: SessionDetailPayload["threads"]): Sessi
 }
 
 function filterSelectableThreads(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
-  return threads.filter((thread) => thread.hasSelectableTitle && thread.stepCount > 0);
+  return threads.filter((thread) => thread.stepCount > 0);
 }
 
 function requestSessionDetail(sessionId: string): void {
@@ -1066,7 +1066,7 @@ function requestSessionDetail(sessionId: string): void {
 function renderThreadList(detail: SessionDetailPayload): string {
   const selectableThreads = filterSelectableThreads(detail.threads);
   if (selectableThreads.length === 0) {
-    return '<div class="db-empty-panel">No selectable threads were detected for this session.</div>';
+    return '<div class="db-empty-panel">No threads with activity were detected for this session.</div>';
   }
   return sortThreadsNewestFirst(selectableThreads)
     .map((thread) => {
@@ -1086,7 +1086,7 @@ function renderSelectedThread(detail: SessionDetailPayload): string {
   const selectedThread =
     sortedThreads.find((thread) => thread.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
   if (!selectedThread) {
-    return '<div class="db-empty-panel">No selectable thread detail is available.</div>';
+    return '<div class="db-empty-panel">No thread detail with activity is available.</div>';
   }
   if (selectedThreadId !== selectedThread.threadId) {
     selectedThreadId = selectedThread.threadId;

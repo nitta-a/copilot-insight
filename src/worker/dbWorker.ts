@@ -946,15 +946,44 @@ function summariseThreadPrompt(rawText: string): string | null {
   return cleaned.slice(0, 80);
 }
 
+function getIntentThreadLabel(intent: string, phase: SessionTimelineEntry["phase"]): string | null {
+  if (!intent) {
+    return null;
+  }
+  if (intent === "panel/editAgent" || intent === "workspace/editfile" || intent === "workspace/editFile") {
+    return "Editing session";
+  }
+  if (intent === "apply_patch") {
+    return "Patch thread";
+  }
+  if (intent === "panel/unknown" || intent === "agent/plan" || intent === "strategy/propose") {
+    return "Planning thread";
+  }
+  if (intent === "tool/searchSubagentTool" || intent.startsWith("browser/")) {
+    return "Research thread";
+  }
+  if (isSubagentIntent(intent)) {
+    return phase === "research" ? "Research thread" : "Execution thread";
+  }
+  if (intent === "terminal/runCommand") {
+    return "Command thread";
+  }
+  return null;
+}
+
 function getSyntheticThreadLabel(action: ThreadActionNode | undefined, sawTitleRequest: boolean): string {
   if (!action) {
     return sawTitleRequest ? "Chat thread" : "Conversation";
+  }
+  const intentLabel = getIntentThreadLabel(action.intent, action.phase);
+  if (intentLabel) {
+    return intentLabel;
   }
   switch (action.label) {
     case "Conversation turn":
     case "New chat prompt":
     case "Chat request":
-      return sawTitleRequest ? "Titled chat" : "Conversation";
+      return sawTitleRequest ? "Chat thread" : "New Chat";
     case "Plan proposed":
       return "Planning thread";
     case "Research action":

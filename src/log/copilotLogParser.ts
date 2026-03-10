@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
-import { findSessionRoot } from "../utils/logPaths";
+import { resolveLogSearchPaths } from "../utils/logPaths";
 import {
   readChatSessionRecords,
   readChatSessionTitleRecords,
@@ -118,18 +118,10 @@ export async function parseCopilotLogs(
     const channel = getOutputChannel();
     channel.appendLine(`Original logUri: ${logUri.fsPath}`);
 
-    const sessionRoot = findSessionRoot(logUri.fsPath);
+    const { sessionRoot, logBaseDir, fallbackSessionDir } = resolveLogSearchPaths(logUri.fsPath);
     channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);
-
-    let logBaseDir: string;
-    let fallbackSessionDir: string;
-    if (sessionRoot) {
-      logBaseDir = path.dirname(sessionRoot);
-      fallbackSessionDir = sessionRoot;
-    } else {
-      channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using fixed-depth fallback`);
-      logBaseDir = path.dirname(path.dirname(path.dirname(logUri.fsPath)));
-      fallbackSessionDir = path.dirname(path.dirname(logUri.fsPath));
+    if (!sessionRoot) {
+      channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using inferred fallback`);
     }
 
     channel.appendLine(`Searching for logs in: ${logBaseDir}`);

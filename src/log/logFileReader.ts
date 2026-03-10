@@ -12,6 +12,37 @@ interface SessionDirOptions {
   limit?: number;
 }
 
+async function findExthostDirs(rootDir: string, maxDepth = 3): Promise<string[]> {
+  const results: string[] = [];
+
+  async function search(dir: string, depth: number): Promise<void> {
+    if (depth > maxDepth) {
+      return;
+    }
+    let entries: string[];
+    try {
+      entries = await fs.readdir(dir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+      if (!(await isDirectory(fullPath))) {
+        continue;
+      }
+      if (/^exthost\d*$/i.test(entry)) {
+        results.push(fullPath);
+        continue;
+      }
+      await search(fullPath, depth + 1);
+    }
+  }
+
+  await search(rootDir, 0);
+  return results;
+}
+
 export async function isDirectory(dirPath: string): Promise<boolean> {
   try {
     const stat = await fs.lstat(dirPath);
@@ -102,37 +133,23 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
 }
 
 /**
- * Parse `remoteexthost.log` from each `exthost*` subdirectory within a session
- * directory.
+ * Parse `.log` files from each `exthost*` directory discovered within a
+ * session directory.
  *
  * In VS Code Remote / WSL environments the extension host runs inside a per-
- * workspace remote process.  VS Code creates one or more numbered `exthost<N>`
- * subdirectories under the session root (e.g. `20260228T180728/exthost1/`) and
- * writes log files inside each of them — NOT at the session root.
- * This function iterates over all `exthost*` siblings and parses every
- * `.log` file it finds directly inside them, silently skipping missing or
- * unreadable files.
+ * workspace remote process. VS Code may place those directories directly under
+ * the session root (e.g. `20260228T180728/exthost1/`) or under window-specific
+ * directories (e.g. `20260228T180728/window1/exthost/`). This function finds
+ * both layouts and parses every `.log` file it finds directly inside them,
+ * silently skipping missing or unreadable files.
  */
 export async function parseRemoteExthostLog(
   sessionDir: string,
   ctx: ParsingContext,
 ): Promise<{ matchedDirs: number; parsedFiles: number }> {
   let parsedFiles = 0;
-  let matchedDirs = 0;
-  let entries: string[];
-  try {
-    entries = await fs.readdir(sessionDir);
-  } catch {
-    return { matchedDirs: 0, parsedFiles: 0 };
-  }
-  for (const entry of entries) {
-    if (!/^exthost/i.test(entry)) {
-      continue;
-    }
-    matchedDirs++;
-    // Parse all .log files directly inside the exthost<N> directory.
-    // fs.readdir naturally rejects non-directories, so no explicit isDirectory check is needed.
-    const exthostDir = path.join(sessionDir, entry);
+  const exthostDirs = await findExthostDirs(sessionDir);
+  for (const exthostDir of exthostDirs) {
     let logFiles: string[];
     try {
       logFiles = await fs.readdir(exthostDir);
@@ -154,7 +171,7 @@ export async function parseRemoteExthostLog(
       }
     }
   }
-  return { matchedDirs, parsedFiles };
+  return { matchedDirs: exthostDirs.length, parsedFiles };
 }
 
 export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {

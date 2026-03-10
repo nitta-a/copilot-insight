@@ -3,6 +3,42 @@ import * as path from "node:path";
 /** Pattern for VS Code session directory names (e.g. `20260304T120000`). */
 const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
 
+export interface ResolvedLogSearchPaths {
+  sessionRoot: string | null;
+  logBaseDir: string;
+  fallbackSessionDir: string;
+}
+
+function normalizeFsPath(fsPath: string): string {
+  return fsPath.replace(/\\/g, "/");
+}
+
+function splitFsPath(fsPath: string): string[] {
+  return normalizeFsPath(fsPath).split("/");
+}
+
+function joinFsPath(parts: string[]): string {
+  return parts.join(path.sep);
+}
+
+function findLastSessionSegmentIndex(parts: string[]): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (SESSION_DIR_PATTERN.test(parts[i])) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function findLastLogsSegmentIndex(parts: string[]): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i] === "logs") {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /**
  * Locate the VS Code session root directory from `fsPath` by splitting on the
  * native path separator and searching for the `logs` landmark segment.
@@ -19,18 +55,63 @@ const SESSION_DIR_PATTERN = /^\d{8}T\d{6}$/;
  * if the expected `logs/<timestamp>` segment is not present in the path.
  */
 export function findSessionRoot(fsPath: string): string | null {
-  const parts = fsPath.split(path.sep);
-  const logsIdx = parts.indexOf("logs");
-  if (logsIdx === -1 || logsIdx + 1 >= parts.length) {
-    return null;
+  const parts = splitFsPath(fsPath);
+  for (let i = parts.length - 2; i >= 0; i--) {
+    if (parts[i] !== "logs") {
+      continue;
+    }
+    const sessionId = parts[i + 1];
+    if (!SESSION_DIR_PATTERN.test(sessionId)) {
+      continue;
+    }
+    return joinFsPath(parts.slice(0, i + 2));
   }
-  const sessionId = parts[logsIdx + 1];
-  if (!SESSION_DIR_PATTERN.test(sessionId)) {
-    return null;
+  return null;
+}
+
+/**
+ * Resolve the session root, parent logs directory, and a fallback session path
+ * from an arbitrary VS Code log path.
+ *
+ * This avoids fixed-depth `dirname()` assumptions so Remote-WSL / VS Code
+ * Server layouts like `.vscode-server/data/logs/<session>/...` remain valid
+ * even when additional intermediate directories are present.
+ */
+export function resolveLogSearchPaths(fsPath: string): ResolvedLogSearchPaths {
+  const sessionRoot = findSessionRoot(fsPath);
+  if (sessionRoot) {
+    return {
+      sessionRoot,
+      logBaseDir: path.dirname(sessionRoot),
+      fallbackSessionDir: sessionRoot,
+    };
   }
-  // Reconstruct the path up to and including the session directory.
-  // Join with the native separator directly (not path.join) so that a leading
-  // empty element from splitting a Unix absolute path (e.g. '/Users/...')
-  // is preserved as the root separator '/'.
-  return parts.slice(0, logsIdx + 2).join(path.sep);
+
+  const parts = splitFsPath(fsPath);
+  const sessionIdx = findLastSessionSegmentIndex(parts);
+  if (sessionIdx !== -1) {
+    const fallbackSessionDir = joinFsPath(parts.slice(0, sessionIdx + 1));
+    return {
+      sessionRoot: null,
+      logBaseDir: path.dirname(fallbackSessionDir),
+      fallbackSessionDir,
+    };
+  }
+
+  const logsIdx = findLastLogsSegmentIndex(parts);
+  if (logsIdx !== -1) {
+    const logBaseDir = joinFsPath(parts.slice(0, logsIdx + 1));
+    const fallbackSessionDir = logsIdx + 1 < parts.length ? joinFsPath(parts.slice(0, logsIdx + 2)) : logBaseDir;
+    return {
+      sessionRoot: null,
+      logBaseDir,
+      fallbackSessionDir,
+    };
+  }
+
+  return {
+    sessionRoot: null,
+    logBaseDir: path.dirname(path.dirname(fsPath)),
+    fallbackSessionDir: path.dirname(fsPath),
+  };
 }

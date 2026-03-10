@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as assert from "assert";
 import { findCopilotDirs, parseRemoteExthostLog } from "../../src/log/logFileReader";
 import type { ParsingContext } from "../../src/types";
-import { findSessionRoot } from "../../src/utils/logPaths";
+import { findSessionRoot, resolveLogSearchPaths } from "../../src/utils/logPaths";
 
 suite("findSessionRoot", () => {
   // NOTE: findSessionRoot uses path.sep to split the path, so it correctly
@@ -65,6 +65,41 @@ suite("findSessionRoot", () => {
       "/Users/user/Library/Application Support/Code/logs/20260304T120000/window1/exthost/nitta-a.copilot-insight";
     const result = findSessionRoot(logPath);
     assert.strictEqual(result, "/Users/user/Library/Application Support/Code/logs/20260304T120000");
+  });
+
+  test("finds session root in Remote-WSL .vscode-server path", () => {
+    const logPath = "/home/user/.vscode-server/data/logs/20260304T120000/exthost1/GitHub.copilot/extension.log";
+    const result = findSessionRoot(logPath);
+    assert.strictEqual(result, "/home/user/.vscode-server/data/logs/20260304T120000");
+  });
+
+  test("prefers the logs segment that is directly followed by a session id", () => {
+    const logPath =
+      "/home/user/projects/logs/archive/.vscode-server/data/logs/20260304T120000/exthost1/remoteexthost.log";
+    const result = findSessionRoot(logPath);
+    assert.strictEqual(result, "/home/user/projects/logs/archive/.vscode-server/data/logs/20260304T120000");
+  });
+});
+
+suite("resolveLogSearchPaths", () => {
+  test("derives log base and fallback session dir for Remote-WSL paths", () => {
+    const logPath = "/home/user/.vscode-server/data/logs/20260304T120000/exthost1/GitHub.copilot/extension.log";
+    const result = resolveLogSearchPaths(logPath);
+    assert.deepStrictEqual(result, {
+      sessionRoot: "/home/user/.vscode-server/data/logs/20260304T120000",
+      logBaseDir: "/home/user/.vscode-server/data/logs",
+      fallbackSessionDir: "/home/user/.vscode-server/data/logs/20260304T120000",
+    });
+  });
+
+  test("falls back to nearest session-like segment when logs landmark is missing", () => {
+    const logPath = "/home/user/.vscode-server/data/20260304T120000/exthost1/remoteexthost.log";
+    const result = resolveLogSearchPaths(logPath);
+    assert.deepStrictEqual(result, {
+      sessionRoot: null,
+      logBaseDir: "/home/user/.vscode-server/data",
+      fallbackSessionDir: "/home/user/.vscode-server/data/20260304T120000",
+    });
   });
 });
 
@@ -346,6 +381,19 @@ suite("parseRemoteExthostLog", () => {
     await fs.writeFile(path.join(tmpDir, "exthost1", "exthost.log"), "suggestion accepted\n", "utf-8");
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(ctx.logFilesFound, 2);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 1);
+  });
+
+  test("parses .log files inside window1/exthost for WSL-style nested layouts", async () => {
+    const exthostDir = path.join(tmpDir, "window1", "exthost");
+    await fs.mkdir(exthostDir, { recursive: true });
+    await fs.writeFile(path.join(exthostDir, "remoteexthost.log"), "suggestion shown\n", "utf-8");
+    await fs.writeFile(path.join(exthostDir, "exthost.log"), "suggestion accepted\n", "utf-8");
+    const ctx = makeEmptyCtx();
+    const result = await parseRemoteExthostLog(tmpDir, ctx);
+    assert.strictEqual(result.matchedDirs, 1);
     assert.strictEqual(ctx.logFilesFound, 2);
     assert.strictEqual(ctx.totalShown, 1);
     assert.strictEqual(ctx.totalAccepted, 1);

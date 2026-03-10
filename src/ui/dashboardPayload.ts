@@ -61,7 +61,7 @@ function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary
       const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : session.sessionId;
       return {
         sessionId: session.sessionId,
-        title: null,
+        title: date !== session.sessionId ? date : session.sessionId,
         date,
         totalActions,
         trueRate,

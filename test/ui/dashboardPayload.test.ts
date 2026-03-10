@@ -230,9 +230,11 @@ suite("buildDashboardPayload", () => {
       assert.deepStrictEqual(payload.sessionSummaries, summaries);
     });
 
-    test("fallback session summaries stay hidden when no titled sessions are available", () => {
+    test("fallback session summaries are shown with date as title when no explicit sessions are available", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.deepStrictEqual(payload.sessionSummaries, []);
+      assert.strictEqual(payload.sessionSummaries.length, 1);
+      assert.strictEqual(payload.sessionSummaries[0]?.sessionId, "s1");
+      assert.ok(payload.sessionSummaries[0]?.title, "fallback session should have a non-empty title");
     });
 
     test("freshness is null when refresh analysis is unavailable", () => {
