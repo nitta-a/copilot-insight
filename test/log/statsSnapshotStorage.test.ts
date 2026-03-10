@@ -106,6 +106,11 @@ function makeStats(): CopilotUsageStats {
     memoryManagementByType: new Map([["compact", 1]]),
     agentDebugEvents: 4,
     agentDebugByType: new Map([["step-execution", 4]]),
+    premiumRequestCount: 3,
+    premiumRequestsByModel: new Map([
+      ["claude-3.5-sonnet", 2],
+      ["gpt-4o", 1],
+    ]),
   };
 }
 

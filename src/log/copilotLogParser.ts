@@ -58,6 +58,9 @@ export async function parseCopilotLogs(
     latencies: [],
     chatLatencies: [],
     latencyP50: 0,
+    // --- Premium Model Tracking ---
+    premiumRequestCount: 0,
+    premiumRequestsByModel: new Map(),
     latencyP95: 0,
     latencyP99: 0,
     chatAvgLatencyMs: 0,

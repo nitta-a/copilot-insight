@@ -136,6 +136,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
+    premiumRequestCount: 0,
+    premiumRequestsByModel: new Map(),
     ...overrides,
   };
 }
@@ -842,6 +844,115 @@ suite("buildDashboardPayload", () => {
       // merged: shown=100, accepted=40 → acceptanceRate=40%, totalAccepted=40
       assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
       assert.strictEqual(byModel[0].totalAccepted, 40);
+    });
+  });
+
+  suite("premiumRequests", () => {
+    test("returns total=0 and empty byModel when no premium usage", () => {
+      const payload = buildDashboardPayload(makeStats());
+      assert.strictEqual(payload.premiumRequests.total, 0);
+      assert.deepStrictEqual(payload.premiumRequests.byModel, []);
+    });
+
+    test("returns correct total from premiumRequestCount", () => {
+      const stats = makeStats({ premiumRequestCount: 5 });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.premiumRequests.total, 5);
+    });
+
+    test("returns byModel sorted by count descending", () => {
+      const stats = makeStats({
+        premiumRequestCount: 7,
+        premiumRequestsByModel: new Map([
+          ["claude-3.5-sonnet", 5],
+          ["gpt-4o", 2],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.premiumRequests.byModel.length, 2);
+      assert.strictEqual(payload.premiumRequests.byModel[0].name, "claude-3.5-sonnet");
+      assert.strictEqual(payload.premiumRequests.byModel[0].count, 5);
+      assert.strictEqual(payload.premiumRequests.byModel[1].name, "gpt-4o");
+      assert.strictEqual(payload.premiumRequests.byModel[1].count, 2);
+    });
+
+    test("returns byModel with single entry for one premium model", () => {
+      const stats = makeStats({
+        premiumRequestCount: 3,
+        premiumRequestsByModel: new Map([["o3", 3]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.premiumRequests.byModel.length, 1);
+      assert.strictEqual(payload.premiumRequests.byModel[0].name, "o3");
+      assert.strictEqual(payload.premiumRequests.byModel[0].count, 3);
+    });
+
+    test("totalChatRequests equals stats.totalChat", () => {
+      const stats = makeStats({ totalChat: 42 });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.premiumRequests.totalChatRequests, 42);
+    });
+
+    test("totalChatRequests is 0 when totalChat is 0", () => {
+      const stats = makeStats({ totalChat: 0 });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.premiumRequests.totalChatRequests, 0);
+    });
+  });
+
+  suite("modelPerformance", () => {
+    test("returns empty array when byModel is empty", () => {
+      const stats = makeStats({ byModel: new Map() });
+      const payload = buildDashboardPayload(stats);
+      assert.deepStrictEqual(payload.modelPerformance, []);
+    });
+
+    test("entry has correct shown, accepted, and acceptanceRate", () => {
+      const stats = makeStats({
+        byModel: new Map([["gpt-4o", { shown: 100, accepted: 60 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.modelPerformance.length, 1);
+      assert.strictEqual(payload.modelPerformance[0].model, "gpt-4o");
+      assert.strictEqual(payload.modelPerformance[0].shown, 100);
+      assert.strictEqual(payload.modelPerformance[0].accepted, 60);
+      assert.ok(Math.abs(payload.modelPerformance[0].acceptanceRate - 60) < 0.01);
+    });
+
+    test("premium model has isPremium=true, standard model has isPremium=false", () => {
+      const stats = makeStats({
+        byModel: new Map([
+          ["gpt-4o", { shown: 100, accepted: 60 }],
+          ["gpt-4o-mini", { shown: 50, accepted: 30 }],
+          ["claude-3.5-sonnet", { shown: 80, accepted: 50 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = Object.fromEntries(payload.modelPerformance.map((e) => [e.model, e.isPremium]));
+      assert.strictEqual(byModel["gpt-4o"], true);
+      assert.strictEqual(byModel["gpt-4o-mini"], false);
+      assert.strictEqual(byModel["claude-3.5-sonnet"], true);
+    });
+
+    test("entries are sorted by shown descending", () => {
+      const stats = makeStats({
+        byModel: new Map([
+          ["gpt-4o-mini", { shown: 30, accepted: 20 }],
+          ["gpt-4o", { shown: 150, accepted: 90 }],
+          ["claude-3.5-sonnet", { shown: 80, accepted: 50 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const shownValues = payload.modelPerformance.map((e) => e.shown);
+      assert.deepStrictEqual(shownValues, [150, 80, 30]);
+    });
+
+    test("acceptanceRate is 0 when shown is 0", () => {
+      const stats = makeStats({
+        byModel: new Map([["gpt-4o", { shown: 0, accepted: 0 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.modelPerformance[0].acceptanceRate, 0);
     });
   });
 });

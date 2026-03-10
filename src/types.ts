@@ -267,6 +267,12 @@ export interface CopilotUsageStats {
   /** Per context source shown/accepted counts for effectiveness analysis. */
   byContextEffectiveness: Map<string, LanguageStat>;
 
+  // --- Premium Model Tracking ---
+  /** プレミアムモデルリクエスト総数 */
+  premiumRequestCount: number;
+  /** モデル別プレミアムリクエスト数 */
+  premiumRequestsByModel: Map<string, number>;
+
   // Subagent / Agentic activity
   /** Total number of requests identified as subagent-initiated. */
   subagentRequests: number;

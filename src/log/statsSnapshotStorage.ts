@@ -68,6 +68,8 @@ interface SerializedCopilotUsageStats {
   memoryManagementByType: Array<[string, number]>;
   agentDebugEvents: number;
   agentDebugByType: Array<[string, number]>;
+  premiumRequestCount: number;
+  premiumRequestsByModel: Array<[string, number]>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -131,6 +133,8 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     memoryManagementByType: mapEntries(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: mapEntries(stats.agentDebugByType),
+    premiumRequestCount: stats.premiumRequestCount,
+    premiumRequestsByModel: mapEntries(stats.premiumRequestsByModel),
   };
 }
 
@@ -187,6 +191,8 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     memoryManagementByType: toMap(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: toMap(stats.agentDebugByType),
+    premiumRequestCount: stats.premiumRequestCount ?? 0,
+    premiumRequestsByModel: toMap(stats.premiumRequestsByModel),
   };
 }
 

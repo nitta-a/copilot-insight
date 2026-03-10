@@ -63,6 +63,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
+    premiumRequestCount: 0,
+    premiumRequestsByModel: new Map(),
     ...overrides,
   };
 }

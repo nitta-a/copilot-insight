@@ -2,6 +2,7 @@ import * as assert from "assert";
 import {
   extractThreadTitleFromPayload,
   incrementStatCount,
+  isPremiumModel,
   mergeCountByNormalizedModel,
   mergeStatsByNormalizedModel,
   normalizeContextSource,
@@ -83,6 +84,8 @@ function makeEmptyStats(): ParsingContext {
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
     activePlanPending: false,
+    premiumRequestCount: 0,
+    premiumRequestsByModel: new Map(),
   };
 }
 
@@ -1842,5 +1845,79 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.planCount, 2);
     assert.strictEqual(ctx.executedPlanCount, 2);
     assert.strictEqual(ctx.activePlanPending, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPremiumModel
+// ---------------------------------------------------------------------------
+suite("isPremiumModel", () => {
+  test("returns true for claude- prefix", () => {
+    assert.strictEqual(isPremiumModel("claude-3.5-sonnet"), true);
+    assert.strictEqual(isPremiumModel("claude-sonnet-4"), true);
+    assert.strictEqual(isPremiumModel("claude-opus-4"), true);
+  });
+
+  test("returns true for gpt-4o (non-mini)", () => {
+    assert.strictEqual(isPremiumModel("gpt-4o"), true);
+    assert.strictEqual(isPremiumModel("gpt-4o-2024-11-20"), true);
+  });
+
+  test("returns false for gpt-4o-mini", () => {
+    assert.strictEqual(isPremiumModel("gpt-4o-mini"), false);
+  });
+
+  test("returns true for gpt-4.1 series", () => {
+    assert.strictEqual(isPremiumModel("gpt-4.1"), true);
+    assert.strictEqual(isPremiumModel("gpt-4.1-mini"), true);
+    assert.strictEqual(isPremiumModel("gpt-41"), true);
+  });
+
+  test("returns true for o1 and o3 models", () => {
+    assert.strictEqual(isPremiumModel("o1"), true);
+    assert.strictEqual(isPremiumModel("o1-preview"), true);
+    assert.strictEqual(isPremiumModel("o3"), true);
+    assert.strictEqual(isPremiumModel("o3-mini"), true);
+  });
+
+  test("returns true for gemini- prefix", () => {
+    assert.strictEqual(isPremiumModel("gemini-1.5-pro"), true);
+    assert.strictEqual(isPremiumModel("gemini-2.0-flash"), true);
+  });
+
+  test("returns false for standard models", () => {
+    assert.strictEqual(isPremiumModel("gpt-3.5-turbo"), false);
+    assert.strictEqual(isPremiumModel("copilot"), false);
+    assert.strictEqual(isPremiumModel(""), false);
+  });
+
+  test("is case-insensitive", () => {
+    assert.strictEqual(isPremiumModel("Claude-3.5-Sonnet"), true);
+    assert.strictEqual(isPremiumModel("GPT-4O"), true);
+    assert.strictEqual(isPremiumModel("GPT-4O-MINI"), false);
+  });
+
+  test("premium log line increments premiumRequestCount and premiumRequestsByModel", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2026-03-06 10:00:00.000 [info] ccreq:file.ts | success | claude-3.5-sonnet | 1200ms | []", ctx);
+    assert.strictEqual(ctx.premiumRequestCount, 1);
+    assert.strictEqual(ctx.premiumRequestsByModel.get("claude-3.5-sonnet"), 1);
+  });
+
+  test("non-premium log line does not increment premium fields", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2026-03-06 10:00:00.000 [info] ccreq:file.ts | success | gpt-4o-mini | 800ms | []", ctx);
+    assert.strictEqual(ctx.premiumRequestCount, 0);
+    assert.strictEqual(ctx.premiumRequestsByModel.size, 0);
+  });
+
+  test("multiple premium requests accumulate correctly", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine("2026-03-06 10:00:00.000 [info] ccreq:a.ts | success | claude-3.5-sonnet | 1000ms | []", ctx);
+    parseTextLogLine("2026-03-06 10:01:00.000 [info] ccreq:b.ts | success | claude-3.5-sonnet | 1100ms | []", ctx);
+    parseTextLogLine("2026-03-06 10:02:00.000 [info] ccreq:c.ts | success | gpt-4o | 900ms | []", ctx);
+    assert.strictEqual(ctx.premiumRequestCount, 3);
+    assert.strictEqual(ctx.premiumRequestsByModel.get("claude-3.5-sonnet"), 2);
+    assert.strictEqual(ctx.premiumRequestsByModel.get("gpt-4o"), 1);
   });
 });

@@ -144,7 +144,10 @@ function getColors(): ChartColors {
 // Summary cards
 // ---------------------------------------------------------------------------
 
-function renderSummaryCards(summary: DashboardPayload["summary"]): void {
+function renderSummaryCards(
+  summary: DashboardPayload["summary"],
+  premiumRequests?: DashboardPayload["premiumRequests"],
+): void {
   const el = document.getElementById("db-summary-cards");
   if (!el) {
     return;
@@ -157,6 +160,22 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   const roiDetail =
     summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
   const bestModelStr = summary.bestModel ?? "—";
+
+  let premiumHtml = "";
+  if (premiumRequests && premiumRequests.total > 0) {
+    const ratio =
+      premiumRequests.totalChatRequests > 0
+        ? `${((premiumRequests.total / premiumRequests.totalChatRequests) * 100).toFixed(1)}%`
+        : "—";
+    const modelDetail = premiumRequests.byModel.map((m) => `${escHtml(m.name)} (${m.count})`).join(" · ");
+    premiumHtml = `
+      <div class="stat-card db-highlight">
+        <div class="stat-value db-accent">${ratio}</div>
+        <div class="stat-label">Premium Support Level</div>
+        <div class="stat-detail">${premiumRequests.total} premium req · ${modelDetail}</div>
+      </div>
+    `;
+  }
 
   el.innerHTML = `
     <div class="stat-card db-highlight">
@@ -174,6 +193,7 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
       <div class="stat-label">Best Model</div>
       <div class="stat-detail">highest acceptance</div>
     </div>
+    ${premiumHtml}
     <div class="stat-card">
       <div class="stat-value">${summary.totalShown}</div>
       <div class="stat-label">Suggestions Shown</div>
@@ -728,7 +748,10 @@ function formatDuration(ms: number): string {
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 }
 
-function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agenticStats"]): void {
+function renderAgentIntelligenceOverview(
+  agenticStats: DashboardPayload["agenticStats"],
+  premiumRequests?: DashboardPayload["premiumRequests"],
+): void {
   const el = document.getElementById("db-agent-intelligence-container");
   if (!el) {
     return;
@@ -804,14 +827,24 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
        </div>`
       : "";
 
+  const premiumByModel = new Map<string, number>(
+    (premiumRequests?.byModel ?? []).map(({ name, count }) => [name, count]),
+  );
+
   const modelRows = overview.autonomousRatioByModel
     .map(({ model, subagentCount, totalCount, ratio, velocitySecondsPerAction }) => {
       const velocityStr = velocitySecondsPerAction > 0 ? `${velocitySecondsPerAction.toFixed(1)}s` : "—";
+      const premCount = premiumByModel.get(model) ?? 0;
+      const premCell =
+        premCount > 0
+          ? `<span class="tier-badge tier-premium">${premCount}</span>`
+          : `<span style="opacity:0.4">—</span>`;
       return `<tr>
           <td>${escHtml(trunc(model, 30))}</td>
           <td>${subagentCount} / ${totalCount}</td>
           <td>${ratio.toFixed(1)}%</td>
           <td>${velocityStr}</td>
+          <td style="text-align:center">${premCell}</td>
         </tr>`;
     })
     .join("");
@@ -819,7 +852,7 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
   const modelTable = modelRows
     ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">Autonomous Ratio by Model</h3>
        <table class="db-lang-table">
-         <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th><th>Avg sec / Action</th></tr>
+         <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th><th>Avg sec / Action</th><th>Premium Req</th></tr>
          ${modelRows}
        </table>`
     : "";
@@ -1172,12 +1205,12 @@ function renderThreadDetail(): void {
 function render(payload: DashboardPayload): void {
   currentPayload = payload;
   renderAnomalyBanner(payload.timeline);
-  renderSummaryCards(payload.summary);
+  renderSummaryCards(payload.summary, payload.premiumRequests);
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
-  renderAgentIntelligenceOverview(payload.agenticStats);
+  renderAgentIntelligenceOverview(payload.agenticStats, payload.premiumRequests);
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);

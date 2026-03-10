@@ -312,6 +312,8 @@ suite("parseRemoteExthostLog", () => {
       agentDebugEvents: 0,
       agentDebugByType: new Map(),
       activePlanPending: false,
+      premiumRequestCount: 0,
+      premiumRequestsByModel: new Map(),
     };
   }
 

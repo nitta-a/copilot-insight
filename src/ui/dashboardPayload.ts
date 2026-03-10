@@ -5,7 +5,7 @@
  * requiring a VS Code process.
  */
 
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
+import { isPremiumModel, mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat, SessionSummary } from "../types";
@@ -17,6 +17,7 @@ import type {
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
+  ModelPerformanceEntry,
   SummaryData,
   TimelineEntry,
   VelocityPoint,
@@ -338,6 +339,18 @@ export function buildDashboardPayload(
 
   const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
 
+  const modelPerformanceEntries: ModelPerformanceEntry[] = Array.from(
+    mergeStatsByNormalizedModel(stats.byModel).entries(),
+  )
+    .map(([model, { shown, accepted }]) => ({
+      model,
+      shown,
+      accepted,
+      acceptanceRate: shown > 0 ? (accepted / shown) * 100 : 0,
+      isPremium: isPremiumModel(model),
+    }))
+    .sort((a, b) => b.shown - a.shown);
+
   return {
     days: timeline.length,
     availableRange,
@@ -348,6 +361,13 @@ export function buildDashboardPayload(
     insights,
     weeklyTrend,
     agenticStats,
+    // --- Premium Model Usage ---
+    premiumRequests: {
+      total: stats.premiumRequestCount,
+      totalChatRequests: stats.totalChat,
+      byModel: toSortedBreakdown(stats.premiumRequestsByModel),
+    },
+    modelPerformance: modelPerformanceEntries,
     refreshAnalysis,
     freshness,
     sessionSummaries: effectiveSessionSummaries,

@@ -120,6 +120,17 @@ export interface CountBreakdownEntry {
   count: number;
 }
 
+/** Per-model inline completion performance entry with premium tier classification. */
+export interface ModelPerformanceEntry {
+  model: string;
+  shown: number;
+  accepted: number;
+  /** Acceptance rate as percentage 0–100. */
+  acceptanceRate: number;
+  /** True when this model is classified as a premium model. */
+  isPremium: boolean;
+}
+
 export interface FeatureSignalCategory {
   total: number;
   breakdown: CountBreakdownEntry[];
@@ -202,6 +213,15 @@ export interface DashboardPayload {
   weeklyTrend: WeeklyTrendData | null;
   /** Agentic (subagent) activity statistics. */
   agenticStats: AgenticStats;
+  /** --- Premium Model Usage --- */
+  premiumRequests: {
+    total: number;
+    /** Total chat requests — used to compute the premium support level ratio. */
+    totalChatRequests: number;
+    byModel: CountBreakdownEntry[];
+  };
+  /** Per-model inline completion performance, sorted by shown descending. */
+  modelPerformance: ModelPerformanceEntry[];
   /** Refresh ROI analysis around /compact or truncation boundaries. */
   refreshAnalysis: RefreshAnalysis[];
   /** Current-session context freshness, or null when unsupported by logs. */

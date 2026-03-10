@@ -41,6 +41,30 @@ export function isSubagentIntent(intent: string): boolean {
 }
 
 /**
+ * プレミアムモデル判定
+ * claude-*, gpt-4o(非mini), gpt-4.1, o1, o3, gemini
+ */
+export function isPremiumModel(model: string): boolean {
+  const m = model.toLowerCase();
+  if (m.startsWith("claude-")) {
+    return true;
+  }
+  if (m.startsWith("gpt-4o") && !m.includes("mini")) {
+    return true;
+  }
+  if (m.startsWith("gpt-4.1") || m.startsWith("gpt-41")) {
+    return true;
+  }
+  if (/^o[13][\b\-]?/.test(m)) {
+    return true;
+  }
+  if (m.startsWith("gemini-")) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Normalize a raw model name by stripping deployment paths and internal IDs.
  *
  * Rules applied in order:
@@ -780,6 +804,12 @@ function parseCcreqLine(
   const ccreqMatch = line.match(/\| success \| ([\w./\- >]+?) \| (\d+)ms \|/);
   const model = normalizeModelName(ccreqMatch ? ccreqMatch[1] : "");
   const latency = ccreqMatch ? Number.parseInt(ccreqMatch[2], 10) : 0;
+
+  // --- プレミアム集計 ---
+  if (model && isPremiumModel(model)) {
+    ctx.premiumRequestCount++;
+    incrementCount(ctx.premiumRequestsByModel, model);
+  }
 
   const rawIntent = trackChatIntent(line, ctx, model);
 

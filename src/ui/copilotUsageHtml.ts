@@ -1,4 +1,4 @@
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
+import { isPremiumModel, mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
 import type { DashboardPayload } from "./dashboardMessages";
@@ -185,6 +185,11 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
+    /* ── Tier badges (Premium / Standard) ────────────────────────────── */
+    .tier-badge { display: inline-block; font-size: 0.72em; font-weight: 600; padding: 1px 6px; border-radius: 10px; vertical-align: middle; margin-left: 6px; letter-spacing: 0.03em; }
+    .tier-premium { background: rgba(0,120,212,0.15); color: var(--vscode-charts-blue); border: 1px solid rgba(0,120,212,0.35); }
+    .tier-standard { background: transparent; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
+    .bar-row.bar-premium { background: rgba(0,120,212,0.06); border-radius: 4px; }
     /* ── Tab bar ──────────────────────────────────────────────────────── */
     .db-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-editor-inactiveSelectionBackground)); margin-bottom: 16px; }
     .db-tab-btn {
@@ -497,8 +502,13 @@ function renderBarChartWithRate(data: [string, LanguageStat][]): string {
   return data
     .map(([label, { shown, accepted }]) => {
       const rate = shown > 0 ? ((accepted / shown) * 100).toFixed(1) : "0.0";
-      return `<div class="bar-row">
-  <span class="bar-label">${escapeHtml(label)}</span>
+      const premium = isPremiumModel(label);
+      const rowClass = premium ? "bar-row bar-premium" : "bar-row";
+      const tierBadge = premium
+        ? `<span class="tier-badge tier-premium">Premium</span>`
+        : `<span class="tier-badge tier-standard">Standard</span>`;
+      return `<div class="${rowClass}">
+  <span class="bar-label">${escapeHtml(label)}${tierBadge}</span>
   <div class="bar-group">
     <div class="bar-track">
       <div class="bar-fill blue" style="width:${(shown / maxVal) * 100}%"></div>
