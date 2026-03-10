@@ -353,6 +353,34 @@ function recordMemoryManagementSignal(ctx: ParsingContext, raw: string, timestam
   });
 }
 
+function recordReferenceSignal(ctx: ParsingContext, source: string, timestamp: string, rawText: string): void {
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "reference-used",
+    actor: "system",
+    phase: "research",
+    intent: `reference/${source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    rawText,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
+}
+
+function recordCommandExecutionSignal(ctx: ParsingContext, command: string, timestamp: string): void {
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "command-executed",
+    actor: "ai",
+    phase: "execution",
+    intent: "terminal/runCommand",
+    rawText: command,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
+}
+
 function recordAgentDebugSignal(ctx: ParsingContext, raw: string): void {
   ctx.agentDebugEvents++;
   incrementCount(ctx.agentDebugByType, parseAgentDebugType(raw));
@@ -598,6 +626,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
           if (effectivenessType) {
             incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
           }
+          if (timestamp) {
+            recordReferenceSignal(ctx, source, timestamp, source);
+          }
         }
       }
     }
@@ -609,6 +640,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       incrementCount(ctx.byContextSource, source);
       if (effectivenessType) {
         incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
+      }
+      if (timestamp) {
+        recordReferenceSignal(ctx, source, timestamp, source);
       }
     }
   }
@@ -1125,6 +1159,32 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   return true;
 }
 
+function parseRunInTerminalCommandLine(line: string, timestamp: string, ctx: ParsingContext): boolean {
+  if (!line.includes("RunInTerminalTool#CommandLineAutoApproveAnalyzer: Parsed sub-commands via bash grammar")) {
+    return false;
+  }
+
+  const commandsMatch = line.match(/(\[\[.*\]\])$/);
+  if (!commandsMatch) {
+    return false;
+  }
+
+  try {
+    const commandGroups = JSON.parse(commandsMatch[1]) as string[][];
+    for (const group of commandGroups) {
+      for (const command of group) {
+        const trimmed = command.trim();
+        if (trimmed) {
+          recordCommandExecutionSignal(ctx, trimmed, timestamp);
+        }
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
@@ -1136,6 +1196,9 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   maybeRecordFeatureSignals(line, ctx, lineCtx.timestamp);
 
   if (parseToolCallingLoopStopLine(line, ctx)) {
+    return;
+  }
+  if (parseRunInTerminalCommandLine(line, lineCtx.timestamp, ctx)) {
     return;
   }
   if (parseFetchCompletionsLine(line, lineCtx, ctx)) {

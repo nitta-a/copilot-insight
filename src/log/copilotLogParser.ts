@@ -2,13 +2,18 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
 import { findSessionRoot } from "../utils/logPaths";
-import { readChatSessionTitleRecords, resolveWorkspaceStorageRoot } from "./chatSessionTitleReader";
+import {
+  readChatSessionRecords,
+  readChatSessionTitleRecords,
+  resolveWorkspaceStorageRoot,
+} from "./chatSessionTitleReader";
 import {
   findCopilotDirs,
   getAllSessionDirs,
   getSortedSessionDirs,
   parseLogDirectory,
   parseRemoteExthostLog,
+  parseSessionTerminalLog,
 } from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
@@ -99,6 +104,7 @@ export async function parseCopilotLogs(
     memoryManagementEvents: [],
     sessionSignals: [],
     chatSessionTitles: [],
+    chatSessions: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -148,6 +154,8 @@ export async function parseCopilotLogs(
           channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
         }
 
+        await parseSessionTerminalLog(sessDir, ctx);
+
         // Also parse all .log files inside exthost<N>/ subdirectories — present in
         // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
         await parseRemoteExthostLog(sessDir, ctx);
@@ -162,7 +170,9 @@ export async function parseCopilotLogs(
 
     const workspaceStorageRoot = resolveWorkspaceStorageRoot(logBaseDir);
     ctx.chatSessionTitles = await readChatSessionTitleRecords(workspaceStorageRoot);
+    ctx.chatSessions = await readChatSessionRecords(workspaceStorageRoot);
     channel.appendLine(`Recovered ${ctx.chatSessionTitles.length} workspace chat titles`);
+    channel.appendLine(`Recovered ${ctx.chatSessions.length} workspace chat sessions`);
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }

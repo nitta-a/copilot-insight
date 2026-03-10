@@ -27,9 +27,11 @@
     "typescript.tsc.autoDetect": "off",
     "cSpell.words": [
         "duckdb",
+        "Exthost",
         "inext",
         "modelcontextprotocol",
-        "nitta"
+        "nitta",
+        "sess"
     ],
     "editor.formatOnSave": true
 }

@@ -15,6 +15,8 @@ export type SessionSignalType =
   | "thread-title"
   | "completion-shown"
   | "memory-boundary"
+  | "reference-used"
+  | "command-executed"
   | "tool-loop-stop"
   | "user-choice";
 

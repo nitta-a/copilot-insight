@@ -21,6 +21,7 @@ import { Worker } from "node:worker_threads";
 import type { TrackedEvent } from "../events/eventSchema";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type {
+  ChatSessionRecord,
   ChatSessionTitleRecord,
   MemoryManagementEvent,
   RefreshAnalysis,
@@ -36,6 +37,7 @@ export interface DbWorkerClient {
   loadFromJsonl(storagePath: string): Promise<{ loaded: number }>;
   ingest(events: TrackedEvent[]): Promise<{ ingested: number; total: number }>;
   setChatSessionTitles(titles: ChatSessionTitleRecord[]): Promise<{ loaded: number }>;
+  setChatSessions(sessions: ChatSessionRecord[]): Promise<{ loaded: number }>;
   query<T = unknown>(sql: string): Promise<T[]>;
   trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult>;
   velocity(windowMs?: number): Promise<VelocityAnalysisResult>;
@@ -115,6 +117,10 @@ export class DbWorkerClientImpl implements DbWorkerClient {
   /** Replace worker-side cached chat session titles used for thread title matching. */
   async setChatSessionTitles(titles: ChatSessionTitleRecord[]): Promise<{ loaded: number }> {
     return (await this._send("setChatSessionTitles", titles)) as { loaded: number };
+  }
+
+  async setChatSessions(sessions: ChatSessionRecord[]): Promise<{ loaded: number }> {
+    return (await this._send("setChatSessions", sessions)) as { loaded: number };
   }
 
   /** Run a named query on the worker's analytics database. */

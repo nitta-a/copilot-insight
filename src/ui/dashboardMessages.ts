@@ -8,7 +8,14 @@
  * cross-context issue.
  */
 
-import type { RefreshAnalysis, SessionDetailPayload as SessionDetailData, SessionSummary } from "../types";
+import type {
+  AgentStep as AgentStepData,
+  RefreshAnalysis,
+  SessionDetailPayload as SessionDetailData,
+  SessionSummary,
+} from "../types";
+
+export type AgentStep = AgentStepData;
 
 // ---------------------------------------------------------------------------
 // Payload data shapes (sent from host → webview)

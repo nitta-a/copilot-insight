@@ -74,6 +74,11 @@ suite("dbWorker session detail", () => {
     assert.strictEqual(detail?.threads.length, 1);
     assert.strictEqual(detail?.threads[0]?.hasAutonomousRun, true);
     assert.strictEqual(detail?.threads[0]?.acceptedChars, 18);
+    assert.strictEqual(detail?.threads[0]?.stepCount, 4);
+    assert.deepStrictEqual(
+      (detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? []).map((step) => step.label),
+      ["Considered", "Thought", "Considered", "Searched"],
+    );
   });
 
   test("flags fatigue when degraded research-to-execution flow ends in a refresh boundary", () => {
@@ -176,9 +181,16 @@ suite("dbWorker session detail", () => {
     assert.strictEqual(detail?.threads.length, 2);
     assert.strictEqual(detail?.threads[0]?.title.startsWith("New Chat"), true);
     assert.strictEqual(detail?.threads[1]?.title.startsWith("New Chat"), true);
-    const firstThreadActions = detail?.eventsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
-    assert.strictEqual(firstThreadActions.length, 2);
-    assert.strictEqual(firstThreadActions[0]?.children.length, 1);
+    const firstThreadSteps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
+    const secondThreadSteps = detail?.stepsByThread[detail?.threads[1]?.threadId ?? ""] ?? [];
+    assert.deepStrictEqual(
+      firstThreadSteps.map((step) => step.label),
+      ["Prompt", "Thought"],
+    );
+    assert.deepStrictEqual(
+      secondThreadSteps.map((step) => step.label),
+      ["Prompt", "Searched"],
+    );
   });
 
   test("prefers extracted thread title signals over fallback labels", () => {
@@ -211,8 +223,11 @@ suite("dbWorker session detail", () => {
     const detail = buildSessionDetail("session-1", events);
     assert.ok(detail);
     assert.strictEqual(detail?.threads[0]?.title, "Investigate flaky auth refresh");
-    const firstThreadActions = detail?.eventsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
-    assert.strictEqual(firstThreadActions.length, 1);
+    const firstThreadSteps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
+    assert.deepStrictEqual(
+      firstThreadSteps.map((step) => step.label),
+      ["Prompt", "Thought"],
+    );
   });
 
   test("falls back to the first human prompt raw text when no extracted title exists", () => {
@@ -236,6 +251,10 @@ suite("dbWorker session detail", () => {
     const detail = buildSessionDetail("session-1", events);
     assert.ok(detail);
     assert.strictEqual(detail?.threads[0]?.title, "Implement OAuth callback handling for mobile deep links");
+    assert.deepStrictEqual(
+      (detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? []).map((step) => step.label),
+      ["Prompt", "Searched"],
+    );
   });
 
   test("builds a real-log-aware fallback title when a title intent exists without title text", () => {
@@ -368,5 +387,118 @@ suite("dbWorker session detail", () => {
     assert.strictEqual(detail?.threads.length, 2);
     assert.strictEqual(detail?.threads[0]?.acceptedChars, 24);
     assert.strictEqual(detail?.threads[1]?.title.includes("Patch thread"), true);
+    assert.strictEqual(detail?.threads[1]?.stepCount, 1);
+    assert.strictEqual(detail?.stepsByThread[detail?.threads[1]?.threadId ?? ""]?.[0]?.label, "Updated");
+    assert.strictEqual(detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""]?.[0]?.label, "Prompt");
+  });
+
+  test("emits explicit executed, reference, and memory steps in chronological order", () => {
+    const events: TrackedEvent[] = [
+      makeSignal({
+        timestamp: "2026-03-08T14:00:00.000Z",
+        signalType: "reference-used",
+        actor: "system",
+        phase: "research",
+        intent: "context/file",
+        rawText: "src/worker/dbWorker.ts",
+        modelName: "",
+      }),
+      makeSignal({
+        timestamp: "2026-03-08T14:00:02.000Z",
+        signalType: "command-executed",
+        phase: "execution",
+        intent: "terminal/runCommand",
+        rawText: "rg -n AgentStep src",
+      }),
+      makeSignal({
+        timestamp: "2026-03-08T14:00:07.000Z",
+        signalType: "memory-boundary",
+        actor: "system",
+        phase: "memory",
+        intent: "/compact",
+        modelName: "",
+      }),
+    ];
+
+    const detail = buildSessionDetail("session-1", events);
+    assert.ok(detail);
+    const steps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
+    assert.deepStrictEqual(
+      steps.map((step) => step.label),
+      ["Used reference", "Executed", "Memory file"],
+    );
+    assert.strictEqual(steps[0]?.durationMs, 2000);
+    assert.strictEqual(steps[1]?.durationMs, 5000);
+    assert.strictEqual(detail?.threads[0]?.longestPauseMs, 5000);
+  });
+
+  test("keeps generic ai actions as Thought instead of dropping the thread to zero steps", () => {
+    const events: TrackedEvent[] = [
+      makeSignal({
+        timestamp: "2026-03-08T15:00:00.000Z",
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "Explain the implementation plan",
+      }),
+      makeSignal({
+        timestamp: "2026-03-08T15:00:04.000Z",
+        signalType: "chat-request",
+        actor: "ai",
+        phase: "execution",
+        intent: "panel/editAgent",
+        rawText: "panel/editAgent",
+      }),
+    ];
+
+    const detail = buildSessionDetail("session-1", events);
+    assert.ok(detail);
+    const steps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
+    assert.deepStrictEqual(
+      steps.map((step) => step.label),
+      ["Prompt", "Thought"],
+    );
+    assert.strictEqual(steps[1]?.isFallback, true);
+  });
+
+  test("marks a significant pause when visible steps are more than ten minutes apart inside one thread", () => {
+    const events: TrackedEvent[] = [
+      makeSignal({
+        timestamp: "2026-03-08T16:00:00.000Z",
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "Investigate timeline pauses",
+      }),
+      makeSignal({
+        timestamp: "2026-03-08T16:06:00.000Z",
+        signalType: "completion-shown",
+        actor: "ai",
+        phase: "execution",
+        intent: "suggestion",
+        rawText: "suggestion shown",
+      }),
+      makeSignal({
+        timestamp: "2026-03-08T16:12:00.000Z",
+        signalType: "chat-request",
+        actor: "ai",
+        phase: "research",
+        intent: "tool/searchSubagentTool",
+        rawText: "search logs for session signals",
+      }),
+    ];
+
+    const detail = buildSessionDetail("session-1", events);
+    assert.ok(detail);
+    const steps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
+    assert.deepStrictEqual(
+      steps.map((step) => step.label),
+      ["Prompt", "Searched"],
+    );
+    assert.strictEqual(steps[0]?.durationMs, 12 * 60_000);
+    assert.strictEqual(steps[0]?.isSignificantPause, true);
+    assert.strictEqual(detail?.threads[0]?.longestPauseMs, 12 * 60_000);
   });
 });

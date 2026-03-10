@@ -48,24 +48,34 @@ export interface SessionThreadSummary {
   autonomousDurationMs: number;
   acceptedChars: number;
   hasAutonomousRun: boolean;
+  stepCount: number;
+  longestPauseMs: number;
 }
 
-export interface SessionThreadAction {
-  id: string;
-  threadId: string;
-  sessionId: string;
+export type AgentStepLabel =
+  | "Prompt"
+  | "Updated"
+  | "Executed"
+  | "Searched"
+  | "Reviewed"
+  | "Evaluating"
+  | "Considered"
+  | "Creating"
+  | "Used reference"
+  | "Memory file"
+  | "Thought"
+  | "Activity";
+
+export interface AgentStep {
   timestamp: string;
   actor: "human" | "ai" | "system";
-  side: "left" | "right" | "center";
   phase: "human" | "planning" | "research" | "execution" | "memory";
-  label: string;
+  label: AgentStepLabel;
   detail: string;
-  icon: string;
-  episodeId: string | null;
-  intent: string;
-  isAutonomous: boolean;
-  isMemoryRefresh: boolean;
-  children: SessionThreadAction[];
+  rawIntent: string;
+  durationMs?: number;
+  isFallback?: boolean;
+  isSignificantPause?: boolean;
 }
 
 export interface ContextFatigueMarker {
@@ -86,7 +96,7 @@ export interface SessionDetailPayload {
   episodes: SessionEpisode[];
   fatigueMarker: ContextFatigueMarker | null;
   threads: SessionThreadSummary[];
-  eventsByThread: Record<string, SessionThreadAction[]>;
+  stepsByThread: Record<string, AgentStep[]>;
 }
 
 /** Histogram buckets for the distribution of action counts per agentic loop. */
@@ -149,6 +159,47 @@ export interface ChatSessionTitleRecord {
   createdAt: string;
   lastMessageAt: string | null;
   firstRequestText: string | null;
+}
+
+export interface SkillRef {
+  name: string;
+}
+
+export interface ToolCallInfo {
+  id: string;
+  name: string;
+  args?: string;
+  subagentDescription?: string;
+  childToolCalls?: ToolCallInfo[];
+  mcpServer?: string;
+}
+
+export interface ChatSessionRequest {
+  requestId: string;
+  timestamp: number;
+  agentId: string;
+  customAgentName: string | null;
+  modelId: string;
+  messageText: string;
+  timings: {
+    firstProgress: number | null;
+    totalElapsed: number | null;
+  };
+  toolCalls: ToolCallInfo[];
+  availableSkills: SkillRef[];
+  loadedSkills: SkillRef[];
+}
+
+export interface ChatSessionRecord {
+  chatSessionId: string;
+  workspaceId: string;
+  title: string | null;
+  createdAt: string;
+  lastMessageAt: string | null;
+  firstRequestText: string | null;
+  requests: ChatSessionRequest[];
+  source: "jsonl" | "json";
+  provider: "copilot";
 }
 
 export interface RefreshAnalysisSegment {
@@ -266,6 +317,8 @@ export interface CopilotUsageStats {
   sessionSignals: import("./events/eventSchema").SessionSignalEvent[];
   /** Chat titles recovered from workspaceStorage chatSessions files. */
   chatSessionTitles?: ChatSessionTitleRecord[];
+  /** Chat session records recovered from workspaceStorage chatSessions files. */
+  chatSessions?: ChatSessionRecord[];
   /** Session-memory or compaction events grouped by detected subtype. */
   memoryManagementByType: Map<string, number>;
   /** Number of agent-debug or step-execution related events observed in logs. */

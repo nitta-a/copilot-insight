@@ -148,3 +148,14 @@ export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingCont
     }
   }
 }
+
+export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
+  const terminalLogPath = path.join(sessionDir, "terminal.log");
+  try {
+    const content = await fs.readFile(terminalLogPath, "utf-8");
+    parseLogContent(content, ctx);
+    ctx.logFilesFound++;
+  } catch {
+    // Skip missing or unreadable terminal logs
+  }
+}

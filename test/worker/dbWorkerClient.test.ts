@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import type { ChatSessionTitleRecord, MemoryManagementEvent } from "../../src/types";
+import type { ChatSessionRecord, ChatSessionTitleRecord, MemoryManagementEvent } from "../../src/types";
 import type { DbWorkerClient } from "../../src/worker/dbWorkerClient";
 
 /** Factory that creates a base mock implementing {@link DbWorkerClient}. */
@@ -12,6 +12,9 @@ function createMockClient(overrides?: Partial<DbWorkerClient>): DbWorkerClient {
       return { ingested: 0, total: 0 };
     },
     async setChatSessionTitles(_titles: ChatSessionTitleRecord[]) {
+      return { loaded: 0 };
+    },
+    async setChatSessions(_sessions: ChatSessionRecord[]) {
       return { loaded: 0 };
     },
     async query<T = unknown>(_sql: string): Promise<T[]> {
@@ -54,6 +57,7 @@ suite("DbWorkerClient – interface contract", () => {
       "loadFromJsonl",
       "ingest",
       "setChatSessionTitles",
+      "setChatSessions",
       "query",
       "trueRate",
       "velocity",
@@ -142,6 +146,29 @@ suite("DbWorkerClient – interface contract", () => {
     assert.strictEqual(result.loaded, 1);
   });
 
+  test("mock DbWorkerClient setChatSessions returns loaded count", async () => {
+    const mock = createMockClient({
+      async setChatSessions(sessions: ChatSessionRecord[]) {
+        return { loaded: sessions.length };
+      },
+    });
+
+    const result = await mock.setChatSessions([
+      {
+        chatSessionId: "chat-1",
+        workspaceId: "workspace-1",
+        title: "Thread title",
+        createdAt: "2026-03-08T10:00:00.000Z",
+        lastMessageAt: null,
+        firstRequestText: "Explain the issue",
+        requests: [],
+        source: "jsonl",
+        provider: "copilot",
+      },
+    ]);
+    assert.strictEqual(result.loaded, 1);
+  });
+
   test("mock DbWorkerClient close resolves without error", async () => {
     const mock = createMockClient();
     await assert.doesNotReject(async () => {
@@ -163,7 +190,7 @@ suite("DbWorkerClient – interface contract", () => {
           episodes: [],
           fatigueMarker: null,
           threads: [],
-          eventsByThread: {},
+          stepsByThread: {},
         };
       },
     });

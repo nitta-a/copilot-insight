@@ -35,13 +35,15 @@ import {
   computeVelocityAnalysis,
 } from "../metrics/metricsEngine";
 import type {
+  AgentStep,
+  ChatSessionRecord,
+  ChatSessionRequest,
   ChatSessionTitleRecord,
   ContextFatigueMarker,
   MemoryManagementEvent,
   SessionDetailPayload,
   SessionEpisode,
   SessionSummary,
-  SessionThreadAction,
   SessionThreadSummary,
   SessionTimelineEntry,
 } from "../types";
@@ -51,6 +53,7 @@ let db = new InMemoryAnalyticsDb();
 /** Cached events for metrics-engine functions that require the raw list. */
 let cachedEvents: TrackedEvent[] = [];
 let cachedChatSessionTitles: ChatSessionTitleRecord[] = [];
+let cachedChatSessions: ChatSessionRecord[] = [];
 
 const SESSION_ACTION_GAP_MS = 5 * 60_000;
 const EPISODE_ATTACHMENT_MS = 2 * 60_000;
@@ -66,13 +69,33 @@ interface EpisodeAccumulator extends SessionEpisode {
 }
 
 interface ThreadAccumulator extends SessionThreadSummary {
-  actions: SessionThreadAction[];
-  lastPromptAction: SessionThreadAction | null;
+  actions: ThreadActionNode[];
+  signalEvents: SessionSignalEvent[];
+  lastPromptAction: ThreadActionNode | null;
   activeAutonomousStartMs: number | null;
   detectedTitle: string | null;
   matchedChatTitle: string | null;
+  matchedChatSessionId: string | null;
   firstUserPromptText: string | null;
   sawTitleRequest: boolean;
+}
+
+interface ThreadActionNode {
+  id: string;
+  threadId: string;
+  sessionId: string;
+  timestamp: string;
+  actor: SessionTimelineEntry["actor"];
+  side: "left" | "right" | "center";
+  phase: SessionTimelineEntry["phase"];
+  label: string;
+  detail: string;
+  icon: string;
+  episodeId: string | null;
+  intent: string;
+  isAutonomous: boolean;
+  isMemoryRefresh: boolean;
+  children: ThreadActionNode[];
 }
 
 interface ActionVisuals {
@@ -82,9 +105,251 @@ interface ActionVisuals {
   detail: string;
   icon: string;
   accepted: boolean;
-  side: SessionThreadAction["side"];
+  side: "left" | "right" | "center";
   isAutonomous: boolean;
   isMemoryRefresh: boolean;
+}
+
+function normaliseThreadDetail(raw: string, fallback: string): string {
+  const trimmed = raw.replace(/\s+/g, " ").trim();
+  return trimmed || fallback;
+}
+
+function extractEditDetail(raw: string, fallback: string): string {
+  const editMatch = raw.match(/workspace\/edit(?:file|File)\s+([^\s]+)/i);
+  if (editMatch?.[1]) {
+    return editMatch[1];
+  }
+  const patchMatch = raw.match(/apply_patch(?:\s+to\s+file)?\s+([^\s].*)$/i);
+  if (patchMatch?.[1]) {
+    return patchMatch[1].trim();
+  }
+  return normaliseThreadDetail(raw, fallback);
+}
+
+function extractSearchDetail(raw: string, fallback: string): string {
+  const browserMatch = raw.match(/browser(?:_|-)navigate\s+(\S+)/i);
+  if (browserMatch?.[1]) {
+    return browserMatch[1];
+  }
+  return normaliseThreadDetail(raw, fallback);
+}
+
+function summariseDetail(raw: string, fallback: string, maxLength = 96): string {
+  const detail = normaliseThreadDetail(raw, fallback);
+  if (detail.length <= maxLength) {
+    return detail;
+  }
+  return `${detail.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function humaniseIntent(intent: string): string {
+  if (!intent) {
+    return "Activity";
+  }
+  return intent
+    .replace(/^tool\//, "")
+    .replace(/^browser\//, "browser ")
+    .replace(/^reference\//, "reference ")
+    .replace(/[/_-]+/g, " ")
+    .trim();
+}
+
+function formatMemoryDetail(intent: string, raw: string): string {
+  if (intent) {
+    return humaniseIntent(intent);
+  }
+  return summariseDetail(raw, "Memory file");
+}
+
+function formatReferenceDetail(intent: string, raw: string): string {
+  const source = intent.startsWith("reference/") ? intent.slice("reference/".length) : intent;
+  return summariseDetail(raw, humaniseIntent(source || "reference"));
+}
+
+function formatSearchSignalDetail(event: SessionSignalEvent): string {
+  if (event.intent === "tool/searchSubagentTool") {
+    return summariseDetail(event.rawText, "Search request");
+  }
+  if (event.intent.startsWith("browser/")) {
+    return extractSearchDetail(event.rawText, humaniseIntent(event.intent));
+  }
+  return summariseDetail(event.rawText, humaniseIntent(event.intent || event.signalType));
+}
+
+function formatThoughtDetail(event: SessionSignalEvent): string {
+  if (event.intent === "vscodePrompt") {
+    return summariseThreadPrompt(event.rawText) ?? "Prompt";
+  }
+  if (
+    event.intent === "apply_patch" ||
+    event.intent === "workspace/editfile" ||
+    event.intent === "workspace/editFile"
+  ) {
+    return extractEditDetail(event.rawText, humaniseIntent(event.intent));
+  }
+  if (event.intent === "terminal/runCommand" || event.signalType === "command-executed") {
+    return summariseDetail(event.rawText, "Run command");
+  }
+  if (event.phase === "research") {
+    return formatSearchSignalDetail(event);
+  }
+  if (event.signalType === "reference-used") {
+    return formatReferenceDetail(event.intent, event.rawText);
+  }
+  if (event.signalType === "memory-boundary") {
+    return formatMemoryDetail(event.intent, event.rawText);
+  }
+  if (event.intent) {
+    return summariseDetail(event.rawText, humaniseIntent(event.intent));
+  }
+  if (event.modelName) {
+    return event.modelName;
+  }
+  return summariseDetail(event.rawText, humaniseIntent(event.signalType));
+}
+
+function toIsoTimestamp(timestamp: number, fallback: string, offsetMs = 0): string {
+  if (Number.isFinite(timestamp) && timestamp > 0) {
+    return new Date(timestamp + offsetMs).toISOString();
+  }
+  return new Date(Date.parse(fallback) + offsetMs).toISOString();
+}
+
+function flattenToolCalls(toolCalls: ChatSessionRequest["toolCalls"]): ChatSessionRequest["toolCalls"] {
+  const flattened: ChatSessionRequest["toolCalls"] = [];
+  for (const toolCall of toolCalls) {
+    flattened.push(toolCall);
+    if (toolCall.childToolCalls?.length) {
+      flattened.push(...flattenToolCalls(toolCall.childToolCalls));
+    }
+  }
+  return flattened;
+}
+
+function mapToolCallToStep(
+  toolCall: ChatSessionRequest["toolCalls"][number],
+  baseTimestamp: number,
+  fallbackTimestamp: string,
+  index: number,
+): AgentStep {
+  const lowerName = toolCall.name.toLowerCase();
+  let label: AgentStep["label"] = "Activity";
+  let actor: AgentStep["actor"] = "ai";
+  let phase: AgentStep["phase"] = "execution";
+  let isFallback = true;
+
+  if (/(apply_patch|workspace\/editfile|workspace\/editfile|editfile|edit-file)/.test(lowerName)) {
+    label = "Updated";
+    isFallback = false;
+  } else if (/(terminal|runinterminal|runcommand|exec|command)/.test(lowerName)) {
+    label = "Executed";
+    isFallback = false;
+  } else if (/(search|browser|navigate|grep|find|fetch|web)/.test(lowerName)) {
+    label = "Searched";
+    phase = "research";
+    isFallback = false;
+  } else if (/(compact|memory|context_limit|summarize)/.test(lowerName)) {
+    label = "Memory file";
+    actor = "system";
+    phase = "memory";
+    isFallback = false;
+  } else if (/(reference|context)/.test(lowerName)) {
+    label = "Used reference";
+    actor = "system";
+    phase = "research";
+    isFallback = false;
+  } else {
+    label = "Thought";
+  }
+
+  const detailParts = [toolCall.subagentDescription, toolCall.mcpServer, toolCall.args]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .map((part) => part.trim());
+  const detail = detailParts[0] ?? humaniseIntent(toolCall.name);
+  return {
+    timestamp: toIsoTimestamp(baseTimestamp, fallbackTimestamp, index + 2),
+    actor,
+    phase,
+    label,
+    detail: summariseDetail(detail, humaniseIntent(toolCall.name)),
+    rawIntent: toolCall.name,
+    isFallback,
+  };
+}
+
+function buildChatSessionSteps(session: ChatSessionRecord): { steps: AgentStep[]; longestPauseMs: number } {
+  const sortedRequests = [...session.requests].sort((left, right) => left.timestamp - right.timestamp);
+  const steps: AgentStep[] = [];
+  const fallbackTimestamp = session.createdAt;
+
+  for (const request of sortedRequests) {
+    const requestTimestamp = toIsoTimestamp(request.timestamp, fallbackTimestamp);
+    if (request.messageText.trim()) {
+      steps.push({
+        timestamp: requestTimestamp,
+        actor: "human",
+        phase: "human",
+        label: "Prompt",
+        detail: summariseDetail(request.messageText, "Prompt"),
+        rawIntent: "chat/request",
+      });
+    }
+
+    const flattenedToolCalls = flattenToolCalls(request.toolCalls);
+    if (flattenedToolCalls.length === 0) {
+      steps.push({
+        timestamp: toIsoTimestamp(request.timestamp, fallbackTimestamp, 1),
+        actor: "ai",
+        phase: "execution",
+        label: "Thought",
+        detail: summariseDetail(
+          request.customAgentName ?? request.modelId,
+          request.customAgentName ? `Agent ${request.customAgentName}` : request.modelId || "Assistant response",
+        ),
+        rawIntent: request.agentId || "chat/response",
+        isFallback: true,
+      });
+      continue;
+    }
+
+    steps.push({
+      timestamp: toIsoTimestamp(request.timestamp, fallbackTimestamp, 1),
+      actor: "ai",
+      phase: "planning",
+      label: "Thought",
+      detail: summariseDetail(
+        request.customAgentName ??
+          `${flattenedToolCalls.length} tool call${flattenedToolCalls.length === 1 ? "" : "s"}`,
+        request.modelId || "Assistant planning",
+      ),
+      rawIntent: request.agentId || "chat/response",
+      isFallback: true,
+    });
+
+    flattenedToolCalls.forEach((toolCall, index) => {
+      steps.push(mapToolCallToStep(toolCall, request.timestamp, fallbackTimestamp, index));
+    });
+  }
+
+  steps.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+
+  let longestPauseMs = 0;
+  for (let index = 0; index < steps.length - 1; index++) {
+    const current = steps[index];
+    const next = steps[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    const durationMs = Math.max(0, Date.parse(next.timestamp) - Date.parse(current.timestamp));
+    current.durationMs = durationMs;
+    current.isSignificantPause = durationMs > THREAD_ACTION_GAP_MS;
+    if (durationMs > longestPauseMs) {
+      longestPauseMs = durationMs;
+    }
+  }
+
+  return { steps, longestPauseMs };
 }
 
 function sortEvents(events: TrackedEvent[]): TrackedEvent[] {
@@ -278,6 +543,32 @@ function getTimelineVisuals(event: TrackedEvent): ActionVisuals {
       isMemoryRefresh: true,
     };
   }
+  if (event.signalType === "reference-used") {
+    return {
+      actor: event.actor,
+      phase: event.phase,
+      label: "Reference used",
+      detail: normaliseThreadDetail(event.rawText, event.intent),
+      icon: "📚",
+      accepted: false,
+      side: "center",
+      isAutonomous: false,
+      isMemoryRefresh: false,
+    };
+  }
+  if (event.signalType === "command-executed") {
+    return {
+      actor: event.actor,
+      phase: event.phase,
+      label: "Command executed",
+      detail: normaliseThreadDetail(event.rawText, event.intent),
+      icon: "⌘",
+      accepted: false,
+      side: "right",
+      isAutonomous: true,
+      isMemoryRefresh: false,
+    };
+  }
   if (event.signalType === "tool-loop-stop") {
     return {
       actor: event.actor,
@@ -323,7 +614,7 @@ function getTimelineVisuals(event: TrackedEvent): ActionVisuals {
       actor: event.actor,
       phase: event.phase,
       label: "Apply patch",
-      detail: event.rawText || event.intent,
+      detail: extractEditDetail(event.rawText, event.intent),
       icon: "🩹",
       accepted: false,
       side: "right",
@@ -337,7 +628,7 @@ function getTimelineVisuals(event: TrackedEvent): ActionVisuals {
       actor: event.actor,
       phase: event.phase,
       label: "Edit file",
-      detail: event.rawText || event.intent,
+      detail: extractEditDetail(event.rawText, event.intent),
       icon: "📝",
       accepted: false,
       side: "right",
@@ -358,7 +649,7 @@ function getTimelineVisuals(event: TrackedEvent): ActionVisuals {
       actor: event.actor,
       phase: event.phase,
       label: browserLabel,
-      detail: event.rawText || browserType,
+      detail: extractSearchDetail(event.rawText, browserType),
       icon: browserType === "navigate" ? "🌐" : browserType === "screenshot" ? "📸" : "🔎",
       accepted: false,
       side: "right",
@@ -475,11 +766,148 @@ function isAutonomousSignal(event: TrackedEvent): boolean {
   );
 }
 
-function cloneThreadAction(action: SessionThreadAction): SessionThreadAction {
+function toAgentStep(event: SessionSignalEvent): AgentStep | null {
+  if (event.intent === "title" || event.intent === "progressMessages" || event.signalType === "thread-title") {
+    return null;
+  }
+  if (event.signalType === "completion-shown" || event.signalType === "tool-loop-stop") {
+    return null;
+  }
+
+  if (event.intent === "vscodePrompt") {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Prompt",
+      detail: summariseThreadPrompt(event.rawText) ?? "Prompt",
+      rawIntent: event.intent,
+    };
+  }
+
+  if (
+    event.intent === "apply_patch" ||
+    event.intent === "workspace/editfile" ||
+    event.intent === "workspace/editFile"
+  ) {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Updated",
+      detail: extractEditDetail(event.rawText, humaniseIntent(event.intent)),
+      rawIntent: event.intent,
+    };
+  }
+
+  if (event.intent === "terminal/runCommand" || event.signalType === "command-executed") {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Executed",
+      detail: summariseDetail(event.rawText, "Run command"),
+      rawIntent: event.intent,
+    };
+  }
+
+  if (
+    (event.phase === "research" && event.intent.startsWith("browser/")) ||
+    event.intent === "tool/searchSubagentTool" ||
+    event.signalType === "reference-used"
+  ) {
+    if (event.signalType === "reference-used") {
+      return {
+        timestamp: event.timestamp,
+        actor: event.actor,
+        phase: event.phase,
+        label: "Used reference",
+        detail: formatReferenceDetail(event.intent, event.rawText),
+        rawIntent: event.intent,
+      };
+    }
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Searched",
+      detail: formatSearchSignalDetail(event),
+      rawIntent: event.intent,
+    };
+  }
+
+  if (event.signalType === "memory-boundary") {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Memory file",
+      detail: formatMemoryDetail(event.intent, event.rawText),
+      rawIntent: event.intent,
+    };
+  }
+
+  if (event.actor === "ai" && event.phase === "planning") {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label:
+        event.signalType === "plan-proposal" ||
+        event.intent === "panel/unknown" ||
+        event.intent === "agent/plan" ||
+        event.intent === "strategy/propose"
+          ? "Considered"
+          : "Evaluating",
+      detail: formatThoughtDetail(event),
+      rawIntent: event.intent,
+    };
+  }
+
+  if (event.actor === "ai") {
+    return {
+      timestamp: event.timestamp,
+      actor: event.actor,
+      phase: event.phase,
+      label: "Thought",
+      detail: formatThoughtDetail(event),
+      rawIntent: event.intent,
+      isFallback: true,
+    };
+  }
+
   return {
-    ...action,
-    children: action.children.map(cloneThreadAction),
+    timestamp: event.timestamp,
+    actor: event.actor,
+    phase: event.phase,
+    label: "Activity",
+    detail: formatThoughtDetail(event),
+    rawIntent: event.intent,
+    isFallback: true,
   };
+}
+
+function buildAgentSteps(signalEvents: SessionSignalEvent[]): { steps: AgentStep[]; longestPauseMs: number } {
+  const steps = signalEvents
+    .map(toAgentStep)
+    .filter((step): step is AgentStep => step !== null)
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+
+  let longestPauseMs = 0;
+  for (let index = 0; index < steps.length - 1; index++) {
+    const current = steps[index];
+    const next = steps[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    const durationMs = Math.max(0, Date.parse(next.timestamp) - Date.parse(current.timestamp));
+    current.durationMs = durationMs;
+    current.isSignificantPause = durationMs > THREAD_ACTION_GAP_MS;
+    if (durationMs > longestPauseMs) {
+      longestPauseMs = durationMs;
+    }
+  }
+  return { steps, longestPauseMs };
 }
 
 function finalizeThread(thread: ThreadAccumulator): SessionThreadSummary {
@@ -491,6 +919,8 @@ function finalizeThread(thread: ThreadAccumulator): SessionThreadSummary {
     autonomousDurationMs: thread.autonomousDurationMs,
     acceptedChars: thread.acceptedChars,
     hasAutonomousRun: thread.hasAutonomousRun,
+    stepCount: thread.stepCount,
+    longestPauseMs: thread.longestPauseMs,
   };
 }
 
@@ -514,7 +944,7 @@ function summariseThreadPrompt(rawText: string): string | null {
   return cleaned.slice(0, 80);
 }
 
-function getSyntheticThreadLabel(action: SessionThreadAction | undefined, sawTitleRequest: boolean): string {
+function getSyntheticThreadLabel(action: ThreadActionNode | undefined, sawTitleRequest: boolean): string {
   if (!action) {
     return sawTitleRequest ? "Chat thread" : "Conversation";
   }
@@ -584,9 +1014,55 @@ function chooseMatchingChatTitle(
   return best?.record ?? null;
 }
 
+function chooseMatchingChatSession(
+  thread: ThreadAccumulator,
+  records: ChatSessionRecord[],
+  usedSessionIds: Set<string>,
+): ChatSessionRecord | null {
+  const threadStartMs = Date.parse(thread.startedAt);
+  if (Number.isNaN(threadStartMs)) {
+    return null;
+  }
+  const maxGapMs = thread.sawTitleRequest ? 2 * 60 * 60_000 : 30 * 60_000;
+  const threadPrompt = normalisePromptText(thread.firstUserPromptText);
+  let best: { record: ChatSessionRecord; score: number } | null = null;
+
+  for (const record of records) {
+    if (usedSessionIds.has(record.chatSessionId)) {
+      continue;
+    }
+    const createdAtMs = Date.parse(record.createdAt);
+    if (Number.isNaN(createdAtMs)) {
+      continue;
+    }
+    const deltaMs = Math.abs(createdAtMs - threadStartMs);
+    if (deltaMs > maxGapMs) {
+      continue;
+    }
+    let score = deltaMs;
+    const recordPrompt = normalisePromptText(record.firstRequestText);
+    if (threadPrompt && recordPrompt) {
+      if (threadPrompt === recordPrompt) {
+        score -= 10 * 60_000;
+      } else if (threadPrompt.includes(recordPrompt) || recordPrompt.includes(threadPrompt)) {
+        score -= 5 * 60_000;
+      }
+    }
+    if (record.title && thread.matchedChatTitle && record.title === thread.matchedChatTitle) {
+      score -= 15 * 60_000;
+    }
+    if (!best || score < best.score) {
+      best = { record, score };
+    }
+  }
+
+  return best?.record ?? null;
+}
+
 function applyWorkspaceChatTitles(
   threads: ThreadAccumulator[],
   titleRecords: ChatSessionTitleRecord[],
+  chatSessions: ChatSessionRecord[],
   sessionStartedAt: string,
   sessionEndedAt: string,
 ): void {
@@ -605,14 +1081,31 @@ function applyWorkspaceChatTitles(
     );
   });
   const usedSessionIds = new Set<string>();
+  const candidateSessions = chatSessions.filter((record) => {
+    const createdAtMs = Date.parse(record.createdAt);
+    return (
+      !Number.isNaN(createdAtMs) &&
+      createdAtMs >= sessionStartMs - 6 * 60 * 60_000 &&
+      createdAtMs <= sessionEndMs + 6 * 60 * 60_000
+    );
+  });
 
   for (const thread of threads) {
     const matchedRecord = chooseMatchingChatTitle(thread, candidateRecords, usedSessionIds);
-    if (!matchedRecord) {
+    if (matchedRecord) {
+      thread.matchedChatTitle = matchedRecord.title;
+      thread.matchedChatSessionId = matchedRecord.chatSessionId;
+      usedSessionIds.add(matchedRecord.chatSessionId);
       continue;
     }
-    thread.matchedChatTitle = matchedRecord.title;
-    usedSessionIds.add(matchedRecord.chatSessionId);
+
+    const matchedSession = chooseMatchingChatSession(thread, candidateSessions, usedSessionIds);
+    if (!matchedSession) {
+      continue;
+    }
+    thread.matchedChatSessionId = matchedSession.chatSessionId;
+    thread.matchedChatTitle = matchedSession.title;
+    usedSessionIds.add(matchedSession.chatSessionId);
   }
 }
 
@@ -644,7 +1137,7 @@ function buildThreadAction(
   sessionId: string,
   threadId: string,
   episodeId: string | null,
-): SessionThreadAction {
+): ThreadActionNode {
   const visuals = getTimelineVisuals(event);
   return {
     id: `${threadId}:${event.timestamp}:${event.eventType}:${episodeId ?? "root"}`,
@@ -670,9 +1163,10 @@ function buildThreadDrilldown(
   events: TrackedEvent[],
   timeline: SessionTimelineEntry[],
   titleRecords: ChatSessionTitleRecord[],
+  chatSessions: ChatSessionRecord[],
 ): {
   threads: SessionThreadSummary[];
-  eventsByThread: Record<string, SessionThreadAction[]>;
+  stepsByThread: Record<string, AgentStep[]>;
 } {
   const actionableEvents = events.filter((event) => event.eventType !== "editorSwitch");
   const episodeByActionId = new Map<string, string | null>();
@@ -693,11 +1187,15 @@ function buildThreadDrilldown(
     autonomousDurationMs: 0,
     acceptedChars: 0,
     hasAutonomousRun: false,
+    stepCount: 0,
+    longestPauseMs: 0,
     actions: [],
+    signalEvents: [],
     lastPromptAction: null,
     activeAutonomousStartMs: null,
     detectedTitle: null,
     matchedChatTitle: null,
+    matchedChatSessionId: null,
     firstUserPromptText: null,
     sawTitleRequest: false,
   });
@@ -774,6 +1272,10 @@ function buildThreadDrilldown(
       thread.firstUserPromptText = event.rawText;
     }
 
+    if (isSessionSignalEvent(event)) {
+      thread.signalEvents.push(event);
+    }
+
     if (event.eventType === "textChange" && event.charsAdded > 0) {
       thread.acceptedChars += event.charsAdded;
     }
@@ -821,10 +1323,25 @@ function buildThreadDrilldown(
     applyWorkspaceChatTitles(
       threads,
       titleRecords,
+      chatSessions,
       events[0]?.timestamp ?? threads[0].startedAt,
       events.at(-1)?.timestamp ?? threads.at(-1)?.startedAt ?? threads[0].startedAt,
     );
   }
+
+  const chatSessionsById = new Map(chatSessions.map((record) => [record.chatSessionId, record]));
+
+  const stepsByThread = Object.fromEntries(
+    threads.map((thread) => {
+      const matchedSession = thread.matchedChatSessionId
+        ? chatSessionsById.get(thread.matchedChatSessionId)
+        : undefined;
+      const built = matchedSession ? buildChatSessionSteps(matchedSession) : buildAgentSteps(thread.signalEvents);
+      thread.stepCount = built.steps.length;
+      thread.longestPauseMs = built.longestPauseMs;
+      return [thread.threadId, built.steps];
+    }),
+  );
 
   const threadSummaries = threads.map((thread) => {
     thread.title = buildThreadTitle(thread);
@@ -832,13 +1349,10 @@ function buildThreadDrilldown(
       thread.acceptedChars / TYPING_SPEED_CPM + (thread.autonomousDurationMs / 60_000) * AGENTIC_COGNITIVE_WEIGHT;
     return finalizeThread(thread);
   });
-  const eventsByThread = Object.fromEntries(
-    threads.map((thread) => [thread.threadId, thread.actions.map(cloneThreadAction)]),
-  );
 
   return {
     threads: threadSummaries,
-    eventsByThread,
+    stepsByThread,
   };
 }
 
@@ -846,6 +1360,7 @@ export function buildSessionDetail(
   sessionId: string,
   events: TrackedEvent[],
   titleRecords: ChatSessionTitleRecord[] = [],
+  chatSessions: ChatSessionRecord[] = [],
 ): SessionDetailPayload | null {
   const sortedEvents = sortEvents(events);
   if (sortedEvents.length === 0) {
@@ -1036,7 +1551,7 @@ export function buildSessionDetail(
     }
   }
 
-  const threadDrilldown = buildThreadDrilldown(sessionId, sortedEvents, timeline, titleRecords);
+  const threadDrilldown = buildThreadDrilldown(sessionId, sortedEvents, timeline, titleRecords, chatSessions);
 
   return {
     ...summary,
@@ -1044,7 +1559,7 @@ export function buildSessionDetail(
     episodes: episodes.map(toPublicEpisode),
     fatigueMarker,
     threads: threadDrilldown.threads,
-    eventsByThread: threadDrilldown.eventsByThread,
+    stepsByThread: threadDrilldown.stepsByThread,
   };
 }
 
@@ -1129,6 +1644,17 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         break;
       }
 
+      case "setChatSessions": {
+        const sessions = (msg.payload as ChatSessionRecord[]) ?? [];
+        cachedChatSessions = [...sessions].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        parentPort?.postMessage({
+          type: "setChatSessions",
+          id: msg.id,
+          result: { loaded: cachedChatSessions.length },
+        });
+        break;
+      }
+
       case "query": {
         const sql = msg.payload as string;
         const rows = await db.query(sql);
@@ -1186,7 +1712,7 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
       case "getSessionDetail": {
         const { sessionId } = (msg.payload ?? {}) as { sessionId: string };
         const sessionEvents = cachedEvents.filter((event) => event.sessionId === sessionId);
-        const result = buildSessionDetail(sessionId, sessionEvents, cachedChatSessionTitles);
+        const result = buildSessionDetail(sessionId, sessionEvents, cachedChatSessionTitles, cachedChatSessions);
         parentPort?.postMessage({ type: "getSessionDetail", id: msg.id, result });
         break;
       }
@@ -1214,6 +1740,7 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         db = new InMemoryAnalyticsDb();
         cachedEvents = [];
         cachedChatSessionTitles = [];
+        cachedChatSessions = [];
         parentPort?.postMessage({ type: "close", id: msg.id, result: true });
         break;
       }

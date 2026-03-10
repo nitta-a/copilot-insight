@@ -320,33 +320,41 @@ export function getHtmlContent(
     .db-thread-detail-metrics { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
     .db-thread-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 0.76em; background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 72%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 92%, transparent); }
     .db-thread-chip.autonomous { background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 34%, transparent); }
-    .db-thread-timeline { display: flex; flex-direction: column; gap: 10px; }
-    .db-thread-timeline-item { display: flex; width: 100%; }
-    .db-thread-timeline-item.left { justify-content: flex-start; }
-    .db-thread-timeline-item.right { justify-content: flex-end; }
-    .db-thread-timeline-item.center { justify-content: center; }
-    .db-thread-accordion { width: min(78%, 620px); }
-    .db-thread-accordion-summary { list-style: none; cursor: pointer; }
-    .db-thread-accordion-summary::-webkit-details-marker { display: none; }
-    .db-thread-accordion-summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; border-radius: 10px; }
-    .db-thread-accordion-caret { display: inline-flex; align-items: center; justify-content: center; width: 16px; font-size: 0.8em; transition: transform 120ms ease; opacity: 0.72; }
-    .db-thread-accordion[open] .db-thread-accordion-caret { transform: rotate(90deg); }
-    .db-thread-card { width: min(78%, 620px); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 56%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 86%, transparent); }
-    .db-thread-accordion > .db-thread-children { margin-top: 8px; }
-    .db-thread-accordion > .db-thread-accordion-summary > .db-thread-card { width: 100%; }
-    .db-thread-card.left { background: color-mix(in srgb, var(--vscode-charts-green) 10%, var(--vscode-editor-background)); border-color: color-mix(in srgb, var(--vscode-charts-green) 28%, transparent); }
-    .db-thread-card.right { background: color-mix(in srgb, var(--vscode-charts-blue) 10%, var(--vscode-editor-background)); border-color: color-mix(in srgb, var(--vscode-charts-blue) 28%, transparent); }
-    .db-thread-card.center { background: color-mix(in srgb, var(--vscode-charts-orange) 10%, var(--vscode-editor-background)); border-color: color-mix(in srgb, var(--vscode-charts-orange) 28%, transparent); }
-    .db-thread-card.autonomous { background: color-mix(in srgb, var(--vscode-charts-blue) 16%, var(--vscode-editor-background)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-charts-blue) 20%, transparent); }
-    .db-thread-card.memory { background: color-mix(in srgb, var(--vscode-charts-orange) 14%, var(--vscode-editor-background)); }
-    .db-thread-card-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 0.75em; opacity: 0.72; }
-    .db-thread-card-label { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-weight: 700; }
-    .db-thread-card-detail { margin-top: 4px; font-size: 0.84em; opacity: 0.84; white-space: pre-wrap; word-break: break-word; }
-    .db-thread-children { margin-top: 10px; margin-left: 14px; padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 80%, transparent); display: flex; flex-direction: column; gap: 8px; }
+    .db-agent-step-timeline { position: relative; margin-top: 10px; padding-left: 22px; display: flex; flex-direction: column; gap: 12px; }
+    .db-agent-step-timeline::before { content: ""; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: var(--vscode-debugConsole-border, var(--vscode-editor-inactiveSelectionBackground)); }
+    .db-agent-step-row { position: relative; display: block; }
+    .db-agent-step-row::before { content: ""; position: absolute; left: -18px; top: 14px; width: 10px; height: 10px; border-radius: 999px; background: var(--vscode-charts-blue); border: 2px solid var(--vscode-editor-background); }
+    .db-agent-step-row.longest-pause::before { box-shadow: 0 0 0 4px color-mix(in srgb, var(--vscode-charts-orange) 26%, transparent); }
+    .db-agent-step-row.significant-pause { margin-bottom: 12px; }
+    .db-agent-step-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; }
+    .db-agent-step-badge.prompt { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 90%, transparent); border-color: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 100%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.updated { background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-green) 35%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.executed { background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 35%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.searched { background: color-mix(in srgb, var(--vscode-charts-orange) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-orange) 35%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.reviewed, .db-agent-step-badge.evaluating { background: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-purple, #b180d7) 35%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.considered, .db-agent-step-badge.creating { background: color-mix(in srgb, var(--vscode-charts-blue) 14%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 28%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.reference { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 90%, transparent); border-color: var(--vscode-debugConsole-border, var(--vscode-editor-inactiveSelectionBackground)); color: var(--vscode-foreground); }
+    .db-agent-step-badge.memory { background: color-mix(in srgb, var(--vscode-charts-orange) 16%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-orange) 35%, transparent); color: var(--vscode-foreground); }
+    .db-agent-step-badge.thought, .db-agent-step-badge.activity { background: color-mix(in srgb, var(--vscode-charts-blue) 10%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 20%, transparent); color: var(--vscode-foreground); opacity: 0.72; }
+    .db-agent-step-body { background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 88%, transparent); border-radius: 10px; padding: 10px 12px; }
+    .db-agent-step-body.fallback { opacity: 0.84; }
+    .db-agent-step-meta { display: flex; justify-content: flex-end; gap: 8px; font-size: 0.75em; opacity: 0.72; }
+    .db-agent-step-chip-row { margin-top: 2px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .db-agent-step-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+    .db-agent-step-chip-actor.human { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 72%, transparent); border-color: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 92%, transparent); }
+    .db-agent-step-chip-actor.ai { background: color-mix(in srgb, var(--vscode-charts-blue) 14%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 30%, transparent); }
+    .db-agent-step-chip-actor.system { background: color-mix(in srgb, var(--vscode-charts-orange) 14%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-orange) 30%, transparent); }
+    .db-agent-step-chip-duration { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 70%, transparent); border-color: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 92%, transparent); margin-left: auto; }
+    .db-agent-step-chip-duration.longest { background: color-mix(in srgb, var(--vscode-charts-orange) 20%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-orange) 36%, transparent); }
+    .db-agent-step-chip-duration.pending { opacity: 0.68; }
+    .db-agent-step-detail { margin-top: 6px; font-size: 0.85em; white-space: pre-wrap; word-break: break-word; }
+    .db-agent-step-submeta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.74em; opacity: 0.68; }
+    .db-agent-step-duration-note { margin-top: 8px; font-size: 0.72em; opacity: 0.72; }
+    .db-agent-step-separator { margin-top: 10px; padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--vscode-charts-orange) 40%, transparent); font-size: 0.74em; color: var(--vscode-descriptionForeground); }
     .db-episode-list { margin: 16px 0 0; display: flex; flex-direction: column; gap: 8px; }
     .db-episode-card { background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent); border-radius: 8px; padding: 10px 12px; }
     .db-empty-panel { padding: 28px 20px; opacity: 0.7; }
-    @media (max-width: 900px) { .db-session-layout, .db-thread-layout { grid-template-columns: 1fr; } .db-thread-card, .db-thread-accordion { width: 100%; } }
+    @media (max-width: 900px) { .db-session-layout, .db-thread-layout { grid-template-columns: 1fr; } .db-agent-step-chip-duration { margin-left: 0; } }
   </style>
 </head>
 <body>

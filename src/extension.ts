@@ -118,6 +118,7 @@ export function activate(context: vscode.ExtensionContext) {
           await dbWorker.ingest(stats.sessionSignals);
         }
         await dbWorker.setChatSessionTitles(stats.chatSessionTitles ?? []);
+        await dbWorker.setChatSessions(stats.chatSessions ?? []);
         const [trueAcceptance, velocity, modelPerformance, refreshAnalysis, sessionSummaries] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
