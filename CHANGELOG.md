@@ -4,6 +4,16 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.15] - 2026-03-10
+
+### Added
+- 📂 **Session Intelligence Explorer** — new **Sessions** tab in the dashboard lists every recorded VS Code session with date, total actions, True Acceptance Rate, autonomous duration, and an efficiency score; clicking a row loads the full session detail view
+- 🧵 **Thread-level session drill-down** — each session can be expanded to see its individual chat threads; the detail pane shows a chronological step-by-step timeline (Prompt → Planning → Research → Execution → Memory phases) with per-step actor icons and acceptance indicators
+- 🗂️ **Chat session title reader** — `chatSessionTitleReader` parses the VS Code Copilot JSONL mutation log to reconstruct human-readable chat session titles, first-request text, and custom titles; titles are surfaced in the Sessions tab and thread list
+- 🔗 **Session data pipeline** — `logContentParser` now captures `ChatSessionRecord` and `ChatSessionRequest` objects; `copilotLogParser` coordinates title resolution; `dbWorker` exposes `setChatSessions`, `setChatSessionTitles`, `getSessionList`, and `getSessionDetail` RPCs consumed by the panel
+- ⚡ **Real-time inline-completion tracking** — `InlineCompletionTracker` intercepts VS Code's inline-completion provider registry so shown/accepted events are recorded into the event store immediately, without waiting for a log-file re-parse
+- 🔧 **Config default raised** — `copilot-insight.maxSessionDirs` default increased from 5 to 10 so more historical sessions are visible out of the box; `copilot-insight.topLanguagesCount` setting removed (no longer needed)
+
 ## [1.0.14] - 2026-03-07
 
 ### Added
