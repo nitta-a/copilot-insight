@@ -28,11 +28,6 @@ function isAdvancedAnalysisEnabled(): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  // Install the inline-completion wrapper as early as possible so that any
-  // provider registered after activation (including GitHub Copilot) is
-  // intercepted and its show/accept events are counted in real-time.
-  const inlineTracker = new InlineCompletionTracker(context);
-
   // Conditionally start the DB worker based on the master-toggle setting.
   const workerPath = path.join(context.extensionUri.fsPath, "dist", "worker", "dbWorker.js");
   let dbWorker: DbWorkerClient | undefined = isAdvancedAnalysisEnabled()
@@ -42,6 +37,32 @@ export function activate(context: vscode.ExtensionContext) {
   // Phase 1: Event instrumentation — capture text-change, editor-switch, and
   // completion-accept events and persist them to structured storage.
   const eventTracker = new EventTracker(context, dbWorker);
+
+  // Install the inline-completion wrapper as early as possible so that any
+  // provider registered after activation (including GitHub Copilot) is
+  // intercepted and its show/accept events are counted in real-time.
+  const inlineTracker = new InlineCompletionTracker(context, {
+    onShown: async (metadata) => {
+      await eventTracker.recordSessionSignal({
+        languageId: metadata.languageId,
+        signalType: "completion-shown",
+        actor: "system",
+        phase: "planning",
+        intent: "inline-completion/shown",
+        rawText: metadata.acceptedText || "inline completion shown",
+        success: true,
+      });
+    },
+    onAccepted: async (metadata) => {
+      await eventTracker.recordCompletionAccept({
+        languageId: metadata.languageId,
+        acceptedText: metadata.acceptedText,
+      });
+      if (metadata.uri) {
+        eventTracker.trackActiveCompletion(metadata.uri, metadata.lineNumber, metadata.languageId);
+      }
+    },
+  });
 
   // Watch for runtime changes to the enableAdvancedAnalysis toggle.
   const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -114,17 +135,24 @@ export function activate(context: vscode.ExtensionContext) {
     if (dbWorker) {
       try {
         await dbWorker.loadFromJsonl(context.globalStorageUri.fsPath);
-        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
+        if (stats.sessionSignals.length > 0) {
+          await dbWorker.ingest(stats.sessionSignals);
+        }
+        await dbWorker.setChatSessionTitles(stats.chatSessionTitles ?? []);
+        await dbWorker.setChatSessions(stats.chatSessions ?? []);
+        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis, sessionSummaries] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
           dbWorker.modelPerformance(),
           dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
+          dbWorker.getSessionList(),
         ]);
         return {
           trueAcceptance,
           velocity,
           modelPerformance,
           refreshAnalysis,
+          sessionSummaries,
         };
       } catch {
         // Fall back to in-process computation when the worker is unavailable.
@@ -152,7 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
       async () => {
         const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
+        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
       },
     );
   });
@@ -166,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats));
+          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
         }
       },
     );

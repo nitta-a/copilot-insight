@@ -1,13 +1,19 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import type { CopilotUsageStats, ParsingContext } from "../types";
-import { findSessionRoot } from "../utils/logPaths";
+import { resolveLogSearchPaths } from "../utils/logPaths";
+import {
+  readChatSessionRecords,
+  readChatSessionTitleRecords,
+  resolveWorkspaceStorageRoot,
+} from "./chatSessionTitleReader";
 import {
   findCopilotDirs,
   getAllSessionDirs,
   getSortedSessionDirs,
   parseLogDirectory,
   parseRemoteExthostLog,
+  parseSessionTerminalLog,
 } from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
@@ -96,6 +102,9 @@ export async function parseCopilotLogs(
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
     memoryManagementEvents: [],
+    sessionSignals: [],
+    chatSessionTitles: [],
+    chatSessions: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -109,18 +118,10 @@ export async function parseCopilotLogs(
     const channel = getOutputChannel();
     channel.appendLine(`Original logUri: ${logUri.fsPath}`);
 
-    const sessionRoot = findSessionRoot(logUri.fsPath);
+    const { sessionRoot, logBaseDir, fallbackSessionDir } = resolveLogSearchPaths(logUri.fsPath);
     channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);
-
-    let logBaseDir: string;
-    let fallbackSessionDir: string;
-    if (sessionRoot) {
-      logBaseDir = path.dirname(sessionRoot);
-      fallbackSessionDir = sessionRoot;
-    } else {
-      channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using fixed-depth fallback`);
-      logBaseDir = path.dirname(path.dirname(path.dirname(logUri.fsPath)));
-      fallbackSessionDir = path.dirname(path.dirname(logUri.fsPath));
+    if (!sessionRoot) {
+      channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using inferred fallback`);
     }
 
     channel.appendLine(`Searching for logs in: ${logBaseDir}`);
@@ -135,6 +136,7 @@ export async function parseCopilotLogs(
         channel.appendLine(`Scanning session: ${sessDir}`);
 
         const copilotDirs = await findCopilotDirs(sessDir);
+        channel.appendLine(`  Copilot log dirs detected: ${copilotDirs.length}`);
         if (copilotDirs.length === 0) {
           channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
         }
@@ -145,9 +147,17 @@ export async function parseCopilotLogs(
           channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
         }
 
+        const terminalLogParsed = await parseSessionTerminalLog(sessDir, ctx);
+        channel.appendLine(
+          `  Terminal log ${terminalLogParsed ? "parsed" : "missing/unreadable"}: ${path.join(sessDir, "terminal.log")}`,
+        );
+
         // Also parse all .log files inside exthost<N>/ subdirectories — present in
         // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
-        await parseRemoteExthostLog(sessDir, ctx);
+        const exthostResult = await parseRemoteExthostLog(sessDir, ctx);
+        channel.appendLine(
+          `  Remote exthost dirs detected: ${exthostResult.matchedDirs}, parsed files: ${exthostResult.parsedFiles}`,
+        );
       } catch {
         // Skip unreadable session directories
         channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
@@ -156,6 +166,12 @@ export async function parseCopilotLogs(
     channel.appendLine(
       `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
     );
+
+    const workspaceStorageRoot = resolveWorkspaceStorageRoot(logBaseDir);
+    ctx.chatSessionTitles = await readChatSessionTitleRecords(workspaceStorageRoot);
+    ctx.chatSessions = await readChatSessionRecords(workspaceStorageRoot);
+    channel.appendLine(`Recovered ${ctx.chatSessionTitles.length} workspace chat titles`);
+    channel.appendLine(`Recovered ${ctx.chatSessions.length} workspace chat sessions`);
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }

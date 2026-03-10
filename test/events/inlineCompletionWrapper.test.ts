@@ -1,14 +1,17 @@
-import * as assert from "assert";
 import * as vscode from "vscode";
-
-import { InlineCompletionTracker, wrapInlineCompletionProvider } from "../../src/events/inlineCompletionWrapper";
+import * as assert from "assert";
+import {
+  type InlineCompletionMetadata,
+  InlineCompletionTracker,
+  wrapInlineCompletionProvider,
+} from "../../src/events/inlineCompletionWrapper";
 
 // ---------------------------------------------------------------------------
 // Minimal document / position / context stubs used by provideInlineCompletionItems
 // ---------------------------------------------------------------------------
 
 function makeDocument(languageId: string): vscode.TextDocument {
-  return { languageId } as unknown as vscode.TextDocument;
+  return { languageId, uri: vscode.Uri.file(`/tmp/${languageId || "plain"}.ts`) } as unknown as vscode.TextDocument;
 }
 
 const stubPosition = new vscode.Position(0, 0);
@@ -32,14 +35,9 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => [original],
     };
 
-    const shownCalls: string[] = [];
-    const acceptedCalls: string[] = [];
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      (l) => shownCalls.push(l),
-      (l) => acceptedCalls.push(l),
-    );
+    const shownCalls: InlineCompletionMetadata[] = [];
+    const acceptedCalls: InlineCompletionMetadata[] = [];
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", (l) => shownCalls.push(l));
 
     const result = wrapped.provideInlineCompletionItems(
       makeDocument("typescript"),
@@ -52,9 +50,11 @@ suite("wrapInlineCompletionProvider", () => {
     const items = result as vscode.InlineCompletionItem[];
     assert.strictEqual(items.length, 1);
     assert.strictEqual(items[0].command?.command, "my.accept.cmd");
-    assert.strictEqual(items[0].command?.arguments?.[0], "typescript");
-    // The original (undefined) command is forwarded as arguments[1]
-    assert.strictEqual(items[0].command?.arguments?.[1], undefined);
+    const arg = items[0].command?.arguments?.[0] as { metadata: InlineCompletionMetadata; originalCommand: undefined };
+    assert.strictEqual(arg.metadata.languageId, "typescript");
+    assert.strictEqual(arg.metadata.acceptedText, "hello");
+    assert.strictEqual(arg.metadata.lineNumber, 0);
+    assert.strictEqual(arg.originalCommand, undefined);
   });
 
   test("preserves original command in arguments[1]", () => {
@@ -64,16 +64,15 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => [item],
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const result = wrapped.provideInlineCompletionItems(makeDocument("python"), stubPosition, stubContext, stubToken);
 
     const items = result as vscode.InlineCompletionItem[];
-    assert.deepStrictEqual(items[0].command?.arguments?.[1], originalCmd);
+    const arg = items[0].command?.arguments?.[0] as {
+      metadata: InlineCompletionMetadata;
+      originalCommand: vscode.Command;
+    };
+    assert.deepStrictEqual(arg.originalCommand, originalCmd);
   });
 
   test("injects tracking command into InlineCompletionList return", () => {
@@ -82,18 +81,14 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => list,
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const result = wrapped.provideInlineCompletionItems(makeDocument("rust"), stubPosition, stubContext, stubToken);
 
     assert.ok(!Array.isArray(result));
     const returnedList = result as vscode.InlineCompletionList;
     assert.strictEqual(returnedList.items[0].command?.command, "my.accept.cmd");
-    assert.strictEqual(returnedList.items[0].command?.arguments?.[0], "rust");
+    const arg = returnedList.items[0].command?.arguments?.[0] as { metadata: InlineCompletionMetadata };
+    assert.strictEqual(arg.metadata.languageId, "rust");
   });
 
   test("returns null/undefined unchanged", () => {
@@ -101,12 +96,7 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => null,
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const result = wrapped.provideInlineCompletionItems(makeDocument("go"), stubPosition, stubContext, stubToken);
     assert.strictEqual(result, null);
   });
@@ -116,12 +106,7 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => Promise.resolve([new vscode.InlineCompletionItem("async")]),
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const result = await (wrapped.provideInlineCompletionItems(
       makeDocument("java"),
       stubPosition,
@@ -131,7 +116,8 @@ suite("wrapInlineCompletionProvider", () => {
 
     assert.ok(Array.isArray(result));
     assert.strictEqual(result[0].command?.command, "my.accept.cmd");
-    assert.strictEqual(result[0].command?.arguments?.[0], "java");
+    const arg = result[0].command?.arguments?.[0] as { metadata: InlineCompletionMetadata };
+    assert.strictEqual(arg.metadata.languageId, "java");
   });
 
   test("handles Promise return (null)", async () => {
@@ -139,12 +125,7 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => Promise.resolve(null),
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const result = await (wrapped.provideInlineCompletionItems(
       makeDocument("java"),
       stubPosition,
@@ -159,20 +140,23 @@ suite("wrapInlineCompletionProvider", () => {
       provideInlineCompletionItems: () => [],
     };
 
-    const shownCalls: string[] = [];
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      (l) => shownCalls.push(l),
-      () => {},
-    );
+    const shownCalls: InlineCompletionMetadata[] = [];
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", (l) => shownCalls.push(l));
 
     // Simulate a shown item that carries languageId in command.arguments[0]
     const shownItem = new vscode.InlineCompletionItem("shown");
-    shownItem.command = { command: "my.accept.cmd", title: "", arguments: ["typescript", undefined] };
+    shownItem.command = {
+      command: "my.accept.cmd",
+      title: "",
+      arguments: [
+        { metadata: { languageId: "typescript", acceptedText: "shown", uri: "file:///tmp/test.ts", lineNumber: 12 } },
+      ],
+    };
 
     wrapped.handleDidShowCompletionItem?.(shownItem);
-    assert.deepStrictEqual(shownCalls, ["typescript"]);
+    assert.deepStrictEqual(shownCalls, [
+      { languageId: "typescript", acceptedText: "shown", uri: "file:///tmp/test.ts", lineNumber: 12 },
+    ]);
   });
 
   test("handleDidShowCompletionItem delegates to original provider", () => {
@@ -184,30 +168,20 @@ suite("wrapInlineCompletionProvider", () => {
       },
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "my.accept.cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "my.accept.cmd", () => {});
     const item = new vscode.InlineCompletionItem("x");
     wrapped.handleDidShowCompletionItem?.(item);
     assert.strictEqual(delegated, true);
   });
 
   test("handleDidShowCompletionItem with empty languageId still increments", () => {
-    const shownCalls: string[] = [];
+    const shownCalls: InlineCompletionMetadata[] = [];
     const provider: vscode.InlineCompletionItemProvider = { provideInlineCompletionItems: () => [] };
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "cmd",
-      (l) => shownCalls.push(l),
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "cmd", (l) => shownCalls.push(l));
 
     // item without command -> empty languageId
     wrapped.handleDidShowCompletionItem?.(new vscode.InlineCompletionItem("x"));
-    assert.deepStrictEqual(shownCalls, [""]);
+    assert.deepStrictEqual(shownCalls, [{ languageId: "", acceptedText: "", uri: "", lineNumber: 0 }]);
   });
 
   test("handleDidPartiallyAcceptCompletionItem delegates to original provider", () => {
@@ -219,12 +193,7 @@ suite("wrapInlineCompletionProvider", () => {
       },
     };
 
-    const wrapped = wrapInlineCompletionProvider(
-      provider,
-      "cmd",
-      () => {},
-      () => {},
-    );
+    const wrapped = wrapInlineCompletionProvider(provider, "cmd", () => {});
     const item = new vscode.InlineCompletionItem("partial");
     wrapped.handleDidPartiallyAcceptCompletionItem?.(item, { acceptedLength: 3 });
     assert.strictEqual(delegatedItem, item);
@@ -269,13 +238,19 @@ suite("InlineCompletionTracker", () => {
   });
 
   test("acceptance command increments totalAccepted with languageId", async () => {
-    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "typescript", undefined);
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "typescript", acceptedText: "hello", uri: "file:///tmp/test.ts", lineNumber: 4 },
+      originalCommand: undefined,
+    });
     assert.strictEqual(tracker.stats.totalAccepted, 1);
     assert.deepStrictEqual(tracker.stats.byLanguage.get("typescript"), { shown: 0, accepted: 1 });
   });
 
   test("acceptance command with empty languageId still increments total", async () => {
-    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "", undefined);
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "", acceptedText: "", uri: "", lineNumber: 0 },
+      originalCommand: undefined,
+    });
     assert.strictEqual(tracker.stats.totalAccepted, 1);
     assert.strictEqual(tracker.stats.byLanguage.size, 0);
   });
@@ -287,10 +262,13 @@ suite("InlineCompletionTracker", () => {
       originalCalled = true;
     });
     try {
-      await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "go", {
-        command: dummyCmd,
-        title: "",
-        arguments: [],
+      await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+        metadata: { languageId: "go", acceptedText: "fmt.Println", uri: "file:///tmp/test.go", lineNumber: 1 },
+        originalCommand: {
+          command: dummyCmd,
+          title: "",
+          arguments: [],
+        },
       });
       assert.strictEqual(originalCalled, true);
     } finally {
@@ -299,13 +277,41 @@ suite("InlineCompletionTracker", () => {
   });
 
   test("accumulates multiple acceptance events across languages", async () => {
-    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "typescript", undefined);
-    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "python", undefined);
-    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, "typescript", undefined);
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "typescript", acceptedText: "a", uri: "file:///tmp/a.ts", lineNumber: 1 },
+      originalCommand: undefined,
+    });
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "python", acceptedText: "b", uri: "file:///tmp/a.py", lineNumber: 2 },
+      originalCommand: undefined,
+    });
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "typescript", acceptedText: "c", uri: "file:///tmp/b.ts", lineNumber: 3 },
+      originalCommand: undefined,
+    });
 
     assert.strictEqual(tracker.stats.totalAccepted, 3);
     assert.deepStrictEqual(tracker.stats.byLanguage.get("typescript"), { shown: 0, accepted: 2 });
     assert.deepStrictEqual(tracker.stats.byLanguage.get("python"), { shown: 0, accepted: 1 });
+  });
+
+  test("acceptance callback receives metadata", async () => {
+    const callbacks: InlineCompletionMetadata[] = [];
+    tracker.dispose();
+    tracker = new InlineCompletionTracker({ subscriptions: [] } as unknown as vscode.ExtensionContext, {
+      onAccepted: (metadata) => {
+        callbacks.push(metadata);
+      },
+    });
+
+    await vscode.commands.executeCommand(InlineCompletionTracker.ACCEPT_COMMAND, {
+      metadata: { languageId: "typescript", acceptedText: "const x = 1;", uri: "file:///tmp/test.ts", lineNumber: 9 },
+      originalCommand: undefined,
+    });
+
+    assert.deepStrictEqual(callbacks, [
+      { languageId: "typescript", acceptedText: "const x = 1;", uri: "file:///tmp/test.ts", lineNumber: 9 },
+    ]);
   });
 
   test("dispose restores the original registerInlineCompletionItemProvider", () => {

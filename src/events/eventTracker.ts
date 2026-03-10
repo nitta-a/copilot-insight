@@ -1,8 +1,16 @@
 import * as vscode from "vscode";
-import type { CompletionAcceptEvent, EditorSwitchEvent, TextChangeEvent } from "./eventSchema";
-import type { TrackedEvent } from "./eventSchema";
-import { EventStorage } from "./eventStorage";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
+import type {
+  CompletionAcceptEvent,
+  EditorSwitchEvent,
+  SessionActor,
+  SessionPhase,
+  SessionSignalEvent,
+  SessionSignalType,
+  TextChangeEvent,
+  TrackedEvent,
+} from "./eventSchema";
+import { EventStorage } from "./eventStorage";
 
 /** Number of buffered events that triggers an immediate batch ingest. */
 const BATCH_SIZE = 10;
@@ -214,6 +222,34 @@ export class EventTracker implements vscode.Disposable {
       isPartialAccept: options.isPartialAccept ?? false,
       acceptedCharacters: options.acceptedText.length,
       openEditorPaths: openPaths,
+    };
+    return this._trackEvent(event);
+  }
+
+  recordSessionSignal(options: {
+    languageId?: string;
+    signalType: SessionSignalType;
+    actor: SessionActor;
+    phase: SessionPhase;
+    intent: string;
+    rawText: string;
+    modelName?: string;
+    latencyMs?: number;
+    success?: boolean;
+  }): Promise<void> {
+    const event: SessionSignalEvent = {
+      sessionId: this._sessionId,
+      timestamp: new Date().toISOString(),
+      eventType: "sessionSignal",
+      languageId: options.languageId ?? "",
+      signalType: options.signalType,
+      actor: options.actor,
+      phase: options.phase,
+      intent: options.intent,
+      rawText: options.rawText,
+      modelName: options.modelName ?? "",
+      latencyMs: options.latencyMs ?? 0,
+      success: options.success ?? true,
     };
     return this._trackEvent(event);
   }

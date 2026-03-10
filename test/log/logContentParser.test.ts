@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import {
+  extractThreadTitleFromPayload,
   incrementStatCount,
   mergeCountByNormalizedModel,
   mergeStatsByNormalizedModel,
@@ -77,6 +78,7 @@ function makeEmptyStats(): ParsingContext {
     pluginOrSkillInvocations: 0,
     pluginOrSkillByName: new Map(),
     memoryManagementEvents: [],
+    sessionSignals: [],
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
@@ -280,6 +282,44 @@ suite("logContentParser", () => {
       const result = tryParseJsonLogLine("line with { but no closing", stats);
       assert.strictEqual(result, false);
     });
+
+    test("records thread title signal when JSON contains title-like keys", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "session-title";
+      const line = `2026-03-08 12:00:00.000 INFO ${JSON.stringify({ topic: "Investigate flaky auth refresh", event: "chat_meta" })}`;
+      const result = tryParseJsonLogLine(line, stats);
+      assert.strictEqual(result, true);
+      assert.strictEqual(stats.sessionSignals.length, 1);
+      assert.strictEqual(stats.sessionSignals[0]?.signalType, "thread-title");
+      assert.strictEqual(stats.sessionSignals[0]?.rawText, "Investigate flaky auth refresh");
+    });
+  });
+
+  suite("extractThreadTitleFromPayload", () => {
+    test("extracts title from nested payload", () => {
+      assert.strictEqual(
+        extractThreadTitleFromPayload({ metadata: { summary: "Refactor session boundary heuristics" } }),
+        "Refactor session boundary heuristics",
+      );
+    });
+
+    test("ignores url-like or hash-like values", () => {
+      assert.strictEqual(extractThreadTitleFromPayload({ title: "https://example.com/path" }), null);
+      assert.strictEqual(extractThreadTitleFromPayload({ title: "550e8400-e29b-41d4-a716-446655440000" }), null);
+    });
+  });
+
+  test("real log style title intent is classified as planning metadata", () => {
+    const stats = makeEmptyStats();
+    stats.currentSessionId = "session-title-intent";
+    parseTextLogLine(
+      "2026-03-07 12:11:33.232 [info] ccreq:d670e6af.copilotmd | success | gpt-4o-mini-2024-07-18 | 736ms | [title]",
+      stats,
+    );
+    assert.strictEqual(stats.sessionSignals.length, 1);
+    assert.strictEqual(stats.sessionSignals[0]?.intent, "title");
+    assert.strictEqual(stats.sessionSignals[0]?.actor, "system");
+    assert.strictEqual(stats.sessionSignals[0]?.phase, "planning");
   });
 
   suite("parseTextLogLine", () => {
@@ -1724,6 +1764,43 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.planCount, 0);
     assert.strictEqual(ctx.executedPlanCount, 0);
     assert.strictEqual(ctx.activePlanPending, false);
+  });
+
+  test("sessionSignals capture plan, execution, and memory boundaries", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-1";
+    parseTextLogLine("2026-03-06 09:00:00.000 [info] agent/plan", ctx);
+    parseTextLogLine(
+      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 | 5000ms | [panel/editAgent]",
+      ctx,
+    );
+    parseTextLogLine("2026-03-06 09:00:15.000 [info] /compact summarize_context", ctx);
+    assert.deepStrictEqual(
+      ctx.sessionSignals.map((event) => event.signalType),
+      ["plan-proposal", "chat-request", "memory-boundary"],
+    );
+    assert.strictEqual(ctx.sessionSignals[1]?.phase, "execution");
+  });
+
+  test("search subagent intent is classified as research in sessionSignals", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-2";
+    parseTextLogLine(
+      "2026-03-06 10:00:00.000 [info] ccreq:search01.copilotmd | success | gpt-5.4 | 1500ms | [tool/searchSubagentTool]",
+      ctx,
+    );
+    assert.strictEqual(ctx.sessionSignals.length, 1);
+    assert.strictEqual(ctx.sessionSignals[0]?.phase, "research");
+    assert.strictEqual(ctx.sessionSignals[0]?.actor, "ai");
+  });
+
+  test("browser navigate lines are emitted as research session signals", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-3";
+    parseTextLogLine("2026-03-06 10:05:00.000 [info] browser_navigate https://example.com", ctx);
+    assert.strictEqual(ctx.sessionSignals.length, 1);
+    assert.strictEqual(ctx.sessionSignals[0]?.intent, "browser/navigate");
+    assert.strictEqual(ctx.sessionSignals[0]?.phase, "research");
   });
 
   test("panel/unknown followed by non-agentic ccreq leaves executedPlanCount at 0", () => {

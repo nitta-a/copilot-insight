@@ -31,6 +31,7 @@ import {
 } from "chart.js";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import type { AgentStep, SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   AgentIntelligenceOverview,
   ContextFreshness,
@@ -84,6 +85,12 @@ const vscode = acquireVsCodeApi();
 
 let timelineChart: Chart | null = null;
 let currentTab = "overview";
+let currentPayload: DashboardPayload | null = null;
+let selectedThreadId = "";
+let selectedThreadSessionId = "";
+const allSessionDetails = new Map<string, SessionDetailPayload>();
+const sessionLoadQueue: string[] = [];
+let isBackgroundLoading = false;
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let modelAutonomyMapRoot: Root | null = null;
@@ -676,7 +683,7 @@ function setupExportButtons(): void {
 // Tab switching
 // ---------------------------------------------------------------------------
 
-const VALID_TABS = new Set(["overview", "health", "flow"]);
+const VALID_TABS = new Set(["overview", "health", "flow", "sessions"]);
 
 function switchTab(tabId: string): void {
   currentTab = tabId;
@@ -923,11 +930,247 @@ function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"
   autonomyEvolutionRoot.render(createElement(AutonomyEvolutionChart, { data: evolutionData }));
 }
 
+function formatPhaseLabel(phase: string): string {
+  return phase.charAt(0).toUpperCase() + phase.slice(1);
+}
+
+function formatPause(ms: number): string {
+  if (ms < 1000) {
+    return `${ms} ms`;
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1000).toFixed(1)} s`;
+  }
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatStepDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (detail === null || detail === undefined) {
+    return fallback;
+  }
+  if (typeof detail === "object") {
+    try {
+      return JSON.stringify(detail, null, 2);
+    } catch {
+      return fallback;
+    }
+  }
+  return String(detail);
+}
+
+function agentStepBadgeClass(label: AgentStep["label"]): string {
+  switch (label) {
+    case "Prompt":
+      return "prompt";
+    case "Updated":
+      return "updated";
+    case "Executed":
+      return "executed";
+    case "Searched":
+      return "searched";
+    case "Reviewed":
+      return "reviewed";
+    case "Evaluating":
+      return "evaluating";
+    case "Considered":
+      return "considered";
+    case "Creating":
+      return "creating";
+    case "Used reference":
+      return "reference";
+    case "Memory file":
+      return "memory";
+    case "Thought":
+      return "thought";
+    case "Activity":
+      return "activity";
+  }
+}
+
+function actorBadgeClass(actor: AgentStep["actor"]): string {
+  switch (actor) {
+    case "human":
+      return "human";
+    case "ai":
+      return "ai";
+    case "system":
+      return "system";
+  }
+}
+
+function actorLabel(actor: AgentStep["actor"]): string {
+  switch (actor) {
+    case "human":
+      return "Human";
+    case "ai":
+      return "AI";
+    case "system":
+      return "System";
+  }
+}
+
+function actorIcon(actor: AgentStep["actor"]): string {
+  switch (actor) {
+    case "human":
+      return "👤";
+    case "ai":
+      return "🤖";
+    case "system":
+      return "⚙";
+  }
+}
+
+function sortThreadsNewestFirst(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
+  return [...threads].sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+}
+
+function filterSelectableThreads(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
+  return threads.filter((thread) => thread.stepCount > 0);
+}
+
+function requestSessionDetail(sessionId: string): void {
+  vscode.postMessage({ type: "requestSessionDetail", payload: { sessionId } } satisfies WebviewToHostMessage);
+}
+
+function loadNextFromQueue(): void {
+  if (isBackgroundLoading) {
+    return;
+  }
+  while (sessionLoadQueue.length > 0) {
+    const sessionId = sessionLoadQueue.shift()!;
+    if (!allSessionDetails.has(sessionId)) {
+      isBackgroundLoading = true;
+      requestSessionDetail(sessionId);
+      return;
+    }
+  }
+}
+
+function renderSelectedThread(detail: SessionDetailPayload): string {
+  const sortedThreads = sortThreadsNewestFirst(filterSelectableThreads(detail.threads));
+  const selectedThread =
+    sortedThreads.find((thread) => thread.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
+  if (!selectedThread) {
+    return '<div class="db-empty-panel">No thread detail with activity is available.</div>';
+  }
+  if (selectedThreadId !== selectedThread.threadId) {
+    selectedThreadId = selectedThread.threadId;
+  }
+  const steps = detail.stepsByThread[selectedThread.threadId] ?? [];
+  const longestPause = steps.reduce((max, step) => Math.max(max, step.durationMs ?? 0), 0);
+  const stepsHtml =
+    steps.length > 0
+      ? steps
+          .map((step) => {
+            const pause = step.durationMs ?? 0;
+            const isLongest = pause > 0 && pause === longestPause;
+            const durationChip =
+              step.durationMs !== undefined
+                ? `<span class="db-agent-step-chip db-agent-step-chip-duration${isLongest ? " longest" : ""}">⏱ ${escHtml(formatPause(step.durationMs))}</span>`
+                : '<span class="db-agent-step-chip db-agent-step-chip-duration pending">Current</span>';
+            const pauseHtml =
+              step.isSignificantPause && step.durationMs !== undefined
+                ? '<div class="db-agent-step-separator">(Significant Pause)</div>'
+                : "";
+            return `<div class="db-agent-step-row${isLongest ? " longest-pause" : ""}${step.isSignificantPause ? " significant-pause" : ""}">
+              <div class="db-agent-step-body${step.isFallback ? " fallback" : ""}">
+                <div class="db-agent-step-meta">
+                  <span>${escHtml(new Date(step.timestamp).toLocaleString())}</span>
+                </div>
+                <div class="db-agent-step-chip-row">
+                  <span class="db-agent-step-chip db-agent-step-chip-actor ${actorBadgeClass(step.actor)}"><span>${actorIcon(step.actor)}</span><span>${escHtml(actorLabel(step.actor))}</span></span>
+                  <span class="db-agent-step-badge ${agentStepBadgeClass(step.label)}">${escHtml(step.label)}</span>
+                  ${durationChip}
+                </div>
+                <div class="db-agent-step-detail">${escHtml(formatStepDetail(step.detail, step.label))}</div>
+                <div class="db-agent-step-submeta"><span>${escHtml(formatPhaseLabel(step.phase))}</span><span>${escHtml(step.rawIntent || "signal")}</span></div>
+                ${isLongest ? '<div class="db-agent-step-duration-note">Longest wait</div>' : ""}
+                ${pauseHtml}
+              </div>
+            </div>`;
+          })
+          .join("\n")
+      : '<div class="db-empty-panel">No timeline signals were recorded for this thread.</div>';
+  return `<div class="db-thread-detail-header-block">
+      <div><strong>${escHtml(selectedThread.title)}</strong><div style="margin-top:4px;font-size:0.84em;opacity:0.74">${escHtml(new Date(selectedThread.startedAt).toLocaleString())}</div></div>
+      <div class="db-thread-detail-metrics">
+        <span class="db-thread-chip">${selectedThread.stepCount} steps</span>
+        <span class="db-thread-chip">${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</span>
+        ${selectedThread.longestPauseMs > 0 ? `<span class="db-thread-chip">Longest wait ${escHtml(formatPause(selectedThread.longestPauseMs))}</span>` : ""}
+        ${selectedThread.hasAutonomousRun ? '<span class="db-thread-chip autonomous">🤖 Autonomous</span>' : ""}
+      </div>
+    </div>
+    <div class="db-agent-step-timeline">${stepsHtml}</div>`;
+}
+
+function renderAllThreads(): void {
+  const el = document.getElementById("db-session-list");
+  if (!el) {
+    return;
+  }
+  const flat: Array<{ thread: SessionThreadSummary; sessionId: string }> = [];
+  for (const [sessionId, detail] of allSessionDetails) {
+    for (const thread of filterSelectableThreads(detail.threads)) {
+      flat.push({ thread, sessionId });
+    }
+  }
+  if (flat.length === 0) {
+    el.innerHTML = `<div class="db-empty-panel">${isBackgroundLoading || sessionLoadQueue.length > 0 ? "Loading threads\u2026" : "No threads with activity were detected."}</div>`;
+    return;
+  }
+  flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
+  el.innerHTML = flat
+    .map(({ thread, sessionId }) => {
+      const active = thread.threadId === selectedThreadId && sessionId === selectedThreadSessionId ? " active" : "";
+      return `<button class="db-thread-row${active}" data-thread-id="${escHtml(thread.threadId)}" data-session-id="${escHtml(sessionId)}">
+        <div class="db-thread-row-title">${thread.hasAutonomousRun ? "\uD83E\uDD16 " : ""}${escHtml(thread.title)}</div>
+        <div class="db-thread-row-subtext">${escHtml(new Date(thread.startedAt).toLocaleString())}</div>
+        <div class="db-thread-row-meta"><span>${thread.stepCount} steps</span><span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span></div>
+      </button>`;
+    })
+    .join("");
+  el.querySelectorAll<HTMLButtonElement>(".db-thread-row").forEach((button) => {
+    button.addEventListener("click", () => {
+      const threadId = button.dataset.threadId ?? "";
+      const sessionId = button.dataset.sessionId ?? "";
+      if (threadId && !(threadId === selectedThreadId && sessionId === selectedThreadSessionId)) {
+        selectedThreadId = threadId;
+        selectedThreadSessionId = sessionId;
+        renderAllThreads();
+        renderThreadDetail();
+      }
+    });
+  });
+}
+
+function renderThreadDetail(): void {
+  const el = document.getElementById("db-session-detail");
+  if (!el) {
+    return;
+  }
+  if (!selectedThreadId || !selectedThreadSessionId) {
+    el.innerHTML = '<div class="db-empty-panel">Select a thread to inspect its timeline.</div>';
+    return;
+  }
+  const detail = allSessionDetails.get(selectedThreadSessionId);
+  if (!detail) {
+    el.innerHTML = '<div class="db-empty-panel">Loading thread detail…</div>';
+    return;
+  }
+  el.innerHTML = renderSelectedThread(detail);
+}
+
 // ---------------------------------------------------------------------------
 // Full render
 // ---------------------------------------------------------------------------
 
 function render(payload: DashboardPayload): void {
+  currentPayload = payload;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
@@ -938,6 +1181,14 @@ function render(payload: DashboardPayload): void {
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
+  for (const session of payload.sessionSummaries) {
+    if (!allSessionDetails.has(session.sessionId)) {
+      sessionLoadQueue.push(session.sessionId);
+    }
+  }
+  loadNextFromQueue();
+  renderAllThreads();
+  renderThreadDetail();
 }
 
 // ---------------------------------------------------------------------------
@@ -948,6 +1199,14 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
   const msg = event.data;
   if (msg.type === "dashboardData") {
     render(msg.payload);
+  } else if (msg.type === "sessionDetailData") {
+    isBackgroundLoading = false;
+    if (msg.payload) {
+      allSessionDetails.set(msg.payload.sessionId, msg.payload);
+    }
+    renderAllThreads();
+    renderThreadDetail();
+    loadNextFromQueue();
   } else if (msg.type === "exportComplete") {
     // Only markdown and timeline PNG exports are currently supported.
     const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";

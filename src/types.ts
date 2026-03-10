@@ -3,6 +3,104 @@ export interface LanguageStat {
   accepted: number;
 }
 
+export interface SessionSummary {
+  sessionId: string;
+  title: string | null;
+  date: string;
+  totalActions: number;
+  trueRate: number;
+  autonomousDuration: number;
+  efficiencyScore: number;
+}
+
+export interface SessionEpisode {
+  episodeId: string;
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  phases: string[];
+  aiActionCount: number;
+  humanActionCount: number;
+  accepted: boolean;
+  contextBoundary: boolean;
+  models: string[];
+  summary: string;
+  fatigueScore: number;
+}
+
+export interface SessionTimelineEntry {
+  id: string;
+  sessionId: string;
+  timestamp: string;
+  actor: "human" | "ai" | "system";
+  phase: "human" | "planning" | "research" | "execution" | "memory";
+  label: string;
+  detail: string;
+  icon: string;
+  accepted: boolean;
+  episodeId: string | null;
+}
+
+export interface SessionThreadSummary {
+  threadId: string;
+  title: string;
+  startedAt: string;
+  estimatedMinutesSaved: number;
+  autonomousDurationMs: number;
+  acceptedChars: number;
+  hasAutonomousRun: boolean;
+  stepCount: number;
+  longestPauseMs: number;
+  hasSelectableTitle: boolean;
+}
+
+export type AgentStepLabel =
+  | "Prompt"
+  | "Updated"
+  | "Executed"
+  | "Searched"
+  | "Reviewed"
+  | "Evaluating"
+  | "Considered"
+  | "Creating"
+  | "Used reference"
+  | "Memory file"
+  | "Thought"
+  | "Activity";
+
+export interface AgentStep {
+  timestamp: string;
+  actor: "human" | "ai" | "system";
+  phase: "human" | "planning" | "research" | "execution" | "memory";
+  label: AgentStepLabel;
+  detail: string;
+  rawIntent: string;
+  durationMs?: number;
+  isFallback?: boolean;
+  isSignificantPause?: boolean;
+}
+
+export interface ContextFatigueMarker {
+  timestamp: string;
+  episodeId: string;
+  score: number;
+  reason: string;
+}
+
+export interface SessionDetailPayload {
+  sessionId: string;
+  date: string;
+  totalActions: number;
+  trueRate: number;
+  autonomousDuration: number;
+  efficiencyScore: number;
+  timeline: SessionTimelineEntry[];
+  episodes: SessionEpisode[];
+  fatigueMarker: ContextFatigueMarker | null;
+  threads: SessionThreadSummary[];
+  stepsByThread: Record<string, AgentStep[]>;
+}
+
 /** Histogram buckets for the distribution of action counts per agentic loop. */
 export interface LoopActionBuckets {
   /** Loops that contained exactly 1 action. */
@@ -54,6 +152,56 @@ export interface MemoryManagementEvent {
   type: string;
   rawText: string;
   sessionId: string;
+}
+
+export interface ChatSessionTitleRecord {
+  chatSessionId: string;
+  workspaceId: string;
+  title: string;
+  createdAt: string;
+  lastMessageAt: string | null;
+  firstRequestText: string | null;
+}
+
+export interface SkillRef {
+  name: string;
+}
+
+export interface ToolCallInfo {
+  id: string;
+  name: string;
+  args?: string;
+  subagentDescription?: string;
+  childToolCalls?: ToolCallInfo[];
+  mcpServer?: string;
+}
+
+export interface ChatSessionRequest {
+  requestId: string;
+  timestamp: number;
+  agentId: string;
+  customAgentName: string | null;
+  modelId: string;
+  messageText: string;
+  timings: {
+    firstProgress: number | null;
+    totalElapsed: number | null;
+  };
+  toolCalls: ToolCallInfo[];
+  availableSkills: SkillRef[];
+  loadedSkills: SkillRef[];
+}
+
+export interface ChatSessionRecord {
+  chatSessionId: string;
+  workspaceId: string;
+  title: string | null;
+  createdAt: string;
+  lastMessageAt: string | null;
+  firstRequestText: string | null;
+  requests: ChatSessionRequest[];
+  source: "jsonl" | "json";
+  provider: "copilot";
 }
 
 export interface RefreshAnalysisSegment {
@@ -167,6 +315,12 @@ export interface CopilotUsageStats {
   pluginOrSkillByName: Map<string, number>;
   /** Session-memory or compaction events observed in logs with timestamps. */
   memoryManagementEvents: MemoryManagementEvent[];
+  /** Synthetic session-level signal events derived from parsed Copilot logs. */
+  sessionSignals: import("./events/eventSchema").SessionSignalEvent[];
+  /** Chat titles recovered from workspaceStorage chatSessions files. */
+  chatSessionTitles?: ChatSessionTitleRecord[];
+  /** Chat session records recovered from workspaceStorage chatSessions files. */
+  chatSessions?: ChatSessionRecord[];
   /** Session-memory or compaction events grouped by detected subtype. */
   memoryManagementByType: Map<string, number>;
   /** Number of agent-debug or step-execution related events observed in logs. */

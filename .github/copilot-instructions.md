@@ -117,7 +117,7 @@ Four-layer pipeline:
 
 ## Log File Discovery
 
-`parseCopilotLogs` receives `context.logUri` and calls `findSessionRoot` (from `src/utils/logPaths.ts`) to locate the VS Code session root by splitting the path on the native separator and finding the `logs/<timestamp>` landmark. It then reads **up** one level to the base log dir and scans the **N most recent** session directories (configurable via `copilot-insight.maxSessionDirs`, default 5) for subdirectories named `GitHub.copilot`, `github.copilot`, or `GitHub.copilot-nightly`.
+`parseCopilotLogs` receives `context.logUri` and calls `findSessionRoot` (from `src/utils/logPaths.ts`) to locate the VS Code session root by splitting the path on the native separator and finding the `logs/<timestamp>` landmark. It then reads **up** one level to the base log dir and scans the **N most recent** session directories (configurable via `copilot-insight.maxSessionDirs`, default 10) for subdirectories named `GitHub.copilot`, `github.copilot`, or `GitHub.copilot-nightly`.
 
 ## Build & Dev Workflow
 

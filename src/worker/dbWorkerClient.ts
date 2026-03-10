@@ -20,7 +20,14 @@
 import { Worker } from "node:worker_threads";
 import type { TrackedEvent } from "../events/eventSchema";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { MemoryManagementEvent, RefreshAnalysis } from "../types";
+import type {
+  ChatSessionRecord,
+  ChatSessionTitleRecord,
+  MemoryManagementEvent,
+  RefreshAnalysis,
+  SessionDetailPayload,
+  SessionSummary,
+} from "../types";
 
 /**
  * Async interface for the DB worker, modelled after {@link DuckDbClient}.
@@ -29,6 +36,8 @@ import type { MemoryManagementEvent, RefreshAnalysis } from "../types";
 export interface DbWorkerClient {
   loadFromJsonl(storagePath: string): Promise<{ loaded: number }>;
   ingest(events: TrackedEvent[]): Promise<{ ingested: number; total: number }>;
+  setChatSessionTitles(titles: ChatSessionTitleRecord[]): Promise<{ loaded: number }>;
+  setChatSessions(sessions: ChatSessionRecord[]): Promise<{ loaded: number }>;
   query<T = unknown>(sql: string): Promise<T[]>;
   trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult>;
   velocity(windowMs?: number): Promise<VelocityAnalysisResult>;
@@ -39,6 +48,8 @@ export interface DbWorkerClient {
     turnWindowSize?: number;
     revertWindowMs?: number;
   }): Promise<RefreshAnalysis[]>;
+  getSessionList(): Promise<SessionSummary[]>;
+  getSessionDetail(sessionId: string): Promise<SessionDetailPayload | null>;
   compact(ttlMs?: number): Promise<{ compacted: number }>;
   close(): Promise<void>;
 }
@@ -103,6 +114,15 @@ export class DbWorkerClientImpl implements DbWorkerClient {
     return (await this._send("ingest", events)) as { ingested: number; total: number };
   }
 
+  /** Replace worker-side cached chat session titles used for thread title matching. */
+  async setChatSessionTitles(titles: ChatSessionTitleRecord[]): Promise<{ loaded: number }> {
+    return (await this._send("setChatSessionTitles", titles)) as { loaded: number };
+  }
+
+  async setChatSessions(sessions: ChatSessionRecord[]): Promise<{ loaded: number }> {
+    return (await this._send("setChatSessions", sessions)) as { loaded: number };
+  }
+
   /** Run a named query on the worker's analytics database. */
   async query<T = unknown>(sql: string): Promise<T[]> {
     return (await this._send("query", sql)) as T[];
@@ -138,6 +158,16 @@ export class DbWorkerClientImpl implements DbWorkerClient {
     revertWindowMs?: number;
   }): Promise<RefreshAnalysis[]> {
     return (await this._send("getRefreshAnalysis", options)) as RefreshAnalysis[];
+  }
+
+  /** Return per-session summaries for the Session Intelligence Explorer. */
+  async getSessionList(): Promise<SessionSummary[]> {
+    return (await this._send("getSessionList")) as SessionSummary[];
+  }
+
+  /** Return a full timeline + episode breakdown for a single session. */
+  async getSessionDetail(sessionId: string): Promise<SessionDetailPayload | null> {
+    return (await this._send("getSessionDetail", { sessionId })) as SessionDetailPayload | null;
   }
 
   /** Compact events older than `ttlMs` into daily aggregated stats. */

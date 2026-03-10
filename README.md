@@ -22,10 +22,11 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
   - AI model usage breakdown — Chat vs. Inline Completion, with per-model acceptance rate
   - Activity heatmap by hour of day
   - Auto-generated **Insights** summary (best language, peak hour, weekly trend, chat/inline ratio)
-- **Three-tab dashboard** — content is organised into focused tabs:
+- **Four-tab dashboard** — content is organised into focused tabs:
   - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
   - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown, **Agent Intelligence Overview** (autonomous action count, loop completion rate, per-model agentic depth and velocity, **Planning & Execution** stats — Plans Proposed / Executed / Success Rate / User Choices)
   - 🌊 **Flow (Velocity)**: KPM vs completions scatter plot, activity heatmaps, **Context Effectiveness** breakdown by Copilot context source (Active File, Workspace, Symbol, Embeddings, etc.)
+  - 📂 **Sessions**: Session Intelligence Explorer with logical chat thread grouping, per-thread estimated minutes saved, autonomous-run highlighting, and drilldown timelines for user prompts, research, browser actions, file edits, and memory refresh boundaries
 - **Real-time Status Bar** — live acceptance rate indicator in the VS Code status bar (`$(copilot) 73% (42/58)`); updates every 3 seconds during your coding session and opens the dashboard on click
 - **MCP Server** — built-in Model Context Protocol server lets external AI agents (Claude Desktop, VS Code Copilot Chat, etc.) query your usage statistics via `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; no cloud or external network access required
 - **Activity Bar** — dedicated sidebar view with quick-access buttons
@@ -44,8 +45,7 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 
 | Setting | Default | Description |
 |---|---|---|
-| `copilot-insight.maxSessionDirs` | `5` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
-| `copilot-insight.topLanguagesCount` | `10` | Number of top languages shown in the Language chart (3–30) |
+| `copilot-insight.maxSessionDirs` | `10` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance) |
 
 ### Requirements
@@ -88,10 +88,11 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - AIモデル別の使用状況 — Chat vs. インライン補完、モデルごとの受け入れ率
   - 時間帯別のアクティビティヒートマップ
   - 自動生成される **Insights** サマリー (最も受け入れ率が高い言語・ピーク時間帯・週次トレンド・Chat/Inline 比率)
-- **3タブダッシュボード** — コンテンツを目的別の3タブに整理:
+- **4タブダッシュボード** — コンテンツを目的別の4タブに整理:
   - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
   - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳・**Agent Intelligence Overview** (自律アクション数・ループ完了率・モデル別エージェント深度と速度・**Planning & Execution** 統計 — 提案プラン数 / 実行プラン数 / 成功率 / ユーザー選択回数)
   - 🌊 **Flow (Velocity)**: KPM vs 補完受け入れ数の散布図・アクティビティヒートマップ・**コンテキスト効果** (Active File・Workspace・Symbol・Embeddings などのコンテキストソース別の貢献度)
+  - 📂 **Sessions**: Session Intelligence Explorer。論理チャットスレッドごとの推定節約時間、自律実行の強調表示、ユーザー質問・調査・ブラウザ操作・ファイル編集・Memory Refreshed 境界を辿れるドリルダウンタイムライン
 - **リアルタイムステータスバー** — VS Code のステータスバーにライブの受け入れ率インジケーターを表示 (`$(copilot) 73% (42/58)`)。コーディング中に 3 秒ごとに更新され、クリックするとダッシュボードが開く
 - **MCP サーバー** — 組み込みの Model Context Protocol サーバーにより、外部 AI エージェント (Claude Desktop・VS Code Copilot Chat など) が `get_usage_summary`・`get_model_efficiency`・`get_anomaly_report` ツールを通じて使用統計を照会可能。クラウドや外部ネットワークへのアクセス不要
 - **アクティビティバー** — サイドバーに専用ビューとクイックアクセスボタン
@@ -110,8 +111,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 
 | 設定 | デフォルト | 説明 |
 |---|---|---|
-| `copilot-insight.maxSessionDirs` | `5` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
-| `copilot-insight.topLanguagesCount` | `10` | 言語チャートに表示するトップ言語数 (3〜30) |
+| `copilot-insight.maxSessionDirs` | `10` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする (真の受け入れ率・速度・モデル性能)。無効にするとイベントログは継続されるが、メトリクスダッシュボードは利用不可 |
 
 ### 要件

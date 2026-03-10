@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { SessionSignalEvent } from "../events/eventSchema";
 import type {
   AgenticDepthStat,
+  ChatSessionTitleRecord,
   CopilotUsageStats,
   DateStat,
   LanguageStat,
@@ -61,6 +63,8 @@ interface SerializedCopilotUsageStats {
   pluginOrSkillInvocations: number;
   pluginOrSkillByName: Array<[string, number]>;
   memoryManagementEvents: MemoryManagementEvent[] | number;
+  sessionSignals: SessionSignalEvent[];
+  chatSessionTitles?: ChatSessionTitleRecord[];
   memoryManagementByType: Array<[string, number]>;
   agentDebugEvents: number;
   agentDebugByType: Array<[string, number]>;
@@ -122,6 +126,8 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
     pluginOrSkillByName: mapEntries(stats.pluginOrSkillByName),
     memoryManagementEvents: [...stats.memoryManagementEvents],
+    sessionSignals: [...stats.sessionSignals],
+    chatSessionTitles: [...(stats.chatSessionTitles ?? [])],
     memoryManagementByType: mapEntries(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: mapEntries(stats.agentDebugByType),
@@ -176,6 +182,8 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
     pluginOrSkillByName: toMap(stats.pluginOrSkillByName),
     memoryManagementEvents: Array.isArray(stats.memoryManagementEvents) ? stats.memoryManagementEvents : [],
+    sessionSignals: Array.isArray(stats.sessionSignals) ? stats.sessionSignals : [],
+    chatSessionTitles: Array.isArray(stats.chatSessionTitles) ? stats.chatSessionTitles : [],
     memoryManagementByType: toMap(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: toMap(stats.agentDebugByType),

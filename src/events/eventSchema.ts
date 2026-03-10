@@ -9,8 +9,23 @@
  * `languageId`) plus event-specific payload.
  */
 
+export type SessionSignalType =
+  | "plan-proposal"
+  | "chat-request"
+  | "thread-title"
+  | "completion-shown"
+  | "memory-boundary"
+  | "reference-used"
+  | "command-executed"
+  | "tool-loop-stop"
+  | "user-choice";
+
+export type SessionActor = "human" | "ai" | "system";
+
+export type SessionPhase = "human" | "planning" | "research" | "execution" | "memory";
+
 /** Discriminated union of all event types emitted by the tracker. */
-export type TrackedEvent = TextChangeEvent | CompletionAcceptEvent | EditorSwitchEvent;
+export type TrackedEvent = TextChangeEvent | CompletionAcceptEvent | EditorSwitchEvent | SessionSignalEvent;
 
 /** Common fields shared by every tracked event. */
 export interface BaseEvent {
@@ -53,6 +68,24 @@ export interface EditorSwitchEvent extends BaseEvent {
   eventType: "editorSwitch";
   /** `fsPath` of the newly active file, or `""` for untitled/virtual documents. */
   filePath: string;
+}
+
+/** Synthetic session-level signal derived from Copilot log parsing. */
+export interface SessionSignalEvent extends BaseEvent {
+  eventType: "sessionSignal";
+  signalType: SessionSignalType;
+  actor: SessionActor;
+  phase: SessionPhase;
+  /** Original ccreq intent tag when present. */
+  intent: string;
+  /** Raw log line or event text for diagnostics and tooltips. */
+  rawText: string;
+  /** Model associated with the signal when available. */
+  modelName: string;
+  /** Latency in milliseconds when the source log line provides it. */
+  latencyMs: number;
+  /** `true` when the underlying action completed successfully. */
+  success: boolean;
 }
 
 /**

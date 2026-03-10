@@ -1,9 +1,12 @@
+import type { SessionActor, SessionPhase, SessionSignalEvent } from "../events/eventSchema";
 import type { LanguageStat, ParsingContext } from "../types";
 
 /** Intent tag → human-readable display name for known chat intents. */
 const INTENT_DISPLAY_NAMES: Record<string, string> = {
   "panel/editAgent": "Agent",
   "panel/unknown": "Plan",
+  title: "Title",
+  progressMessages: "Progress",
   vscodePrompt: "Ask",
   copilotLanguageModelWrapper: "Ask (Old)",
   intentDetection: "Intent Detection",
@@ -29,8 +32,11 @@ const FEATURE_VALUE_KEYS = [
   "contextType",
 ] as const;
 
+const CHAT_TITLE_JSON_KEY_PATTERN = /"(title|topic|summary)"\s*:/i;
+const THREAD_TITLE_KEYS = ["title", "topic", "summary"] as const;
+
 /** Returns true if the intent is a known subagent intent or a tool/runSubagent-* variant. */
-function isSubagentIntent(intent: string): boolean {
+export function isSubagentIntent(intent: string): boolean {
   return SUBAGENT_INTENTS.has(intent) || intent.startsWith("tool/runSubagent-");
 }
 
@@ -243,6 +249,46 @@ function extractTimestampFromText(raw: string): string {
   return match ? normalizeTimestamp(match[1]) : "";
 }
 
+function classifyIntent(rawIntent: string): { actor: SessionActor; phase: SessionPhase } {
+  if (!rawIntent) {
+    return { actor: "system", phase: "planning" };
+  }
+  if (rawIntent === "vscodePrompt" || rawIntent === "copilotLanguageModelWrapper") {
+    return { actor: "human", phase: "human" };
+  }
+  if (rawIntent === "title" || rawIntent === "progressMessages") {
+    return { actor: "system", phase: "planning" };
+  }
+  if (rawIntent === "panel/unknown" || rawIntent === "agent/plan" || rawIntent === "strategy/propose") {
+    return { actor: "ai", phase: "planning" };
+  }
+  if (rawIntent === "tool/searchSubagentTool") {
+    return { actor: "ai", phase: "research" };
+  }
+  if (rawIntent === "intentDetection") {
+    return { actor: "system", phase: "planning" };
+  }
+  if (isSubagentIntent(rawIntent) || rawIntent === "workspace/editfile" || rawIntent === "apply_patch") {
+    return { actor: "ai", phase: "execution" };
+  }
+  return { actor: "human", phase: "human" };
+}
+
+function pushSessionSignal(
+  ctx: ParsingContext,
+  signal: Omit<SessionSignalEvent, "eventType" | "sessionId" | "languageId">,
+): void {
+  if (!ctx.currentSessionId || !signal.timestamp) {
+    return;
+  }
+  ctx.sessionSignals.push({
+    eventType: "sessionSignal",
+    sessionId: ctx.currentSessionId,
+    languageId: "",
+    ...signal,
+  });
+}
+
 function parseAgentDebugType(raw: string): string {
   const lower = raw.toLowerCase();
   if (lower.includes("step-execution") || lower.includes("step execution")) {
@@ -260,9 +306,21 @@ function parseAgentDebugType(raw: string): string {
   return "debug";
 }
 
-function recordBrowserToolSignal(ctx: ParsingContext, raw: string): void {
+function recordBrowserToolSignal(ctx: ParsingContext, raw: string, timestamp: string): void {
+  const toolType = parseBrowserToolType(raw);
   ctx.browserToolInvocations++;
-  incrementCount(ctx.browserToolsByType, parseBrowserToolType(raw));
+  incrementCount(ctx.browserToolsByType, toolType);
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "chat-request",
+    actor: "ai",
+    phase: "research",
+    intent: `browser/${toolType}`,
+    rawText: raw,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
 }
 
 function recordPluginOrSkillSignal(ctx: ParsingContext, raw: string): void {
@@ -282,6 +340,45 @@ function recordMemoryManagementSignal(ctx: ParsingContext, raw: string, timestam
     rawText: raw,
     sessionId: ctx.currentSessionId,
   });
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "memory-boundary",
+    actor: "system",
+    phase: "memory",
+    intent: type,
+    rawText: raw,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
+}
+
+function recordReferenceSignal(ctx: ParsingContext, source: string, timestamp: string, rawText: string): void {
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "reference-used",
+    actor: "system",
+    phase: "research",
+    intent: `reference/${source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    rawText,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
+}
+
+function recordCommandExecutionSignal(ctx: ParsingContext, command: string, timestamp: string): void {
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "command-executed",
+    actor: "ai",
+    phase: "execution",
+    intent: "terminal/runCommand",
+    rawText: command,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
 }
 
 function recordAgentDebugSignal(ctx: ParsingContext, raw: string): void {
@@ -296,6 +393,75 @@ function getJsonFeatureText(data: Record<string, unknown>): string {
   return values.join(" ");
 }
 
+function sanitiseThreadTitleCandidate(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, "")
+    .slice(0, 80);
+}
+
+function looksLikeThreadTitleCandidate(value: string): boolean {
+  if (value.length < 4) {
+    return false;
+  }
+  if (/^[a-f0-9-]{20,}$/i.test(value)) {
+    return false;
+  }
+  if (value.includes("://")) {
+    return false;
+  }
+  return true;
+}
+
+export function extractThreadTitleFromPayload(payload: unknown): string | null {
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const title = extractThreadTitleFromPayload(entry);
+      if (title) {
+        return title;
+      }
+    }
+    return null;
+  }
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const key of THREAD_TITLE_KEYS) {
+    const value = record[key];
+    if (typeof value === "string") {
+      const candidate = sanitiseThreadTitleCandidate(value);
+      if (looksLikeThreadTitleCandidate(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    const nested = extractThreadTitleFromPayload(value);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function recordThreadTitleSignal(ctx: ParsingContext, raw: string, timestamp: string): void {
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "thread-title",
+    actor: "system",
+    phase: "planning",
+    intent: "thread-title",
+    rawText: raw,
+    modelName: "",
+    latencyMs: 0,
+    success: true,
+  });
+}
+
 function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext, timestamp = ""): boolean {
   const lower = raw.toLowerCase();
   let matched = false;
@@ -308,7 +474,7 @@ function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext, timestamp =
     lower.includes("browser_") ||
     lower.includes("screenshot");
   if (hasBrowserSignal) {
-    recordBrowserToolSignal(ctx, raw);
+    recordBrowserToolSignal(ctx, raw, timestamp);
     matched = true;
   }
 
@@ -460,6 +626,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
           if (effectivenessType) {
             incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
           }
+          if (timestamp) {
+            recordReferenceSignal(ctx, source, timestamp, source);
+          }
         }
       }
     }
@@ -472,6 +641,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       if (effectivenessType) {
         incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
       }
+      if (timestamp) {
+        recordReferenceSignal(ctx, source, timestamp, source);
+      }
     }
   }
 
@@ -480,7 +652,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Planning & Execution: check event name for plan/execution signals.
-  trackPlanningStats(eventLower, ctx);
+  trackPlanningStats(eventLower, ctx, timestamp, event);
 }
 
 export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean {
@@ -493,7 +665,14 @@ export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean 
       return false;
     }
     const data = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    processJsonEntry(data, ctx, extractTimestampFromText(line));
+    const timestamp = extractTimestampFromText(line);
+    if (CHAT_TITLE_JSON_KEY_PATTERN.test(jsonMatch[0])) {
+      const threadTitle = extractThreadTitleFromPayload(data);
+      if (threadTitle && ctx.currentSessionId && timestamp) {
+        recordThreadTitleSignal(ctx, threadTitle, timestamp);
+      }
+    }
+    processJsonEntry(data, ctx, timestamp);
     return true;
   } catch {
     return false;
@@ -508,7 +687,7 @@ export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean 
  */
 function parseFetchCompletionsLine(
   line: string,
-  { lower, dateKey, hourKey }: LineContext,
+  { lower, dateKey, hourKey, timestamp }: LineContext,
   ctx: ParsingContext,
 ): boolean {
   if (!lower.includes("[fetchcompletions]") || !lower.includes("finished with")) {
@@ -519,6 +698,7 @@ function parseFetchCompletionsLine(
   const statusCode = statusMatch ? Number.parseInt(statusMatch[1], 10) : 0;
   const latencyMatch = line.match(/after ([\d.]+)ms/);
   const latencyMs = latencyMatch ? Number.parseFloat(latencyMatch[1]) : 0;
+  const engineMatch = line.match(/\/v1\/engines\/([\w.-]+)\/completions/);
 
   if (statusCode === 200) {
     ctx.totalShown++;
@@ -528,7 +708,6 @@ function parseFetchCompletionsLine(
     if (hourKey) {
       incrementCount(ctx.byHour, hourKey);
     }
-    const engineMatch = line.match(/\/v1\/engines\/([\w.-]+)\/completions/);
     if (engineMatch) {
       incrementStatCount(ctx.byModel, engineMatch[1], "shown");
     }
@@ -537,6 +716,17 @@ function parseFetchCompletionsLine(
       ctx.latencyCount++;
       ctx.latencies.push(latencyMs);
     }
+    pushSessionSignal(ctx, {
+      timestamp,
+      signalType: "completion-shown",
+      actor: "ai",
+      phase: "execution",
+      intent: "fetchCompletions",
+      rawText: line,
+      modelName: engineMatch?.[1] ?? "",
+      latencyMs,
+      success: true,
+    });
   } else if (statusCode > 0) {
     ctx.totalErrors++;
     incrementCount(ctx.errorsByType, `HTTP ${statusCode}`);
@@ -565,7 +755,11 @@ function parseAbortErrorLine(line: string, lower: string, ctx: ParsingContext): 
  * Parse "ccreq:<hash> | success/error/timeout | ..." lines.
  * Returns true if the line was handled.
  */
-function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, ctx: ParsingContext): boolean {
+function parseCcreqLine(
+  line: string,
+  { lower, dateKey, hourKey, timestamp }: LineContext,
+  ctx: ParsingContext,
+): boolean {
   if (!line.includes("ccreq:")) {
     return false;
   }
@@ -587,7 +781,7 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
   const model = normalizeModelName(ccreqMatch ? ccreqMatch[1] : "");
   const latency = ccreqMatch ? Number.parseInt(ccreqMatch[2], 10) : 0;
 
-  trackChatIntent(line, ctx, model);
+  const rawIntent = trackChatIntent(line, ctx, model);
 
   // Track per-model subagent calls for autonomous ratio calculation.
   if (model) {
@@ -602,15 +796,27 @@ function parseCcreqLine(line: string, { lower, dateKey, hourKey }: LineContext, 
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
   } else {
     recordChatRequest(ctx, dateKey, hourKey, model, latency);
+    const classification = classifyIntent(rawIntent);
+    pushSessionSignal(ctx, {
+      timestamp,
+      signalType: rawIntent === "panel/unknown" ? "plan-proposal" : "chat-request",
+      actor: classification.actor,
+      phase: classification.phase,
+      intent: rawIntent,
+      rawText: line,
+      modelName: model,
+      latencyMs: latency,
+      success: true,
+    });
   }
   return true;
 }
 
 /** Extract and record the chat intent tag from a ccreq success line. */
-function trackChatIntent(line: string, ctx: ParsingContext, model: string): void {
+function trackChatIntent(line: string, ctx: ParsingContext, model: string): string {
   const intentMatch = line.match(/\| \[([a-zA-Z0-9/\-]+)\]$/) ?? line.match(/\[([a-zA-Z0-9/\-]+)\]\s*$/);
   if (!intentMatch) {
-    return;
+    return "";
   }
   const rawIntent = intentMatch[1];
   if (KNOWN_CHAT_INTENTS.has(rawIntent)) {
@@ -650,6 +856,7 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): void
       ctx.activeSubagentLoopActionCount++;
     }
   }
+  return rawIntent;
 }
 
 function recordInlineAccepted(
@@ -755,19 +962,52 @@ function isChoiceSelectedLine(lower: string): boolean {
 /**
  * Update plan tracking state for a single log line (plain-text or JSON-derived).
  */
-function trackPlanningStats(lower: string, ctx: ParsingContext): void {
+function trackPlanningStats(lower: string, ctx: ParsingContext, timestamp = "", rawText = ""): void {
   if (isPlanProposalLine(lower)) {
     ctx.planCount++;
     ctx.activePlanPending = true;
+    pushSessionSignal(ctx, {
+      timestamp,
+      signalType: "plan-proposal",
+      actor: "ai",
+      phase: "planning",
+      intent: lower.includes("strategy/propose") ? "strategy/propose" : "agent/plan",
+      rawText,
+      modelName: "",
+      latencyMs: 0,
+      success: true,
+    });
   }
   if (isPlanExecutionLine(lower)) {
     if (ctx.activePlanPending) {
       ctx.executedPlanCount++;
       ctx.activePlanPending = false;
     }
+    pushSessionSignal(ctx, {
+      timestamp,
+      signalType: "chat-request",
+      actor: "ai",
+      phase: "execution",
+      intent: lower.includes("apply_patch") ? "apply_patch" : "workspace/editfile",
+      rawText,
+      modelName: "",
+      latencyMs: 0,
+      success: true,
+    });
   }
   if (isChoiceSelectedLine(lower)) {
     ctx.userChoicesInPlan++;
+    pushSessionSignal(ctx, {
+      timestamp,
+      signalType: "user-choice",
+      actor: "human",
+      phase: "human",
+      intent: "choice_selected",
+      rawText,
+      modelName: "",
+      latencyMs: 0,
+      success: true,
+    });
   }
 }
 
@@ -832,6 +1072,17 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
     return false;
   }
   ctx.subagentLoops++;
+  pushSessionSignal(ctx, {
+    timestamp: extractTimestampFromText(line),
+    signalType: "tool-loop-stop",
+    actor: "system",
+    phase: "execution",
+    intent: "tool-calling-loop-stop",
+    rawText: line,
+    modelName: ctx.activeSubagentLoopModel ?? "",
+    latencyMs: 0,
+    success: true,
+  });
   if (ctx.activeSubagentLoop !== null) {
     const dateKey = ctx.activeSubagentLoop.slice(0, 10);
     const actionCount = ctx.activeSubagentLoopActionCount;
@@ -908,17 +1159,46 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   return true;
 }
 
+function parseRunInTerminalCommandLine(line: string, timestamp: string, ctx: ParsingContext): boolean {
+  if (!line.includes("RunInTerminalTool#CommandLineAutoApproveAnalyzer: Parsed sub-commands via bash grammar")) {
+    return false;
+  }
+
+  const commandsMatch = line.match(/(\[\[.*\]\])$/);
+  if (!commandsMatch) {
+    return false;
+  }
+
+  try {
+    const commandGroups = JSON.parse(commandsMatch[1]) as string[][];
+    for (const group of commandGroups) {
+      for (const command of group) {
+        const trimmed = command.trim();
+        if (trimmed) {
+          recordCommandExecutionSignal(ctx, trimmed, timestamp);
+        }
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
   // Planning & Execution stats are checked first so that workspace/editFile
   // and apply_patch lines are not shadowed by the context provider parser
   // (which would consume any line containing the word "workspace").
-  trackPlanningStats(lineCtx.lower, ctx);
+  trackPlanningStats(lineCtx.lower, ctx, lineCtx.timestamp, line);
 
   maybeRecordFeatureSignals(line, ctx, lineCtx.timestamp);
 
   if (parseToolCallingLoopStopLine(line, ctx)) {
+    return;
+  }
+  if (parseRunInTerminalCommandLine(line, lineCtx.timestamp, ctx)) {
     return;
   }
   if (parseFetchCompletionsLine(line, lineCtx, ctx)) {

@@ -92,6 +92,17 @@ function makeStats(): CopilotUsageStats {
         sessionId: "session-1",
       },
     ],
+    sessionSignals: [],
+    chatSessionTitles: [
+      {
+        chatSessionId: "chat-1",
+        workspaceId: "workspace-1",
+        title: "Session Intelligence Explorer",
+        createdAt: "2026-03-01T09:58:00.000Z",
+        lastMessageAt: "2026-03-01T10:05:00.000Z",
+        firstRequestText: "Implement session explorer",
+      },
+    ],
     memoryManagementByType: new Map([["compact", 1]]),
     agentDebugEvents: 4,
     agentDebugByType: new Map([["step-execution", 4]]),
@@ -133,6 +144,7 @@ suite("StatsSnapshotStorage", () => {
         [...expected.memoryManagementByType.entries()],
       );
       assert.deepStrictEqual(restored?.memoryManagementEvents, expected.memoryManagementEvents);
+      assert.deepStrictEqual(restored?.chatSessionTitles, expected.chatSessionTitles);
       assert.deepStrictEqual(
         [...(restored?.agentDebugByType.entries() ?? [])],
         [...expected.agentDebugByType.entries()],
