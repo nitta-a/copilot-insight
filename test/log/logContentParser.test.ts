@@ -1852,10 +1852,11 @@ suite("planning tracking from ccreq intents", () => {
 // isPremiumModel
 // ---------------------------------------------------------------------------
 suite("isPremiumModel", () => {
-  test("returns true for claude- prefix", () => {
+  test("returns true for claude sonnet/opus models", () => {
     assert.strictEqual(isPremiumModel("claude-3.5-sonnet"), true);
     assert.strictEqual(isPremiumModel("claude-sonnet-4"), true);
     assert.strictEqual(isPremiumModel("claude-opus-4"), true);
+    assert.strictEqual(isPremiumModel("claude-3.5-haiku"), false);
   });
 
   test("returns true for gpt-4o (non-mini)", () => {
@@ -1867,22 +1868,26 @@ suite("isPremiumModel", () => {
     assert.strictEqual(isPremiumModel("gpt-4o-mini"), false);
   });
 
-  test("returns true for gpt-4.1 series", () => {
+  test("returns true for gpt-4.1/gpt-41 base variants only", () => {
     assert.strictEqual(isPremiumModel("gpt-4.1"), true);
-    assert.strictEqual(isPremiumModel("gpt-4.1-mini"), true);
     assert.strictEqual(isPremiumModel("gpt-41"), true);
+    assert.strictEqual(isPremiumModel("gpt-4.1-mini"), false);
+    assert.strictEqual(isPremiumModel("gpt-41-mini"), false);
+    assert.strictEqual(isPremiumModel("gpt-4.1-nano"), false);
   });
 
-  test("returns true for o1 and o3 models", () => {
+  test("returns true for o1 and o3 non-mini models", () => {
     assert.strictEqual(isPremiumModel("o1"), true);
     assert.strictEqual(isPremiumModel("o1-preview"), true);
     assert.strictEqual(isPremiumModel("o3"), true);
-    assert.strictEqual(isPremiumModel("o3-mini"), true);
+    assert.strictEqual(isPremiumModel("o3-mini"), false);
   });
 
-  test("returns true for gemini- prefix", () => {
-    assert.strictEqual(isPremiumModel("gemini-1.5-pro"), true);
-    assert.strictEqual(isPremiumModel("gemini-2.0-flash"), true);
+  test("returns false for gemini, grok, and gpt-4n", () => {
+    assert.strictEqual(isPremiumModel("gemini-1.5-pro"), false);
+    assert.strictEqual(isPremiumModel("gemini-2.0-flash"), false);
+    assert.strictEqual(isPremiumModel("grok-code-fast-1"), false);
+    assert.strictEqual(isPremiumModel("gpt-4n"), false);
   });
 
   test("returns false for standard models", () => {
@@ -1895,6 +1900,7 @@ suite("isPremiumModel", () => {
     assert.strictEqual(isPremiumModel("Claude-3.5-Sonnet"), true);
     assert.strictEqual(isPremiumModel("GPT-4O"), true);
     assert.strictEqual(isPremiumModel("GPT-4O-MINI"), false);
+    assert.strictEqual(isPremiumModel("CLAUDE-3.5-HAIKU"), false);
   });
 
   test("premium log line increments premiumRequestCount and premiumRequestsByModel", () => {
@@ -1906,7 +1912,7 @@ suite("isPremiumModel", () => {
 
   test("non-premium log line does not increment premium fields", () => {
     const ctx = makeEmptyStats();
-    parseTextLogLine("2026-03-06 10:00:00.000 [info] ccreq:file.ts | success | gpt-4o-mini | 800ms | []", ctx);
+    parseTextLogLine("2026-03-06 10:00:00.000 [info] ccreq:file.ts | success | gemini-1.5-pro | 800ms | []", ctx);
     assert.strictEqual(ctx.premiumRequestCount, 0);
     assert.strictEqual(ctx.premiumRequestsByModel.size, 0);
   });

@@ -42,23 +42,27 @@ export function isSubagentIntent(intent: string): boolean {
 
 /**
  * プレミアムモデル判定
- * claude-*, gpt-4o(非mini), gpt-4.1, o1, o3, gemini
  */
 export function isPremiumModel(model: string): boolean {
-  const m = model.toLowerCase();
-  if (m.startsWith("claude-")) {
+  const normalized = normalizeModelName(model).toLowerCase().trim();
+  if (
+    normalized.startsWith("claude-") &&
+    (normalized.includes("sonnet") || normalized.includes("opus") || normalized.includes("haiku"))
+  ) {
     return true;
   }
-  if (m.startsWith("gpt-4o") && !m.includes("mini")) {
+  if (normalized.startsWith("gemini")) {
     return true;
   }
-  if (m.startsWith("gpt-4.1") || m.startsWith("gpt-41")) {
-    return true;
+  if (normalized.startsWith("gpt-5")) {
+    if (normalized.includes("codex") || !normalized.includes("mini")) {
+      return true;
+    }
   }
-  if (/^o[13][\b\-]?/.test(m)) {
-    return true;
+  if (normalized.startsWith("gpt-4")) {
+    return false;
   }
-  if (m.startsWith("gemini-")) {
+  if (normalized.startsWith("grok")) {
     return true;
   }
   return false;
