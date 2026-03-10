@@ -435,7 +435,7 @@ function computeEfficiencyScore(events: TrackedEvent[], trueRate: number): numbe
   return Math.max(0, Math.min(100, trueRate * 0.7 + retainedRatio * 0.3));
 }
 
-function buildSessionSummary(sessionId: string, events: TrackedEvent[]): SessionSummary {
+function buildSessionSummary(sessionId: string, events: TrackedEvent[], title: string | null = null): SessionSummary {
   const sortedEvents = sortEvents(events);
   const totalShown = computeSessionShown(sortedEvents);
   const fallbackShown = sortedEvents.filter((event) => event.eventType === "completionAccept").length;
@@ -443,6 +443,7 @@ function buildSessionSummary(sessionId: string, events: TrackedEvent[]): Session
   const autonomousDuration = computeSessionAutonomousDuration(sortedEvents);
   return {
     sessionId,
+    title,
     date: sortedEvents[0]?.timestamp.slice(0, 10) ?? "",
     totalActions: sortedEvents.filter(isActionableEvent).length,
     trueRate: trueAcceptance.trueRate,
@@ -921,6 +922,7 @@ function finalizeThread(thread: ThreadAccumulator): SessionThreadSummary {
     hasAutonomousRun: thread.hasAutonomousRun,
     stepCount: thread.stepCount,
     longestPauseMs: thread.longestPauseMs,
+    hasSelectableTitle: thread.hasSelectableTitle,
   };
 }
 
@@ -1109,27 +1111,33 @@ function applyWorkspaceChatTitles(
   }
 }
 
-function buildThreadTitle(thread: ThreadAccumulator): string {
+function buildThreadTitle(thread: ThreadAccumulator): [string, boolean] {
   if (thread.matchedChatTitle) {
-    return thread.matchedChatTitle;
+    return [thread.matchedChatTitle, true];
   }
   if (thread.detectedTitle) {
-    return thread.detectedTitle;
+    return [thread.detectedTitle, true];
   }
   if (thread.firstUserPromptText) {
     const promptTitle = summariseThreadPrompt(thread.firstUserPromptText);
     if (promptTitle) {
-      return promptTitle;
+      return [promptTitle, true];
     }
   }
   const firstAction = thread.actions[0];
   if (firstAction?.label === "New chat prompt") {
-    return `New Chat · ${new Date(firstAction.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return [
+      `New Chat · ${new Date(firstAction.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      false,
+    ];
   }
   if (firstAction) {
-    return `${getSyntheticThreadLabel(firstAction, thread.sawTitleRequest)} · ${new Date(firstAction.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return [
+      `${getSyntheticThreadLabel(firstAction, thread.sawTitleRequest)} · ${new Date(firstAction.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      false,
+    ];
   }
-  return thread.title;
+  return [thread.title, false];
 }
 
 function buildThreadAction(
@@ -1167,6 +1175,7 @@ function buildThreadDrilldown(
 ): {
   threads: SessionThreadSummary[];
   stepsByThread: Record<string, AgentStep[]>;
+  matchedChatTitlesByThread: Record<string, string>;
 } {
   const actionableEvents = events.filter((event) => event.eventType !== "editorSwitch");
   const episodeByActionId = new Map<string, string | null>();
@@ -1189,6 +1198,7 @@ function buildThreadDrilldown(
     hasAutonomousRun: false,
     stepCount: 0,
     longestPauseMs: 0,
+    hasSelectableTitle: false,
     actions: [],
     signalEvents: [],
     lastPromptAction: null,
@@ -1343,8 +1353,16 @@ function buildThreadDrilldown(
     }),
   );
 
+  const matchedChatTitlesByThread = Object.fromEntries(
+    threads
+      .filter((thread) => Boolean(thread.matchedChatTitle?.trim()))
+      .map((thread) => [thread.threadId, thread.matchedChatTitle?.trim() ?? ""]),
+  );
+
   const threadSummaries = threads.map((thread) => {
-    thread.title = buildThreadTitle(thread);
+    const [title, hasSelectableTitle] = buildThreadTitle(thread);
+    thread.title = title;
+    thread.hasSelectableTitle = hasSelectableTitle;
     thread.estimatedMinutesSaved =
       thread.acceptedChars / TYPING_SPEED_CPM + (thread.autonomousDurationMs / 60_000) * AGENTIC_COGNITIVE_WEIGHT;
     return finalizeThread(thread);
@@ -1353,6 +1371,7 @@ function buildThreadDrilldown(
   return {
     threads: threadSummaries,
     stepsByThread,
+    matchedChatTitlesByThread,
   };
 }
 
@@ -1563,10 +1582,34 @@ export function buildSessionDetail(
   };
 }
 
-function getSessionList(events: TrackedEvent[]): SessionSummary[] {
+function chooseRepresentativeSessionTitle(threads: SessionThreadSummary[]): string | null {
+  const titledThreads = threads
+    .filter((thread) => thread.hasSelectableTitle && thread.stepCount > 0)
+    .sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+
+  return titledThreads[0]?.title ?? null;
+}
+
+export function buildSessionList(
+  events: TrackedEvent[],
+  titleRecords: ChatSessionTitleRecord[] = [],
+  chatSessions: ChatSessionRecord[] = [],
+): SessionSummary[] {
   return Array.from(groupEventsBySession(events).entries())
     .filter(([, sessionEvents]) => isAdvancedSession(sessionEvents))
-    .map(([sessionId, sessionEvents]) => buildSessionSummary(sessionId, sessionEvents))
+    .map(([sessionId, sessionEvents]) => {
+      const sortedEvents = sortEvents(sessionEvents);
+      if (sortedEvents.length === 0) {
+        return null;
+      }
+      const threadDrilldown = buildThreadDrilldown(sessionId, sortedEvents, [], titleRecords, chatSessions);
+      const title = chooseRepresentativeSessionTitle(threadDrilldown.threads);
+      if (!title) {
+        return null;
+      }
+      return buildSessionSummary(sessionId, sortedEvents, title);
+    })
+    .filter((session): session is SessionSummary => session !== null)
     .sort((a, b) => b.date.localeCompare(a.date) || b.totalActions - a.totalActions);
 }
 
@@ -1704,7 +1747,7 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
       }
 
       case "getSessionList": {
-        const result = getSessionList(cachedEvents);
+        const result = buildSessionList(cachedEvents, cachedChatSessionTitles, cachedChatSessions);
         parentPort?.postMessage({ type: "getSessionList", id: msg.id, result });
         break;
       }

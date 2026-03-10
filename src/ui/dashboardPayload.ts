@@ -61,6 +61,7 @@ function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary
       const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : session.sessionId;
       return {
         sessionId: session.sessionId,
+        title: null,
         date,
         totalActions,
         trueRate,
@@ -83,8 +84,11 @@ export function buildDashboardPayload(
   refreshAnalysis: RefreshAnalysis[] = [],
   sessionSummaries: SessionSummary[] = [],
 ): DashboardPayload {
+  const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
   const effectiveSessionSummaries =
-    sessionSummaries.length > 0 ? sessionSummaries : buildFallbackSessionSummaries(stats);
+    sessionSummaries.length > 0
+      ? titledSessionSummaries
+      : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
 
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { SessionSignalEvent, TextChangeEvent, TrackedEvent } from "../../src/events/eventSchema";
-import { buildSessionDetail } from "../../src/worker/dbWorker";
+import { buildSessionDetail, buildSessionList } from "../../src/worker/dbWorker";
 
 function makeSignal(
   overrides: Partial<SessionSignalEvent> & Pick<SessionSignalEvent, "timestamp" | "signalType">,
@@ -33,6 +33,127 @@ function makeTextChange(timestamp: string, charsAdded: number): TextChangeEvent 
 }
 
 suite("dbWorker session detail", () => {
+  test("buildSessionList keeps only sessions with matched chat titles", () => {
+    const events: TrackedEvent[] = [
+      {
+        ...makeSignal({
+          timestamp: "2026-03-08T09:00:00.000Z",
+          signalType: "chat-request",
+          actor: "human",
+          phase: "human",
+          intent: "vscodePrompt",
+          rawText: "Implement session list title filtering",
+        }),
+        sessionId: "session-titled",
+      },
+      {
+        ...makeSignal({
+          timestamp: "2026-03-08T09:00:06.000Z",
+          signalType: "chat-request",
+          actor: "ai",
+          phase: "execution",
+          intent: "panel/editAgent",
+        }),
+        sessionId: "session-titled",
+      },
+      {
+        ...makeTextChange("2026-03-08T09:00:08.000Z", 12),
+        sessionId: "session-titled",
+      },
+      {
+        ...makeSignal({
+          timestamp: "2026-03-08T10:00:00.000Z",
+          signalType: "chat-request",
+          actor: "ai",
+          phase: "execution",
+          intent: "panel/editAgent",
+          rawText: "background worker activity",
+        }),
+        sessionId: "session-untitled",
+      },
+      {
+        ...makeTextChange("2026-03-08T10:00:03.000Z", 6),
+        sessionId: "session-untitled",
+      },
+    ];
+
+    const summaries = buildSessionList(
+      events,
+      [],
+      [
+        {
+          chatSessionId: "chat-1",
+          workspaceId: "workspace-1",
+          title: "Implement session list title filtering",
+          createdAt: "2026-03-08T09:00:01.000Z",
+          lastMessageAt: "2026-03-08T09:05:00.000Z",
+          firstRequestText: "Implement session list title filtering",
+          requests: [
+            {
+              requestId: "request-1",
+              timestamp: Date.parse("2026-03-08T09:00:01.000Z"),
+              agentId: "github.copilot.editsAgent",
+              customAgentName: null,
+              modelId: "gpt-5.4",
+              messageText: "Implement session list title filtering",
+              timings: { firstProgress: 100, totalElapsed: 800 },
+              toolCalls: [],
+              availableSkills: [],
+              loadedSkills: [],
+            },
+          ],
+          source: "jsonl",
+          provider: "copilot",
+        },
+      ],
+    );
+
+    assert.deepStrictEqual(
+      summaries.map((summary) => ({ sessionId: summary.sessionId, title: summary.title })),
+      [{ sessionId: "session-titled", title: "Implement session list title filtering" }],
+    );
+  });
+
+  test("buildSessionList excludes titled sessions that still have no visible steps", () => {
+    const events: TrackedEvent[] = [
+      {
+        ...makeSignal({
+          timestamp: "2026-03-08T11:00:00.000Z",
+          signalType: "chat-request",
+          actor: "human",
+          phase: "human",
+          intent: "vscodePrompt",
+          rawText: "Title request only",
+        }),
+        sessionId: "session-empty-steps",
+      },
+      {
+        ...makeTextChange("2026-03-08T11:00:03.000Z", 4),
+        sessionId: "session-empty-steps",
+      },
+    ];
+
+    const summaries = buildSessionList(
+      events,
+      [],
+      [
+        {
+          chatSessionId: "chat-2",
+          workspaceId: "workspace-1",
+          title: "Title request only",
+          createdAt: "2026-03-08T11:00:00.000Z",
+          lastMessageAt: "2026-03-08T11:01:00.000Z",
+          firstRequestText: "Title request only",
+          requests: [],
+          source: "jsonl",
+          provider: "copilot",
+        },
+      ],
+    );
+
+    assert.deepStrictEqual(summaries, []);
+  });
+
   test("keeps post-loop human confirmation inside the same episode", () => {
     const events: TrackedEvent[] = [
       makeSignal({ timestamp: "2026-03-08T10:00:00.000Z", signalType: "plan-proposal", phase: "planning" }),
@@ -181,6 +302,8 @@ suite("dbWorker session detail", () => {
     assert.strictEqual(detail?.threads.length, 2);
     assert.strictEqual(detail?.threads[0]?.title.startsWith("New Chat"), true);
     assert.strictEqual(detail?.threads[1]?.title.startsWith("New Chat"), true);
+    assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, false);
+    assert.strictEqual(detail?.threads[1]?.hasSelectableTitle, false);
     const firstThreadSteps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
     const secondThreadSteps = detail?.stepsByThread[detail?.threads[1]?.threadId ?? ""] ?? [];
     assert.deepStrictEqual(
@@ -223,6 +346,7 @@ suite("dbWorker session detail", () => {
     const detail = buildSessionDetail("session-1", events);
     assert.ok(detail);
     assert.strictEqual(detail?.threads[0]?.title, "Investigate flaky auth refresh");
+    assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, true);
     const firstThreadSteps = detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? [];
     assert.deepStrictEqual(
       firstThreadSteps.map((step) => step.label),
@@ -251,6 +375,7 @@ suite("dbWorker session detail", () => {
     const detail = buildSessionDetail("session-1", events);
     assert.ok(detail);
     assert.strictEqual(detail?.threads[0]?.title, "Implement OAuth callback handling for mobile deep links");
+    assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, true);
     assert.deepStrictEqual(
       (detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""] ?? []).map((step) => step.label),
       ["Prompt", "Searched"],
@@ -295,6 +420,7 @@ suite("dbWorker session detail", () => {
     assert.ok(detail);
     assert.strictEqual(detail?.threads.length, 1);
     assert.match(detail?.threads[0]?.title ?? "", /^Execution thread · /);
+    assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, false);
   });
 
   test("matches workspace chat customTitle to the nearest thread start", () => {
@@ -329,6 +455,7 @@ suite("dbWorker session detail", () => {
 
     assert.ok(detail);
     assert.strictEqual(detail?.threads[0]?.title, "コンテキスト疲労度分析機能の実装");
+    assert.strictEqual(detail?.threads[0]?.hasSelectableTitle, true);
   });
 
   test("ignores workspace chat titles that are too far from the thread start", () => {
@@ -387,6 +514,7 @@ suite("dbWorker session detail", () => {
     assert.strictEqual(detail?.threads.length, 2);
     assert.strictEqual(detail?.threads[0]?.acceptedChars, 24);
     assert.strictEqual(detail?.threads[1]?.title.includes("Patch thread"), true);
+    assert.strictEqual(detail?.threads[1]?.hasSelectableTitle, false);
     assert.strictEqual(detail?.threads[1]?.stepCount, 1);
     assert.strictEqual(detail?.stepsByThread[detail?.threads[1]?.threadId ?? ""]?.[0]?.label, "Updated");
     assert.strictEqual(detail?.stepsByThread[detail?.threads[0]?.threadId ?? ""]?.[0]?.label, "Prompt");

@@ -1050,6 +1050,10 @@ function sortThreadsNewestFirst(threads: SessionDetailPayload["threads"]): Sessi
   return [...threads].sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
 }
 
+function filterSelectableThreads(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
+  return threads.filter((thread) => thread.hasSelectableTitle && thread.stepCount > 0);
+}
+
 function requestSessionDetail(sessionId: string): void {
   selectedSessionId = sessionId;
   selectedThreadId = "";
@@ -1060,10 +1064,11 @@ function requestSessionDetail(sessionId: string): void {
 }
 
 function renderThreadList(detail: SessionDetailPayload): string {
-  if (detail.threads.length === 0) {
-    return '<div class="db-empty-panel">No logical chat threads were detected for this session.</div>';
+  const selectableThreads = filterSelectableThreads(detail.threads);
+  if (selectableThreads.length === 0) {
+    return '<div class="db-empty-panel">No selectable threads were detected for this session.</div>';
   }
-  return sortThreadsNewestFirst(detail.threads)
+  return sortThreadsNewestFirst(selectableThreads)
     .map((thread) => {
       const active = thread.threadId === selectedThreadId ? " active" : "";
       return `<button class="db-thread-row${active}" data-thread-id="${escHtml(thread.threadId)}">
@@ -1077,11 +1082,11 @@ function renderThreadList(detail: SessionDetailPayload): string {
 }
 
 function renderSelectedThread(detail: SessionDetailPayload): string {
-  const sortedThreads = sortThreadsNewestFirst(detail.threads);
+  const sortedThreads = sortThreadsNewestFirst(filterSelectableThreads(detail.threads));
   const selectedThread =
     sortedThreads.find((thread) => thread.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
   if (!selectedThread) {
-    return '<div class="db-empty-panel">No thread detail is available.</div>';
+    return '<div class="db-empty-panel">No selectable thread detail is available.</div>';
   }
   if (selectedThreadId !== selectedThread.threadId) {
     selectedThreadId = selectedThread.threadId;
@@ -1148,7 +1153,7 @@ function renderSessionSummaries(sessionSummaries: DashboardPayload["sessionSumma
       const color = scoreColor(session.efficiencyScore);
       return `<button class="db-session-row${active}" data-session-id="${escHtml(session.sessionId)}" style="border-left-color:${color}">
         <div class="db-session-row-score">${session.efficiencyScore.toFixed(1)}</div>
-        <div>${escHtml(session.sessionId)}</div>
+        <div title="${escHtml(session.sessionId)}">${escHtml(session.title ?? session.sessionId)}</div>
         <div class="db-session-row-meta">
           <span>${escHtml(session.date)}</span>
           <span>${session.totalActions} actions</span>
@@ -1156,6 +1161,9 @@ function renderSessionSummaries(sessionSummaries: DashboardPayload["sessionSumma
         <div class="db-session-row-meta">
           <span>${session.trueRate.toFixed(1)}% true</span>
           <span>${escHtml(formatDurationCompact(session.autonomousDuration))}</span>
+        </div>
+        <div class="db-session-row-meta">
+          <span>${escHtml(trunc(session.sessionId, 24))}</span>
         </div>
       </button>`;
     })
@@ -1185,7 +1193,7 @@ function renderSessionDetail(detail: SessionDetailPayload | null, isLoading = fa
     return;
   }
 
-  const sortedThreads = sortThreadsNewestFirst(detail.threads);
+  const sortedThreads = sortThreadsNewestFirst(filterSelectableThreads(detail.threads));
   if (!sortedThreads.some((thread) => thread.threadId === selectedThreadId)) {
     selectedThreadId = sortedThreads[0]?.threadId ?? "";
   }

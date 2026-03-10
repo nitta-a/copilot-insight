@@ -218,6 +218,7 @@ suite("buildDashboardPayload", () => {
       const summaries: SessionSummary[] = [
         {
           sessionId: "s1",
+          title: "Investigate session explorer",
           date: "2026-03-07",
           totalActions: 12,
           trueRate: 58.5,
@@ -227,6 +228,11 @@ suite("buildDashboardPayload", () => {
       ];
       const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], summaries);
       assert.deepStrictEqual(payload.sessionSummaries, summaries);
+    });
+
+    test("fallback session summaries stay hidden when no titled sessions are available", () => {
+      const payload = buildDashboardPayload(makeStats());
+      assert.deepStrictEqual(payload.sessionSummaries, []);
     });
 
     test("freshness is null when refresh analysis is unavailable", () => {

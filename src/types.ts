@@ -5,6 +5,7 @@ export interface LanguageStat {
 
 export interface SessionSummary {
   sessionId: string;
+  title: string | null;
   date: string;
   totalActions: number;
   trueRate: number;
@@ -50,6 +51,7 @@ export interface SessionThreadSummary {
   hasAutonomousRun: boolean;
   stepCount: number;
   longestPauseMs: number;
+  hasSelectableTitle: boolean;
 }
 
 export type AgentStepLabel =
