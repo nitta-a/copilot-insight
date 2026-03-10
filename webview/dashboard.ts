@@ -31,7 +31,7 @@ import {
 } from "chart.js";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { AgentStep, SessionDetailPayload } from "../src/types";
+import type { AgentStep, SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   AgentIntelligenceOverview,
   ContextFreshness,
@@ -86,9 +86,11 @@ const vscode = acquireVsCodeApi();
 let timelineChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
-let currentSessionDetail: SessionDetailPayload | null = null;
-let selectedSessionId = "";
 let selectedThreadId = "";
+let selectedThreadSessionId = "";
+const allSessionDetails = new Map<string, SessionDetailPayload>();
+const sessionLoadQueue: string[] = [];
+let isBackgroundLoading = false;
 let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let modelAutonomyMapRoot: Root | null = null;
@@ -928,29 +930,6 @@ function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"
   autonomyEvolutionRoot.render(createElement(AutonomyEvolutionChart, { data: evolutionData }));
 }
 
-function scoreColor(score: number): string {
-  const hue = Math.max(0, Math.min(120, (score / 100) * 120));
-  return `hsl(${hue}, 72%, 45%)`;
-}
-
-function formatDurationCompact(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) {
-    return `${Math.round(ms / 1000)}s`;
-  }
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
-function splitFatigueReasons(reason: string): string[] {
-  return reason
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry, index, all) => entry.length > 0 && all.indexOf(entry) === index);
-}
-
 function formatPhaseLabel(phase: string): string {
   return phase.charAt(0).toUpperCase() + phase.slice(1);
 }
@@ -1055,30 +1034,21 @@ function filterSelectableThreads(threads: SessionDetailPayload["threads"]): Sess
 }
 
 function requestSessionDetail(sessionId: string): void {
-  selectedSessionId = sessionId;
-  selectedThreadId = "";
-  currentSessionDetail = null;
-  renderSessionSummaries(currentPayload?.sessionSummaries ?? []);
-  renderSessionDetail(null, true);
   vscode.postMessage({ type: "requestSessionDetail", payload: { sessionId } } satisfies WebviewToHostMessage);
 }
 
-function renderThreadList(detail: SessionDetailPayload): string {
-  const selectableThreads = filterSelectableThreads(detail.threads);
-  if (selectableThreads.length === 0) {
-    return '<div class="db-empty-panel">No threads with activity were detected for this session.</div>';
+function loadNextFromQueue(): void {
+  if (isBackgroundLoading) {
+    return;
   }
-  return sortThreadsNewestFirst(selectableThreads)
-    .map((thread) => {
-      const active = thread.threadId === selectedThreadId ? " active" : "";
-      return `<button class="db-thread-row${active}" data-thread-id="${escHtml(thread.threadId)}">
-        <div class="db-thread-row-title">${thread.hasAutonomousRun ? "🤖 " : ""}${escHtml(thread.title)}</div>
-        <div class="db-thread-row-subtext">${escHtml(new Date(thread.startedAt).toLocaleString())}</div>
-        <div class="db-thread-row-meta"><span>${thread.stepCount} steps</span><span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span></div>
-        <div class="db-thread-row-meta"><span>${thread.longestPauseMs > 0 ? `Longest wait ${escHtml(formatPause(thread.longestPauseMs))}` : "No pause detected"}</span><span>${thread.hasAutonomousRun ? "Autonomous" : "Manual"}</span></div>
-      </button>`;
-    })
-    .join("");
+  while (sessionLoadQueue.length > 0) {
+    const sessionId = sessionLoadQueue.shift()!;
+    if (!allSessionDetails.has(sessionId)) {
+      isBackgroundLoading = true;
+      requestSessionDetail(sessionId);
+      return;
+    }
+  }
 }
 
 function renderSelectedThread(detail: SessionDetailPayload): string {
@@ -1138,121 +1108,61 @@ function renderSelectedThread(detail: SessionDetailPayload): string {
     <div class="db-agent-step-timeline">${stepsHtml}</div>`;
 }
 
-function renderSessionSummaries(sessionSummaries: DashboardPayload["sessionSummaries"]): void {
+function renderAllThreads(): void {
   const el = document.getElementById("db-session-list");
   if (!el) {
     return;
   }
-  if (sessionSummaries.length === 0) {
-    el.innerHTML = '<div class="db-empty-panel">No advanced-analysis sessions are available yet.</div>';
+  const flat: Array<{ thread: SessionThreadSummary; sessionId: string }> = [];
+  for (const [sessionId, detail] of allSessionDetails) {
+    for (const thread of filterSelectableThreads(detail.threads)) {
+      flat.push({ thread, sessionId });
+    }
+  }
+  if (flat.length === 0) {
+    el.innerHTML = `<div class="db-empty-panel">${isBackgroundLoading || sessionLoadQueue.length > 0 ? "Loading threads\u2026" : "No threads with activity were detected."}</div>`;
     return;
   }
-  el.innerHTML = sessionSummaries
-    .map((session) => {
-      const active = session.sessionId === selectedSessionId ? " active" : "";
-      const color = scoreColor(session.efficiencyScore);
-      return `<button class="db-session-row${active}" data-session-id="${escHtml(session.sessionId)}" style="border-left-color:${color}">
-        <div class="db-session-row-score">${session.efficiencyScore.toFixed(1)}</div>
-        <div title="${escHtml(session.sessionId)}">${escHtml(session.title ?? session.sessionId)}</div>
-        <div class="db-session-row-meta">
-          <span>${escHtml(session.date)}</span>
-          <span>${session.totalActions} actions</span>
-        </div>
-        <div class="db-session-row-meta">
-          <span>${session.trueRate.toFixed(1)}% true</span>
-          <span>${escHtml(formatDurationCompact(session.autonomousDuration))}</span>
-        </div>
-        <div class="db-session-row-meta">
-          <span>${escHtml(trunc(session.sessionId, 24))}</span>
-        </div>
+  flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
+  el.innerHTML = flat
+    .map(({ thread, sessionId }) => {
+      const active = thread.threadId === selectedThreadId && sessionId === selectedThreadSessionId ? " active" : "";
+      return `<button class="db-thread-row${active}" data-thread-id="${escHtml(thread.threadId)}" data-session-id="${escHtml(sessionId)}">
+        <div class="db-thread-row-title">${thread.hasAutonomousRun ? "\uD83E\uDD16 " : ""}${escHtml(thread.title)}</div>
+        <div class="db-thread-row-subtext">${escHtml(new Date(thread.startedAt).toLocaleString())}</div>
+        <div class="db-thread-row-meta"><span>${thread.stepCount} steps</span><span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span></div>
       </button>`;
     })
     .join("");
-
-  el.querySelectorAll<HTMLButtonElement>(".db-session-row").forEach((button) => {
+  el.querySelectorAll<HTMLButtonElement>(".db-thread-row").forEach((button) => {
     button.addEventListener("click", () => {
+      const threadId = button.dataset.threadId ?? "";
       const sessionId = button.dataset.sessionId ?? "";
-      if (sessionId && sessionId !== selectedSessionId) {
-        requestSessionDetail(sessionId);
+      if (threadId && !(threadId === selectedThreadId && sessionId === selectedThreadSessionId)) {
+        selectedThreadId = threadId;
+        selectedThreadSessionId = sessionId;
+        renderAllThreads();
+        renderThreadDetail();
       }
     });
   });
 }
 
-function renderSessionDetail(detail: SessionDetailPayload | null, isLoading = false): void {
+function renderThreadDetail(): void {
   const el = document.getElementById("db-session-detail");
   if (!el) {
     return;
   }
-  if (isLoading) {
-    el.innerHTML = '<div class="db-empty-panel">Loading session detail…</div>';
+  if (!selectedThreadId || !selectedThreadSessionId) {
+    el.innerHTML = '<div class="db-empty-panel">Select a thread to inspect its timeline.</div>';
     return;
   }
+  const detail = allSessionDetails.get(selectedThreadSessionId);
   if (!detail) {
-    el.innerHTML = '<div class="db-empty-panel">Select a session to inspect its timeline and episodes.</div>';
+    el.innerHTML = '<div class="db-empty-panel">Loading thread detail…</div>';
     return;
   }
-
-  const sortedThreads = sortThreadsNewestFirst(filterSelectableThreads(detail.threads));
-  if (!sortedThreads.some((thread) => thread.threadId === selectedThreadId)) {
-    selectedThreadId = sortedThreads[0]?.threadId ?? "";
-  }
-
-  const fatigueReasons = splitFatigueReasons(detail.fatigueMarker?.reason ?? "");
-  const fatigueHtml = detail.fatigueMarker
-    ? `<div class="db-fatigue-marker"><strong>Context fatigue started here</strong><div class="db-fatigue-score">Score ${detail.fatigueMarker.score}</div><div class="db-fatigue-reason-list">${fatigueReasons
-        .map((reason) => `<span class="db-fatigue-reason">${escHtml(reason)}</span>`)
-        .join("")}</div></div>`
-    : "";
-  const summaryCards = `
-    <div class="db-session-summary-grid">
-      <div class="db-session-summary-card"><div class="db-session-summary-label">Efficiency</div><div class="db-session-summary-value">${detail.efficiencyScore.toFixed(1)}</div></div>
-      <div class="db-session-summary-card"><div class="db-session-summary-label">True Rate</div><div class="db-session-summary-value">${detail.trueRate.toFixed(1)}%</div></div>
-      <div class="db-session-summary-card"><div class="db-session-summary-label">Autonomy</div><div class="db-session-summary-value">${escHtml(formatDurationCompact(detail.autonomousDuration))}</div></div>
-      <div class="db-session-summary-card"><div class="db-session-summary-label">Actions</div><div class="db-session-summary-value">${detail.totalActions}</div></div>
-    </div>`;
-  const episodeHtml = detail.episodes
-    .map((episode) => {
-      const isFatigueEpisode = detail.fatigueMarker?.episodeId === episode.episodeId;
-      const badges = [
-        `<span class="db-episode-badge">${escHtml(episode.phases.map(formatPhaseLabel).join(" / "))}</span>`,
-        episode.accepted
-          ? '<span class="db-episode-badge accepted">Confirmed</span>'
-          : '<span class="db-episode-badge">Unconfirmed</span>',
-        episode.contextBoundary ? '<span class="db-episode-badge boundary">Refresh Boundary</span>' : "",
-        isFatigueEpisode
-          ? `<span class="db-episode-badge fatigue">Fatigue Start · ${episode.fatigueScore}</span>`
-          : `<span class="db-episode-badge">Fatigue ${episode.fatigueScore}</span>`,
-      ]
-        .filter(Boolean)
-        .join("");
-      return `<div class="db-episode-card"><strong>${escHtml(episode.summary)}</strong><div style="margin-top:4px;font-size:0.82em;opacity:0.78">${escHtml(episode.startedAt)} → ${escHtml(episode.endedAt)}</div><div class="db-episode-badges">${badges}</div><div style="margin-top:6px;font-size:0.82em;opacity:0.78">AI ${episode.aiActionCount} · Human ${episode.humanActionCount}</div></div>`;
-    })
-    .join("\n");
-  const threadListHtml = renderThreadList(detail);
-  const selectedThreadHtml = renderSelectedThread(detail);
-
-  el.innerHTML = `
-    <div style="margin-bottom:14px"><strong>${escHtml(detail.sessionId)}</strong><div style="margin-top:4px;font-size:0.84em;opacity:0.74">${escHtml(detail.date)}</div></div>
-    ${summaryCards}
-    ${fatigueHtml}
-    <h3 style="margin:18px 0 12px">Threads</h3>
-    <div class="db-thread-layout">
-      <div id="db-thread-list" class="db-thread-list">${threadListHtml}</div>
-      <div id="db-thread-detail" class="db-thread-detail">${selectedThreadHtml}</div>
-    </div>
-    <h3 style="margin:18px 0 12px">Episodes</h3>
-    <div class="db-episode-list">${episodeHtml}</div>`;
-
-  el.querySelectorAll<HTMLButtonElement>(".db-thread-row").forEach((button) => {
-    button.addEventListener("click", () => {
-      const threadId = button.dataset.threadId ?? "";
-      if (threadId && threadId !== selectedThreadId) {
-        selectedThreadId = threadId;
-        renderSessionDetail(detail);
-      }
-    });
-  });
+  el.innerHTML = renderSelectedThread(detail);
 }
 
 // ---------------------------------------------------------------------------
@@ -1271,18 +1181,14 @@ function render(payload: DashboardPayload): void {
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
-  renderSessionSummaries(payload.sessionSummaries);
-  if (payload.sessionSummaries.length === 0) {
-    selectedSessionId = "";
-    currentSessionDetail = null;
-    renderSessionDetail(null);
-    return;
+  for (const session of payload.sessionSummaries) {
+    if (!allSessionDetails.has(session.sessionId)) {
+      sessionLoadQueue.push(session.sessionId);
+    }
   }
-  if (!payload.sessionSummaries.some((session) => session.sessionId === selectedSessionId)) {
-    requestSessionDetail(payload.sessionSummaries[0]?.sessionId ?? "");
-    return;
-  }
-  renderSessionDetail(currentSessionDetail);
+  loadNextFromQueue();
+  renderAllThreads();
+  renderThreadDetail();
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,9 +1200,13 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
   if (msg.type === "dashboardData") {
     render(msg.payload);
   } else if (msg.type === "sessionDetailData") {
-    currentSessionDetail = msg.payload;
-    renderSessionDetail(currentSessionDetail);
-    renderSessionSummaries(currentPayload?.sessionSummaries ?? []);
+    isBackgroundLoading = false;
+    if (msg.payload) {
+      allSessionDetails.set(msg.payload.sessionId, msg.payload);
+    }
+    renderAllThreads();
+    renderThreadDetail();
+    loadNextFromQueue();
   } else if (msg.type === "exportComplete") {
     // Only markdown and timeline PNG exports are currently supported.
     const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";

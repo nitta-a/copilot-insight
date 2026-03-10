@@ -231,14 +231,14 @@ export function getHtmlContent(
     .db-refresh-roi-negative { color: var(--vscode-charts-red, #f14c4c); }
     .db-refresh-roi-neutral { color: var(--vscode-foreground); opacity: 0.8; }
     .db-session-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 18px; min-height: 520px; }
-    .db-session-list, .db-session-detail {
+    .db-session-detail {
       background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 82%, transparent);
       border: 1px solid var(--vscode-editor-inactiveSelectionBackground);
       border-radius: 10px;
       overflow: hidden;
     }
     .db-session-list { display: flex; flex-direction: column; }
-    .db-session-list-header, .db-session-detail-header { padding: 14px 16px; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
+    .db-session-detail-header { padding: 14px 16px; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-session-list-body { overflow: auto; max-height: 620px; }
     .db-session-row {
       width: 100%;
@@ -408,16 +408,11 @@ export function getHtmlContent(
     <div id="db-tab-sessions" class="db-tab-pane" role="tabpanel">
       <div class="db-session-layout">
         <section class="db-session-list">
-          <div class="db-session-list-header">
-            <h2 style="margin:0">Session Intelligence Explorer</h2>
-            <div style="margin-top:4px;font-size:0.82em;opacity:0.7">Episode efficiency is color-coded from red to green.</div>
-          </div>
           <div id="db-session-list" class="db-session-list-body"></div>
         </section>
         <section class="db-session-detail">
           <div class="db-session-detail-header">
-            <h2 style="margin:0">Selected Session</h2>
-            <div style="margin-top:4px;font-size:0.82em;opacity:0.7">Human vs AI handoff timeline and episode boundaries.</div>
+            <h2 style="margin:0">Threads</h2>
           </div>
           <div id="db-session-detail" class="db-session-detail-body"></div>
         </section>
