@@ -113,17 +113,23 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
  * `.log` file it finds directly inside them, silently skipping missing or
  * unreadable files.
  */
-export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
+export async function parseRemoteExthostLog(
+  sessionDir: string,
+  ctx: ParsingContext,
+): Promise<{ matchedDirs: number; parsedFiles: number }> {
+  let parsedFiles = 0;
+  let matchedDirs = 0;
   let entries: string[];
   try {
     entries = await fs.readdir(sessionDir);
   } catch {
-    return;
+    return { matchedDirs: 0, parsedFiles: 0 };
   }
   for (const entry of entries) {
     if (!/^exthost/i.test(entry)) {
       continue;
     }
+    matchedDirs++;
     // Parse all .log files directly inside the exthost<N> directory.
     // fs.readdir naturally rejects non-directories, so no explicit isDirectory check is needed.
     const exthostDir = path.join(sessionDir, entry);
@@ -142,20 +148,24 @@ export async function parseRemoteExthostLog(sessionDir: string, ctx: ParsingCont
         const content = await fs.readFile(filePath, "utf-8");
         parseLogContent(content, ctx);
         ctx.logFilesFound++;
+        parsedFiles++;
       } catch {
         // Skip unreadable file
       }
     }
   }
+  return { matchedDirs, parsedFiles };
 }
 
-export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<void> {
+export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {
   const terminalLogPath = path.join(sessionDir, "terminal.log");
   try {
     const content = await fs.readFile(terminalLogPath, "utf-8");
     parseLogContent(content, ctx);
     ctx.logFilesFound++;
+    return true;
   } catch {
     // Skip missing or unreadable terminal logs
+    return false;
   }
 }

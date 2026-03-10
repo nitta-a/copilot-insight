@@ -1,9 +1,9 @@
+import * as vscode from "vscode";
 import * as assert from "assert";
 import * as fs from "fs";
-import * as vscode from "vscode";
+import type { SessionSignalEvent, TrackedEvent } from "../../src/events/eventSchema";
 import { EventTracker } from "../../src/events/eventTracker";
 import type { DbWorkerClient } from "../../src/worker/dbWorkerClient";
-import type { TrackedEvent } from "../../src/events/eventSchema";
 
 /** Remove a directory tree (cleanup). */
 function rmrf(dir: string): void {
@@ -127,6 +127,24 @@ suite("EventTracker", () => {
       assert.strictEqual(last.isPartialAccept, true);
       assert.strictEqual(last.acceptedCharacters, 11);
     }
+  });
+
+  test("recordSessionSignal writes a completion-shown event", async () => {
+    await tracker.recordSessionSignal({
+      languageId: "typescript",
+      signalType: "completion-shown",
+      actor: "system",
+      phase: "planning",
+      intent: "inline-completion/shown",
+      rawText: "inline completion shown",
+    });
+    const today = new Date().toISOString().substring(0, 10);
+    const events = tracker.storage.readByDate(today);
+    const last = events[events.length - 1] as SessionSignalEvent;
+    assert.strictEqual(last.eventType, "sessionSignal");
+    assert.strictEqual(last.signalType, "completion-shown");
+    assert.strictEqual(last.languageId, "typescript");
+    assert.strictEqual(last.success, true);
   });
 
   test("dispose is idempotent", () => {

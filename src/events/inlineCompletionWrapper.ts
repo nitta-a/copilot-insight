@@ -1,5 +1,17 @@
 import * as vscode from "vscode";
 
+export interface InlineCompletionMetadata {
+  languageId: string;
+  acceptedText: string;
+  uri: string;
+  lineNumber: number;
+}
+
+interface TrackingCommandArguments {
+  metadata: InlineCompletionMetadata;
+  originalCommand: vscode.Command | undefined;
+}
+
 /** Real-time inline completion statistics for the current VS Code session. */
 export interface RealtimeInlineStats {
   readonly totalShown: number;
@@ -37,8 +49,7 @@ interface AugmentedInlineCompletionItemProvider extends vscode.InlineCompletionI
 export function wrapInlineCompletionProvider(
   provider: vscode.InlineCompletionItemProvider,
   acceptCommand: string,
-  onShown: (languageId: string) => void,
-  onAccepted: (languageId: string) => void,
+  onShown: (metadata: InlineCompletionMetadata) => void,
 ): AugmentedInlineCompletionItemProvider {
   const augmented = provider as AugmentedInlineCompletionItemProvider;
   return {
@@ -63,7 +74,12 @@ export function wrapInlineCompletionProvider(
           command: {
             command: acceptCommand,
             title: "",
-            arguments: [languageId, item.command],
+            arguments: [
+              {
+                metadata: buildInlineCompletionMetadata(document, position, item),
+                originalCommand: item.command,
+              } satisfies TrackingCommandArguments,
+            ],
           } satisfies vscode.Command,
         }));
       }
@@ -92,8 +108,7 @@ export function wrapInlineCompletionProvider(
      * The item carries `languageId` in `command.arguments[0]` (set above).
      */
     handleDidShowCompletionItem(item: vscode.InlineCompletionItem, updatedInsertText?: string): void {
-      const languageId = (item.command?.arguments?.[0] as string | undefined) ?? "";
-      onShown(languageId);
+      onShown(readMetadataFromCommand(item));
       augmented.handleDidShowCompletionItem?.(item, updatedInsertText);
     },
 
@@ -133,8 +148,18 @@ export class InlineCompletionTracker implements vscode.Disposable {
   private readonly _byLanguage = new Map<string, { shown: number; accepted: number }>();
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _originalRegister: typeof vscode.languages.registerInlineCompletionItemProvider;
+  private readonly _onAcceptedEvent?: (metadata: InlineCompletionMetadata) => void | Promise<void>;
+  private readonly _onShownEvent?: (metadata: InlineCompletionMetadata) => void | Promise<void>;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(
+    context: vscode.ExtensionContext,
+    options?: {
+      onAccepted?: (metadata: InlineCompletionMetadata) => void | Promise<void>;
+      onShown?: (metadata: InlineCompletionMetadata) => void | Promise<void>;
+    },
+  ) {
+    this._onAcceptedEvent = options?.onAccepted;
+    this._onShownEvent = options?.onShown;
     // Save the exact original reference (no .bind()) so dispose() can restore it
     // with strict reference equality.
     this._originalRegister = vscode.languages.registerInlineCompletionItemProvider;
@@ -149,11 +174,8 @@ export class InlineCompletionTracker implements vscode.Disposable {
     ): vscode.Disposable =>
       callOriginal(
         selector,
-        wrapInlineCompletionProvider(
-          provider,
-          InlineCompletionTracker.ACCEPT_COMMAND,
-          (lang) => this._onShown(lang),
-          (lang) => this._onAccepted(lang),
+        wrapInlineCompletionProvider(provider, InlineCompletionTracker.ACCEPT_COMMAND, (metadata) =>
+          this._onShown(metadata),
         ),
       );
 
@@ -161,10 +183,12 @@ export class InlineCompletionTracker implements vscode.Disposable {
     this._disposables.push(
       vscode.commands.registerCommand(
         InlineCompletionTracker.ACCEPT_COMMAND,
-        async (languageId: string, originalCmd: vscode.Command | undefined) => {
-          this._onAccepted(languageId);
-          if (originalCmd) {
-            await vscode.commands.executeCommand(originalCmd.command, ...(originalCmd.arguments ?? []));
+        async (args: TrackingCommandArguments | string, originalCmd?: vscode.Command) => {
+          const { metadata, forwardedCommand } = normalizeAcceptCommandArgs(args, originalCmd);
+          this._onAccepted(metadata);
+          await this._onAcceptedEvent?.(metadata);
+          if (forwardedCommand) {
+            await vscode.commands.executeCommand(forwardedCommand.command, ...(forwardedCommand.arguments ?? []));
           }
         },
       ),
@@ -193,21 +217,98 @@ export class InlineCompletionTracker implements vscode.Disposable {
     this._disposables.length = 0;
   }
 
-  private _onShown(languageId: string): void {
+  private _onShown(metadata: InlineCompletionMetadata): void {
     this._totalShown++;
-    if (languageId) {
-      const entry = this._byLanguage.get(languageId) ?? { shown: 0, accepted: 0 };
+    if (metadata.languageId) {
+      const entry = this._byLanguage.get(metadata.languageId) ?? { shown: 0, accepted: 0 };
       entry.shown++;
-      this._byLanguage.set(languageId, entry);
+      this._byLanguage.set(metadata.languageId, entry);
     }
+    void this._onShownEvent?.(metadata);
   }
 
-  private _onAccepted(languageId: string): void {
+  private _onAccepted(metadata: InlineCompletionMetadata): void {
     this._totalAccepted++;
-    if (languageId) {
-      const entry = this._byLanguage.get(languageId) ?? { shown: 0, accepted: 0 };
+    if (metadata.languageId) {
+      const entry = this._byLanguage.get(metadata.languageId) ?? { shown: 0, accepted: 0 };
       entry.accepted++;
-      this._byLanguage.set(languageId, entry);
+      this._byLanguage.set(metadata.languageId, entry);
     }
   }
+}
+
+function extractAcceptedText(item: vscode.InlineCompletionItem): string {
+  const insertText = item.insertText;
+  if (typeof insertText === "string") {
+    return insertText;
+  }
+  if (insertText && typeof insertText === "object" && "value" in insertText && typeof insertText.value === "string") {
+    return insertText.value;
+  }
+  return "";
+}
+
+function buildInlineCompletionMetadata(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  item: vscode.InlineCompletionItem,
+): InlineCompletionMetadata {
+  return {
+    languageId: document.languageId,
+    acceptedText: extractAcceptedText(item),
+    uri: document.uri?.toString() ?? "",
+    lineNumber: position.line,
+  };
+}
+
+function readMetadataFromCommand(item: vscode.InlineCompletionItem): InlineCompletionMetadata {
+  const firstArg = item.command?.arguments?.[0];
+  if (isTrackingCommandArguments(firstArg)) {
+    return firstArg.metadata;
+  }
+  if (typeof firstArg === "string") {
+    return {
+      languageId: firstArg,
+      acceptedText: "",
+      uri: "",
+      lineNumber: 0,
+    };
+  }
+  return {
+    languageId: "",
+    acceptedText: "",
+    uri: "",
+    lineNumber: 0,
+  };
+}
+
+function normalizeAcceptCommandArgs(
+  args: TrackingCommandArguments | string,
+  originalCmd?: vscode.Command,
+): { metadata: InlineCompletionMetadata; forwardedCommand: vscode.Command | undefined } {
+  if (isTrackingCommandArguments(args)) {
+    return {
+      metadata: args.metadata,
+      forwardedCommand: args.originalCommand,
+    };
+  }
+  return {
+    metadata: {
+      languageId: typeof args === "string" ? args : "",
+      acceptedText: "",
+      uri: "",
+      lineNumber: 0,
+    },
+    forwardedCommand: originalCmd,
+  };
+}
+
+function isTrackingCommandArguments(value: unknown): value is TrackingCommandArguments {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "metadata" in value &&
+      value.metadata &&
+      typeof (value as TrackingCommandArguments).metadata.languageId === "string",
+  );
 }

@@ -28,11 +28,6 @@ function isAdvancedAnalysisEnabled(): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  // Install the inline-completion wrapper as early as possible so that any
-  // provider registered after activation (including GitHub Copilot) is
-  // intercepted and its show/accept events are counted in real-time.
-  const inlineTracker = new InlineCompletionTracker(context);
-
   // Conditionally start the DB worker based on the master-toggle setting.
   const workerPath = path.join(context.extensionUri.fsPath, "dist", "worker", "dbWorker.js");
   let dbWorker: DbWorkerClient | undefined = isAdvancedAnalysisEnabled()
@@ -42,6 +37,32 @@ export function activate(context: vscode.ExtensionContext) {
   // Phase 1: Event instrumentation — capture text-change, editor-switch, and
   // completion-accept events and persist them to structured storage.
   const eventTracker = new EventTracker(context, dbWorker);
+
+  // Install the inline-completion wrapper as early as possible so that any
+  // provider registered after activation (including GitHub Copilot) is
+  // intercepted and its show/accept events are counted in real-time.
+  const inlineTracker = new InlineCompletionTracker(context, {
+    onShown: async (metadata) => {
+      await eventTracker.recordSessionSignal({
+        languageId: metadata.languageId,
+        signalType: "completion-shown",
+        actor: "system",
+        phase: "planning",
+        intent: "inline-completion/shown",
+        rawText: metadata.acceptedText || "inline completion shown",
+        success: true,
+      });
+    },
+    onAccepted: async (metadata) => {
+      await eventTracker.recordCompletionAccept({
+        languageId: metadata.languageId,
+        acceptedText: metadata.acceptedText,
+      });
+      if (metadata.uri) {
+        eventTracker.trackActiveCompletion(metadata.uri, metadata.lineNumber, metadata.languageId);
+      }
+    },
+  });
 
   // Watch for runtime changes to the enableAdvancedAnalysis toggle.
   const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {

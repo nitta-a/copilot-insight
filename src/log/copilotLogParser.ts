@@ -144,6 +144,7 @@ export async function parseCopilotLogs(
         channel.appendLine(`Scanning session: ${sessDir}`);
 
         const copilotDirs = await findCopilotDirs(sessDir);
+        channel.appendLine(`  Copilot log dirs detected: ${copilotDirs.length}`);
         if (copilotDirs.length === 0) {
           channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
         }
@@ -154,11 +155,17 @@ export async function parseCopilotLogs(
           channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
         }
 
-        await parseSessionTerminalLog(sessDir, ctx);
+        const terminalLogParsed = await parseSessionTerminalLog(sessDir, ctx);
+        channel.appendLine(
+          `  Terminal log ${terminalLogParsed ? "parsed" : "missing/unreadable"}: ${path.join(sessDir, "terminal.log")}`,
+        );
 
         // Also parse all .log files inside exthost<N>/ subdirectories — present in
         // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
-        await parseRemoteExthostLog(sessDir, ctx);
+        const exthostResult = await parseRemoteExthostLog(sessDir, ctx);
+        channel.appendLine(
+          `  Remote exthost dirs detected: ${exthostResult.matchedDirs}, parsed files: ${exthostResult.parsedFiles}`,
+        );
       } catch {
         // Skip unreadable session directories
         channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);

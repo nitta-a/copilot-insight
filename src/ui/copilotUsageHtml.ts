@@ -326,7 +326,7 @@ export function getHtmlContent(
     .db-agent-step-row::before { content: ""; position: absolute; left: -18px; top: 14px; width: 10px; height: 10px; border-radius: 999px; background: var(--vscode-charts-blue); border: 2px solid var(--vscode-editor-background); }
     .db-agent-step-row.longest-pause::before { box-shadow: 0 0 0 4px color-mix(in srgb, var(--vscode-charts-orange) 26%, transparent); }
     .db-agent-step-row.significant-pause { margin-bottom: 12px; }
-    .db-agent-step-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; }
+    .db-agent-step-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 20px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; }
     .db-agent-step-badge.prompt { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 90%, transparent); border-color: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 100%, transparent); color: var(--vscode-foreground); }
     .db-agent-step-badge.updated { background: color-mix(in srgb, var(--vscode-charts-green) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-green) 35%, transparent); color: var(--vscode-foreground); }
     .db-agent-step-badge.executed { background: color-mix(in srgb, var(--vscode-charts-blue) 18%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 35%, transparent); color: var(--vscode-foreground); }
@@ -340,7 +340,7 @@ export function getHtmlContent(
     .db-agent-step-body.fallback { opacity: 0.84; }
     .db-agent-step-meta { display: flex; justify-content: flex-end; gap: 8px; font-size: 0.75em; opacity: 0.72; }
     .db-agent-step-chip-row { margin-top: 2px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .db-agent-step-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+    .db-agent-step-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 20px; padding: 4px 10px; border-radius: 999px; font-size: 0.76em; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
     .db-agent-step-chip-actor.human { background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 72%, transparent); border-color: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 92%, transparent); }
     .db-agent-step-chip-actor.ai { background: color-mix(in srgb, var(--vscode-charts-blue) 14%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-blue) 30%, transparent); }
     .db-agent-step-chip-actor.system { background: color-mix(in srgb, var(--vscode-charts-orange) 14%, transparent); border-color: color-mix(in srgb, var(--vscode-charts-orange) 30%, transparent); }
