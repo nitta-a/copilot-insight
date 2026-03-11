@@ -38,6 +38,9 @@ const TYPING_SPEED_CPM = 200;
  */
 const AGENTIC_COGNITIVE_WEIGHT = 0.5;
 
+/** Minimum number of suggestions shown for a model to qualify as "best model". */
+const MIN_SHOWN_FOR_BEST_MODEL = 5;
+
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
 
@@ -98,15 +101,23 @@ export function buildDashboardPayload(
   const estimatedMinutesSaved = typingMinutesSaved + agenticMinutesSaved;
   const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
-  // Best model = the model name that appears most often as "best" across
-  // all languages in the cross-tabulation.
+  // Normalize and merge byModel entries early so we can use the result for both
+  // the "Best Model" KPI and the per-model autonomous ratio table below.
+  const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
+
+  // Best model = the model with the highest inline acceptance rate among those
+  // with at least MIN_SHOWN_FOR_BEST_MODEL suggestions shown (statistical reliability).
   let bestModel: string | null = null;
-  if (modelPerformance && modelPerformance.bestModelByLanguage.size > 0) {
-    const freq = new Map<string, number>();
-    for (const model of modelPerformance.bestModelByLanguage.values()) {
-      freq.set(model, (freq.get(model) ?? 0) + 1);
+  let bestModelRate = -1;
+  for (const [model, { shown, accepted }] of normalizedInlineByModel) {
+    if (shown === 0 || shown < MIN_SHOWN_FOR_BEST_MODEL) {
+      continue;
     }
-    bestModel = [...freq.entries()].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+    const rate = accepted / shown;
+    if (rate > bestModelRate) {
+      bestModelRate = rate;
+      bestModel = `${model} (${(rate * 100).toFixed(1)}%)`;
+    }
   }
 
   const summary: SummaryData = {
@@ -265,7 +276,7 @@ export function buildDashboardPayload(
   const normalizedChatModel = mergeCountByNormalizedModel(stats.byChatModel);
   const normalizedSubagentByModel = mergeCountByNormalizedModel(stats.subagentByModel);
   const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
-  const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
+  // normalizedInlineByModel is already computed above for the bestModel KPI.
 
   const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
   for (const [model, totalCount] of normalizedChatModel) {

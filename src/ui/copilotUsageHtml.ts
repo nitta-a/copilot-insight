@@ -46,7 +46,7 @@ export function getHtmlContent(
   const sessionSection = buildSessionSection(stats.bySession);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
   const contextEffectivenessSection = buildContextEffectivenessSection(stats.byContextEffectiveness);
-  const coreKpiPanel = buildCoreKpiPanel(stats);
+  const coreKpiPanel = buildCoreKpiPanel(stats, dashboardPayload);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -69,7 +69,7 @@ export function getHtmlContent(
     /* ── Core KPI grid ─────────────────────────────────────────────────── */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 10px;
       margin-bottom: 20px;
     }
@@ -461,7 +461,7 @@ export function getHtmlContent(
 }
 
 /** Builds the server-rendered core KPI grid for the Overview tab. */
-function buildCoreKpiPanel(stats: CopilotUsageStats): string {
+function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: DashboardPayload): string {
   const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
   const tier = getRoiTier(totalMinutesSaved);
   const roiBadge = getRoiBadge(tier);
@@ -476,6 +476,7 @@ function buildCoreKpiPanel(stats: CopilotUsageStats): string {
       : "";
 
   const totalSessions = stats.bySession.size;
+  const bestModelDisplay = escapeHtml(dashboardPayload?.summary.bestModel ?? "N/A");
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
   <div class="kpi-card">
@@ -497,6 +498,10 @@ function buildCoreKpiPanel(stats: CopilotUsageStats): string {
   <div class="kpi-card">
     <div class="kpi-value">${escapeHtml(String(totalSessions))}</div>
     <div class="kpi-label">Active Sessions</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value" style="font-size:1.05em">${bestModelDisplay}</div>
+    <div class="kpi-label">Best Model: highest acceptance</div>
   </div>
 </div>`;
 }

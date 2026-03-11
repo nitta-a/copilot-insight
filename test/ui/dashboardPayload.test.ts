@@ -1,9 +1,5 @@
 import * as assert from "assert";
-import type {
-  ModelPerformanceResult,
-  TrueAcceptanceResult,
-  VelocityAnalysisResult,
-} from "../../src/metrics/metricsEngine";
+import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
 import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
 
@@ -196,22 +192,34 @@ suite("buildDashboardPayload", () => {
       );
     });
 
-    test("bestModel is null when no modelPerformance passed", () => {
+    test("bestModel uses inline acceptance rate from byModel", () => {
       const payload = buildDashboardPayload(makeStats());
+      assert.strictEqual(payload.summary.bestModel, "gpt-4o (60.0%)");
+    });
+
+    test("bestModel picks the model with the highest acceptance rate above threshold", () => {
+      const stats = makeStats({
+        byModel: new Map([
+          ["gpt-4o", { shown: 10, accepted: 6 }], // 60%
+          ["claude-3.5", { shown: 8, accepted: 7 }], // 87.5%
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.bestModel, "claude-3.5 (87.5%)");
+    });
+
+    test("bestModel is null when all models are below threshold", () => {
+      const stats = makeStats({
+        byModel: new Map([["gpt-4o", { shown: 4, accepted: 4 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.summary.bestModel, null);
     });
 
-    test("bestModel is the most-frequent best model across languages", () => {
-      const mp: ModelPerformanceResult = {
-        crossTab: [],
-        bestModelByLanguage: new Map([
-          ["typescript", "gpt-4o"],
-          ["python", "gpt-4o"],
-          ["go", "claude-3.5"],
-        ]),
-      };
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, mp);
-      assert.strictEqual(payload.summary.bestModel, "gpt-4o");
+    test("bestModel is null when byModel is empty", () => {
+      const stats = makeStats({ byModel: new Map() });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.bestModel, null);
     });
 
     test("sessionSummaries are forwarded into the payload", () => {
