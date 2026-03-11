@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
-import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
+import type { CopilotUsageStats } from "../types";
 import { todayDateString } from "../utils";
-import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload } from "./dashboardPayload";
@@ -13,15 +11,6 @@ function getNonce(): string {
   return crypto.randomBytes(16).toString("hex");
 }
 
-/** Optional advanced-metrics bundle passed alongside the basic log stats. */
-export interface AdvancedMetrics {
-  trueAcceptance?: TrueAcceptanceResult;
-  velocity?: VelocityAnalysisResult;
-  modelPerformance?: ModelPerformanceResult;
-  refreshAnalysis?: RefreshAnalysis[];
-  sessionSummaries?: SessionSummary[];
-}
-
 export class CopilotUsagePanel {
   public static currentPanel: CopilotUsagePanel | undefined;
 
@@ -29,22 +18,13 @@ export class CopilotUsagePanel {
   private readonly _extensionUri: vscode.Uri;
   private readonly _disposables: vscode.Disposable[] = [];
   private _stats: CopilotUsageStats;
-  private _advanced: AdvancedMetrics;
-  private _dbWorker: DbWorkerClient | undefined;
 
-  public static createOrShow(
-    extensionUri: vscode.Uri,
-    stats: CopilotUsageStats,
-    advanced: AdvancedMetrics = {},
-    dbWorker?: DbWorkerClient,
-  ): void {
+  public static createOrShow(extensionUri: vscode.Uri, stats: CopilotUsageStats): void {
     const column = vscode.window.activeTextEditor?.viewColumn;
 
     if (CopilotUsagePanel.currentPanel) {
       CopilotUsagePanel.currentPanel._panel.reveal(column);
       CopilotUsagePanel.currentPanel._stats = stats;
-      CopilotUsagePanel.currentPanel._advanced = advanced;
-      CopilotUsagePanel.currentPanel._dbWorker = dbWorker;
       CopilotUsagePanel.currentPanel._update();
       return;
     }
@@ -61,23 +41,26 @@ export class CopilotUsagePanel {
       },
     );
 
-    CopilotUsagePanel.currentPanel = new CopilotUsagePanel(panel, extensionUri, stats, advanced, dbWorker);
+    CopilotUsagePanel.currentPanel = new CopilotUsagePanel(panel, extensionUri, stats);
   }
 
-  private constructor(
-    panel: vscode.WebviewPanel,
-    extensionUri: vscode.Uri,
-    stats: CopilotUsageStats,
-    advanced: AdvancedMetrics,
-    dbWorker?: DbWorkerClient,
-  ) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, stats: CopilotUsageStats) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._stats = stats;
-    this._advanced = advanced;
-    this._dbWorker = dbWorker;
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+    // Auto-refresh when panel becomes visible again (e.g. user switches back to it).
+    this._panel.onDidChangeViewState(
+      ({ webviewPanel }) => {
+        if (webviewPanel.visible) {
+          this._pushData();
+        }
+      },
+      null,
+      this._disposables,
+    );
 
     // Handle messages from the WebView
     this._panel.webview.onDidReceiveMessage(
@@ -97,40 +80,18 @@ export class CopilotUsagePanel {
   }
 
   private _handleWebviewMessage(msg: WebviewToHostMessage): void {
-    switch (msg.type) {
-      case "exportMarkdown": {
-        Promise.resolve(vscode.commands.executeCommand("copilot-insight.exportReport"))
-          .then(() => {
-            this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: true });
-          })
-          .catch(() => {
-            this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: false });
-          });
-        break;
-      }
-      case "exportPng": {
-        this._savePng(msg.payload.imageData, msg.payload.chartId);
-        break;
-      }
-      case "requestSessionDetail": {
-        if (!this._dbWorker) {
-          void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
-          break;
-        }
-        void this._dbWorker
-          .getSessionDetail(msg.payload.sessionId)
-          .then((payload) => {
-            void this._panel.webview.postMessage({ type: "sessionDetailData", payload });
-          })
-          .catch(() => {
-            void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
-          });
-        break;
-      }
+    if (msg.type === "exportMarkdown") {
+      Promise.resolve(vscode.commands.executeCommand("copilot-insight.exportReport"))
+        .then(() => {
+          this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: true });
+        })
+        .catch(() => {
+          this._panel.webview.postMessage({ type: "exportComplete", exportType: "markdown", success: false });
+        });
     }
   }
 
-  private _savePng(dataUri: string, chartId: "timeline" | "velocity" | "overview"): void {
+  private _savePng(dataUri: string): void {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
     vscode.window
       .showSaveDialog({
@@ -141,22 +102,24 @@ export class CopilotUsagePanel {
       })
       .then((uri) => {
         if (!uri) {
-          this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: false });
           return;
         }
-        // Strip the data: prefix (e.g. "data:image/png;base64,...")
         const base64 = dataUri.replace(/^data:image\/png;base64,/, "");
         const buffer = Buffer.from(base64, "base64");
         Promise.resolve(vscode.workspace.fs.writeFile(uri, buffer))
           .then(() => {
             vscode.window.showInformationMessage(`Dashboard chart exported to ${uri.fsPath}`);
-            this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: true });
           })
           .catch((err: Error) => {
             vscode.window.showErrorMessage(`Failed to export chart: ${err.message}`);
-            this._panel.webview.postMessage({ type: "exportComplete", exportType: "png", chartId, success: false });
           });
       });
+  }
+
+  /** Send the latest payload to the WebView via postMessage without a full HTML reload. */
+  private _pushData(): void {
+    const payload = buildDashboardPayload(this._stats);
+    void this._panel.webview.postMessage({ type: "dashboardData", payload });
   }
 
   private _update(): void {
@@ -164,18 +127,10 @@ export class CopilotUsagePanel {
     const scriptUri = this._panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "dist", "webview", "dashboard.js"),
     );
-    const payload = buildDashboardPayload(
-      this._stats,
-      this._advanced.trueAcceptance,
-      this._advanced.velocity,
-      this._advanced.modelPerformance,
-      this._advanced.refreshAnalysis,
-      this._advanced.sessionSummaries,
-    );
-    this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
+    const payload = buildDashboardPayload(this._stats);
+    this._panel.webview.html = getHtmlContent(nonce, scriptUri.toString(), payload);
 
-    // Also push an update via postMessage so the WebView re-renders without
-    // a full HTML reload (e.g. when only the period changes after first load).
-    this._panel.webview.postMessage({ type: "dashboardData", payload });
+    // Also push via postMessage so the WebView can re-render without a full HTML reload.
+    void this._panel.webview.postMessage({ type: "dashboardData", payload });
   }
 }

@@ -15,7 +15,12 @@ import {
 import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
-import { buildDashboardPayload } from "./ui/dashboardPayload";
+import {
+  buildDashboardPayload,
+  ROI_AGENTIC_COGNITIVE_WEIGHT,
+  ROI_AVG_CHARS_PER_COMPLETION,
+  ROI_TYPING_SPEED_CPM,
+} from "./ui/dashboardPayload";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
 import { todayDateString } from "./utils";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
@@ -180,7 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
       async () => {
         const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
+        CopilotUsagePanel.createOrShow(context.extensionUri, stats);
       },
     );
   });
@@ -194,7 +199,7 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
+          CopilotUsagePanel.createOrShow(context.extensionUri, stats);
         }
       },
     );
@@ -249,8 +254,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Build the dashboard payload to obtain consistent pre-computed ROI values and
     // auto-generated insights — this ensures the report numbers match the dashboard.
-    const dashboardPayload = buildDashboardPayload(stats, trueAcceptance, velocity, modelPerformance);
-    const { typingMinutesSaved, agenticMinutesSaved } = dashboardPayload.summary;
+    const dashboardPayload = buildDashboardPayload(stats);
+    const typingMinutesSaved = (stats.totalAccepted * ROI_AVG_CHARS_PER_COMPLETION) / ROI_TYPING_SPEED_CPM;
+    const agenticMinutesSaved = (stats.autonomousDurationMs / 60000) * ROI_AGENTIC_COGNITIVE_WEIGHT;
     const insights = dashboardPayload.insights;
 
     const content = generateMarkdownReport({

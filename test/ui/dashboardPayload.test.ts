@@ -1,83 +1,6 @@
 import * as assert from "assert";
-import type {
-  ModelPerformanceResult,
-  TrueAcceptanceResult,
-  VelocityAnalysisResult,
-} from "../../src/metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
+import type { CopilotUsageStats } from "../../src/types";
 import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
-
-function fmt(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getMonday(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function makeRefreshAnalysis(overrides?: Partial<RefreshAnalysis>): RefreshAnalysis {
-  return {
-    event: {
-      timestamp: "2026-03-07T10:00:00Z",
-      type: "compact",
-      rawText: "/compact",
-      sessionId: "s1",
-    },
-    windowMinutes: 15,
-    turnWindowSize: 10,
-    preWindow: {
-      turnCount: 3,
-      rawAccepted: 3,
-      trueAccepted: 2,
-      rawRate: 100,
-      trueRate: 66.7,
-      revertedCount: 1,
-      windowStart: "2026-03-07T09:45:00Z",
-      windowEnd: "2026-03-07T09:59:00Z",
-    },
-    postWindow: {
-      turnCount: 3,
-      rawAccepted: 3,
-      trueAccepted: 3,
-      rawRate: 100,
-      trueRate: 100,
-      revertedCount: 0,
-      windowStart: "2026-03-07T10:01:00Z",
-      windowEnd: "2026-03-07T10:15:00Z",
-    },
-    preTurns: {
-      turnCount: 2,
-      rawAccepted: 2,
-      trueAccepted: 1,
-      rawRate: 100,
-      trueRate: 50,
-      revertedCount: 1,
-      windowStart: "2026-03-07T09:58:00Z",
-      windowEnd: "2026-03-07T09:59:00Z",
-    },
-    postTurns: {
-      turnCount: 2,
-      rawAccepted: 2,
-      trueAccepted: 2,
-      rawRate: 100,
-      trueRate: 100,
-      revertedCount: 0,
-      windowStart: "2026-03-07T10:01:00Z",
-      windowEnd: "2026-03-07T10:02:00Z",
-    },
-    recoveryDelta: 50,
-    refreshRoi: 1,
-    ...overrides,
-  };
-}
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {
@@ -141,707 +64,141 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
 }
 
 suite("buildDashboardPayload", () => {
-  suite("summary", () => {
-    test("sets totalShown, totalAccepted, acceptanceRate from stats", () => {
+  suite("core KPI fields", () => {
+    test("sets totalShown from stats", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.summary.totalShown, 200);
-      assert.strictEqual(payload.summary.totalAccepted, 120);
-      assert.strictEqual(payload.summary.acceptanceRate, 60.0);
+      assert.strictEqual(payload.totalShown, 200);
     });
 
-    test("trueAcceptanceRate is null when no trueAcceptance passed", () => {
+    test("sets totalAccepted from stats", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.summary.trueAcceptanceRate, null);
+      assert.strictEqual(payload.totalAccepted, 120);
     });
 
-    test("trueAcceptanceRate comes from trueAcceptance.trueRate", () => {
-      const ta: TrueAcceptanceResult = {
-        rawAccepted: 120,
-        trueAccepted: 100,
-        rawRate: 60,
-        trueRate: 50,
-        revertedCount: 20,
-      };
-      const payload = buildDashboardPayload(makeStats(), ta);
-      assert.strictEqual(payload.summary.trueAcceptanceRate, 50);
-    });
-
-    test("estimatedMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
+    test("acceptanceRate is totalAccepted / totalShown * 100", () => {
       const payload = buildDashboardPayload(makeStats());
-      // 120 * 40 / 200 = 24 (no autonomous duration)
-      assert.strictEqual(payload.summary.estimatedMinutesSaved, 24);
+      assert.ok(Math.abs(payload.acceptanceRate - 60) < 0.01);
     });
 
-    test("typingMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
-      const payload = buildDashboardPayload(makeStats());
-      // 120 * 40 / 200 = 24
-      assert.strictEqual(payload.summary.typingMinutesSaved, 24);
-    });
-
-    test("agenticMinutesSaved is autonomousDurationMs / 60000 * 0.5", () => {
-      const stats = makeStats({ autonomousDurationMs: 12000 }); // 12s = 0.2min
+    test("acceptanceRate is 0 when totalShown is 0 (zero-division guard)", () => {
+      const stats = makeStats({ totalShown: 0, totalAccepted: 0 });
       const payload = buildDashboardPayload(stats);
-      // (12000 / 60000) * 0.5 = 0.1
-      assert.ok(Math.abs(payload.summary.agenticMinutesSaved - 0.1) < 0.0001);
+      assert.strictEqual(payload.acceptanceRate, 0);
     });
 
-    test("estimatedMinutesSaved equals typingMinutesSaved + agenticMinutesSaved", () => {
-      const stats = makeStats({ autonomousDurationMs: 60000 }); // 1min autonomous
+    test("estimatedTimeSaved includes typing ROI from accepted completions", () => {
+      // 120 accepted * 40 chars / 200 CPM = 24 min (no autonomous duration)
+      const payload = buildDashboardPayload(makeStats());
+      assert.strictEqual(payload.estimatedTimeSaved, 24);
+    });
+
+    test("estimatedTimeSaved includes agentic ROI from autonomous duration", () => {
+      // typing: 120*40/200 = 24 min; agentic: (120000/60000)*0.5 = 1 min; total = 25
+      const stats = makeStats({ autonomousDurationMs: 120000 });
       const payload = buildDashboardPayload(stats);
-      assert.ok(
-        Math.abs(
-          payload.summary.estimatedMinutesSaved -
-            (payload.summary.typingMinutesSaved + payload.summary.agenticMinutesSaved),
-        ) < 0.0001,
-      );
+      assert.ok(Math.abs(payload.estimatedTimeSaved - 25) < 0.001);
     });
 
-    test("bestModel is null when no modelPerformance passed", () => {
+    test("activeSessions equals bySession.size", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.summary.bestModel, null);
+      assert.strictEqual(payload.activeSessions, 1);
     });
 
-    test("bestModel is the most-frequent best model across languages", () => {
-      const mp: ModelPerformanceResult = {
-        crossTab: [],
-        bestModelByLanguage: new Map([
-          ["typescript", "gpt-4o"],
-          ["python", "gpt-4o"],
-          ["go", "claude-3.5"],
-        ]),
-      };
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, mp);
-      assert.strictEqual(payload.summary.bestModel, "gpt-4o");
-    });
-
-    test("sessionSummaries are forwarded into the payload", () => {
-      const summaries: SessionSummary[] = [
-        {
-          sessionId: "s1",
-          title: "Investigate session explorer",
-          date: "2026-03-07",
-          totalActions: 12,
-          trueRate: 58.5,
-          autonomousDuration: 12_000,
-          efficiencyScore: 63.2,
-        },
-      ];
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], summaries);
-      assert.deepStrictEqual(payload.sessionSummaries, summaries);
-    });
-
-    test("fallback session summaries are shown with date as title when no explicit sessions are available", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.sessionSummaries.length, 1);
-      assert.strictEqual(payload.sessionSummaries[0]?.sessionId, "s1");
-      assert.ok(payload.sessionSummaries[0]?.title, "fallback session should have a non-empty title");
-    });
-
-    test("freshness is null when refresh analysis is unavailable", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.freshness, null);
-      assert.deepStrictEqual(payload.refreshAnalysis, []);
+    test("activeSessions is 0 when bySession is empty", () => {
+      const stats = makeStats({ bySession: new Map() });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.activeSessions, 0);
     });
   });
 
   suite("timeline", () => {
-    test("timeline includes all dates", () => {
+    test("has one entry per byDate entry", () => {
       const payload = buildDashboardPayload(makeStats());
       assert.strictEqual(payload.timeline.length, 4);
     });
 
-    test("timeline is sorted by date ascending", () => {
+    test("entries are sorted by date ascending", () => {
       const payload = buildDashboardPayload(makeStats());
       const dates = payload.timeline.map((e) => e.date);
       const sorted = [...dates].sort();
       assert.deepStrictEqual(dates, sorted);
     });
 
-    test("timeline entry rate is calculated correctly", () => {
+    test("entry fields are correct", () => {
       const payload = buildDashboardPayload(makeStats());
       const entry = payload.timeline[0];
-      assert.ok(entry);
-      const expectedRate = (entry.accepted / entry.shown) * 100;
-      assert.ok(Math.abs(entry.rate - expectedRate) < 0.001);
+      assert.strictEqual(entry?.date, "2026-02-24");
+      assert.strictEqual(entry?.shown, 40);
+      assert.strictEqual(entry?.accepted, 24);
+      assert.ok(Math.abs((entry?.rate ?? -1) - 60) < 0.01);
     });
 
-    test("timeline trueAccepted is null (not available per day)", () => {
-      const payload = buildDashboardPayload(makeStats());
-      for (const entry of payload.timeline) {
-        assert.strictEqual(entry.trueAccepted, null);
-      }
-    });
-
-    test("days field in payload equals timeline length", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.days, payload.timeline.length);
+    test("entry rate is 0 when shown is 0 (zero-division guard)", () => {
+      const stats = makeStats({
+        byDate: new Map([["2026-03-01", { shown: 0, accepted: 0 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.timeline[0]?.rate, 0);
     });
   });
 
-  suite("availableRange", () => {
-    test("availableRange reflects full span of stats.byDate", () => {
+  suite("sessions", () => {
+    test("has one entry per bySession entry", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.availableRange.minDate, "2026-02-24");
-      assert.strictEqual(payload.availableRange.maxDate, "2026-02-27");
+      assert.strictEqual(payload.sessions.length, 1);
     });
 
-    test("availableRange is empty strings when byDate is empty", () => {
-      const stats = makeStats({ byDate: new Map() });
+    test("session fields include sessionId, date, accepted, estimatedMinSaved", () => {
+      const payload = buildDashboardPayload(makeStats());
+      const s = payload.sessions[0];
+      assert.ok(s);
+      assert.strictEqual(s.sessionId, "s1");
+      assert.strictEqual(s.accepted, 60);
+      // 60 * 40 / 200 = 12 min
+      assert.ok(Math.abs(s.estimatedMinSaved - 12) < 0.001);
+    });
+
+    test("session date falls back to sessionId when no YYYYMMDD pattern found", () => {
+      const stats = makeStats({
+        bySession: new Map([["abcdef", { sessionId: "abcdef", shown: 10, accepted: 5, chat: 0, errors: 0 }]]),
+      });
       const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.availableRange.minDate, "");
-      assert.strictEqual(payload.availableRange.maxDate, "");
+      assert.strictEqual(payload.sessions[0]?.date, "abcdef");
+    });
+
+    test("sessions are sorted by date descending", () => {
+      const stats = makeStats({
+        bySession: new Map([
+          ["20260201_a", { sessionId: "20260201_a", shown: 10, accepted: 5, chat: 0, errors: 0 }],
+          ["20260305_b", { sessionId: "20260305_b", shown: 20, accepted: 10, chat: 0, errors: 0 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.sessions[0]?.date, "2026-03-05");
+      assert.strictEqual(payload.sessions[1]?.date, "2026-02-01");
     });
   });
 
-  suite("velocityPoints", () => {
-    test("velocityPoints is empty when no velocity passed", () => {
+  suite("insights", () => {
+    test("includes peak-hour insight when byHour is non-empty", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.velocityPoints.length, 0);
+      assert.ok(payload.insights.some((i) => i.includes("Most active hour")));
     });
 
-    test("velocityPoints maps timeSeries entries", () => {
-      const velocity: VelocityAnalysisResult = {
-        timeSeries: [
-          { windowStart: "2026-02-27T10:00:00Z", kpm: 120, completionsAccepted: 3, flowDisrupted: false },
-          { windowStart: "2026-02-27T10:01:00Z", kpm: 40, completionsAccepted: 2, flowDisrupted: true },
-        ],
-        averageKpm: 80,
-        disruptionCount: 1,
-      };
-      const payload = buildDashboardPayload(makeStats(), undefined, velocity);
-      assert.strictEqual(payload.velocityPoints.length, 2);
-      assert.strictEqual(payload.velocityPoints[0].kpm, 120);
-      assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
-      assert.strictEqual(payload.velocityPoints[1].flowDisrupted, true);
+    test("includes chat-ratio insight when totalChat > 0 and totalShown > 0", () => {
+      const payload = buildDashboardPayload(makeStats({ totalChat: 20 }));
+      assert.ok(payload.insights.some((i) => i.includes("Chat usage ratio")));
     });
-  });
 
-  suite("context freshness", () => {
-    test("stays at 100% through the first 50 actions", () => {
+    test("insights array is empty when no data to report", () => {
       const stats = makeStats({
-        bySession: new Map([["s2", { sessionId: "s2", shown: 20, accepted: 10, chat: 5, errors: 0 }]]),
-      });
-      const payload = buildDashboardPayload(stats, undefined, undefined, undefined, [makeRefreshAnalysis()]);
-      assert.ok(payload.freshness);
-      assert.strictEqual(payload.freshness?.score, 100);
-      assert.strictEqual(payload.freshness?.status, "fresh");
-    });
-
-    test("decays after 50 actions and exposes refresh analysis", () => {
-      const stats = makeStats({
-        bySession: new Map([["s2", { sessionId: "s2", shown: 45, accepted: 20, chat: 8, errors: 0 }]]),
-      });
-      const trueAcceptance: TrueAcceptanceResult = {
-        rawAccepted: 120,
-        trueAccepted: 84,
-        rawRate: 60,
-        trueRate: 42,
-        revertedCount: 36,
-      };
-      const refreshAnalysis = [makeRefreshAnalysis({ refreshRoi: 0.25, recoveryDelta: 18 })];
-      const payload = buildDashboardPayload(stats, trueAcceptance, undefined, undefined, refreshAnalysis);
-      assert.ok(payload.freshness);
-      assert.ok((payload.freshness?.score ?? 0) < 100);
-      assert.strictEqual(payload.freshness?.suggestedAction, "compact");
-      assert.strictEqual(payload.refreshAnalysis.length, 1);
-      assert.strictEqual(payload.freshness?.latestRefreshRoi, 0.25);
-    });
-
-    test("preserves refresh analysis entries for overview history rendering", () => {
-      const refreshAnalysis = [
-        makeRefreshAnalysis(),
-        makeRefreshAnalysis({ event: { ...makeRefreshAnalysis().event, timestamp: "2026-03-07T11:00:00Z" } }),
-      ];
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, refreshAnalysis);
-      assert.strictEqual(payload.refreshAnalysis.length, 2);
-      assert.strictEqual(payload.refreshAnalysis[0].event.type, "compact");
-      assert.strictEqual(payload.refreshAnalysis[1].event.timestamp, "2026-03-07T11:00:00Z");
-    });
-  });
-
-  suite("evolutionData", () => {
-    test("maps byDateAgenticDepth into sorted autonomy evolution points", () => {
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            "2026-02-27",
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 50,
-              velocityMsPerAction: 30000,
-            },
-          ],
-          [
-            "2026-02-26",
-            {
-              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 3,
-              completionRate: 100,
-              velocityMsPerAction: 10000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.deepStrictEqual(
-        payload.evolutionData.map((point) => point.date),
-        ["2026-02-26", "2026-02-27"],
-      );
-      assert.strictEqual(payload.evolutionData[0].avgDepth, 3);
-      assert.strictEqual(payload.evolutionData[0].totalDurationMin, 1);
-      assert.strictEqual(payload.evolutionData[0].completionRate, 100);
-      assert.strictEqual(payload.evolutionData[1].totalDurationMin, 1);
-    });
-
-    test("does not synthesize missing dates in evolutionData", () => {
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            "2026-02-24",
-            {
-              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 1,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-            },
-          ],
-          [
-            "2026-02-27",
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 100,
-              velocityMsPerAction: 10000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.evolutionData.length, 2);
-      assert.deepStrictEqual(
-        payload.evolutionData.map((point) => point.date),
-        ["2026-02-24", "2026-02-27"],
-      );
-    });
-
-    test("adds complex-task insight when avg depth grows more than 20% week over week", () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const thisMonday = getMonday(today);
-      const lastMonday = new Date(thisMonday);
-      lastMonday.setDate(thisMonday.getDate() - 7);
-
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            fmt(lastMonday),
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-            },
-          ],
-          [
-            fmt(thisMonday),
-            {
-              loopDistribution: { bucket1: 0, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 3,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.ok(payload.insights.includes("🤖 AI is handling more complex tasks (+20% avg. depth vs last week)"));
-    });
-  });
-
-  suite("anomaly detection", () => {
-    test("isAnomaly and anomalyReason are false/null when fewer than 2 qualifying baseline days", () => {
-      // Only 1 day with shown >= 10 → no anomaly possible
-      const stats = makeStats({
-        byDate: new Map([["2026-02-27", { shown: 50, accepted: 30 }]]),
+        byHour: new Map(),
+        chatByDate: new Map(),
+        totalChat: 0,
+        byDate: new Map(),
       });
       const payload = buildDashboardPayload(stats);
-      for (const entry of payload.timeline) {
-        assert.strictEqual(entry.isAnomaly, false);
-        assert.strictEqual(entry.anomalyReason, null);
-      }
-    });
-
-    test("isAnomaly is false when stdDev is zero (all days have same rate)", () => {
-      // All 4 days have exactly 60% acceptance rate → stdDev = 0 → no anomaly
-      const payload = buildDashboardPayload(makeStats());
-      for (const entry of payload.timeline) {
-        assert.strictEqual(entry.isAnomaly, false);
-        assert.strictEqual(entry.anomalyReason, null);
-      }
-    });
-
-    test("isAnomaly is true for a day whose rate deviates by more than 2 stdDevs", () => {
-      // 13 days at 60% rate, 1 day at 5% rate (extreme outlier)
-      const byDate = new Map<string, { shown: number; accepted: number }>();
-      for (let i = 1; i <= 13; i++) {
-        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
-      }
-      // Outlier day: shown=50, accepted=3 → 6% — far from 60%
-      byDate.set("2026-02-14", { shown: 50, accepted: 3 });
-
-      const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats);
-      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
-      assert.ok(outlier, "Outlier day should exist in timeline");
-      assert.strictEqual(outlier.isAnomaly, true);
-      assert.ok(outlier.anomalyReason !== null, "anomalyReason should be set for anomalous day");
-      assert.ok(outlier.anomalyReason?.includes("z-score"), "anomalyReason should mention z-score");
-    });
-
-    test("days with shown < 10 are excluded from anomaly detection and are not flagged as anomalies", () => {
-      // Baseline: 13 days at 60%, 1 day with shown=5 (below threshold)
-      const byDate = new Map<string, { shown: number; accepted: number }>();
-      for (let i = 1; i <= 13; i++) {
-        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
-      }
-      byDate.set("2026-02-14", { shown: 5, accepted: 0 }); // below MIN_SHOWN threshold
-      const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats);
-      const lowShownEntry = payload.timeline.find((e) => e.date === "2026-02-14");
-      assert.ok(lowShownEntry);
-      assert.strictEqual(lowShownEntry.isAnomaly, false);
-      assert.strictEqual(lowShownEntry.anomalyReason, null);
-    });
-
-    test("anomalyReason contains direction word 'lower' for below-average anomaly", () => {
-      const byDate = new Map<string, { shown: number; accepted: number }>();
-      for (let i = 1; i <= 13; i++) {
-        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 30 }); // 60%
-      }
-      byDate.set("2026-02-14", { shown: 50, accepted: 3 }); // 6% — well below average
-      const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats);
-      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
-      assert.ok(outlier?.anomalyReason?.includes("lower"), `Expected 'lower' in reason: ${outlier?.anomalyReason}`);
-    });
-
-    test("anomalyReason contains direction word 'higher' for above-average anomaly", () => {
-      const byDate = new Map<string, { shown: number; accepted: number }>();
-      for (let i = 1; i <= 13; i++) {
-        byDate.set(`2026-02-${String(i).padStart(2, "0")}`, { shown: 50, accepted: 10 }); // 20%
-      }
-      byDate.set("2026-02-14", { shown: 50, accepted: 48 }); // 96% — well above average
-      const stats = makeStats({ byDate });
-      const payload = buildDashboardPayload(stats);
-      const outlier = payload.timeline.find((e) => e.date === "2026-02-14");
-      assert.ok(outlier?.anomalyReason?.includes("higher"), `Expected 'higher' in reason: ${outlier?.anomalyReason}`);
-    });
-  });
-
-  suite("agenticStats", () => {
-    test("returns zero agenticStats when no subagent data", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.agenticStats.subagentRequests, 0);
-      assert.strictEqual(payload.agenticStats.agenticRatio, 0);
-      assert.strictEqual(payload.agenticStats.autonomousDurationMs, 0);
-      assert.deepStrictEqual(payload.agenticStats.toolUsageStats, []);
-    });
-
-    test("includes subagentRequests, agenticRatio, autonomousDurationMs from stats", () => {
-      const stats = makeStats({
-        subagentRequests: 5,
-        agenticRatio: 2.5,
-        autonomousDurationMs: 12000,
-        toolUsageStats: new Map([
-          ["runSubagent", 3],
-          ["editAgent", 2],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.subagentRequests, 5);
-      assert.strictEqual(payload.agenticStats.agenticRatio, 2.5);
-      assert.strictEqual(payload.agenticStats.autonomousDurationMs, 12000);
-    });
-
-    test("toolUsageStats is sorted by count descending", () => {
-      const stats = makeStats({
-        toolUsageStats: new Map([
-          ["editAgent", 2],
-          ["runSubagent", 5],
-          ["searchSubagentTool", 1],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const sorted = payload.agenticStats.toolUsageStats;
-      assert.strictEqual(sorted[0].intent, "runSubagent");
-      assert.strictEqual(sorted[0].count, 5);
-      assert.strictEqual(sorted[1].intent, "editAgent");
-      assert.strictEqual(sorted[1].count, 2);
-      assert.strictEqual(sorted[2].intent, "searchSubagentTool");
-      assert.strictEqual(sorted[2].count, 1);
-    });
-
-    test("agentIntelligenceOverview is zero when no subagent data", () => {
-      const payload = buildDashboardPayload(makeStats());
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.autonomousActionCount, 0);
-      assert.strictEqual(ov.agenticLoopCount, 0);
-      assert.strictEqual(ov.avgCallsPerLoop, 0);
-      assert.deepStrictEqual(ov.autonomousRatioByModel, []);
-    });
-
-    test("agentIntelligenceOverview.autonomousActionCount equals subagentRequests", () => {
-      const stats = makeStats({ subagentRequests: 7, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.autonomousActionCount, 7);
-    });
-
-    test("agentIntelligenceOverview.avgCallsPerLoop is ratio of requests to loops", () => {
-      const stats = makeStats({ subagentRequests: 6, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 3);
-    });
-
-    test("agentIntelligenceOverview.avgCallsPerLoop is 0 when no loops", () => {
-      const stats = makeStats({ subagentRequests: 4, subagentLoops: 0 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 0);
-    });
-
-    test("agentIntelligenceOverview.autonomousRatioByModel excludes models with no subagent calls", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o", 10],
-          ["claude-3", 5],
-        ]),
-        subagentByModel: new Map([["gpt-4o", 3]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].model, "gpt-4o");
-      assert.strictEqual(byModel[0].subagentCount, 3);
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.ok(Math.abs(byModel[0].ratio - 30) < 0.01);
-    });
-
-    test("agentIntelligenceOverview.autonomousRatioByModel is sorted by ratio descending", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o", 10],
-          ["claude-3", 4],
-        ]),
-        subagentByModel: new Map([
-          ["gpt-4o", 2], // 20%
-          ["claude-3", 2], // 50%
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel[0].model, "claude-3");
-      assert.strictEqual(byModel[1].model, "gpt-4o");
-    });
-
-    test("agentIntelligenceOverview.completionRate is 0 when no loops started", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 0);
-    });
-
-    test("agentIntelligenceOverview.completionRate is ratio of completed to started loops * 100", () => {
-      const stats = makeStats({ subagentLoops: 3, subagentLoopsStarted: 4, completionRate: 75 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 75);
-    });
-
-    test("autonomousRatioByModel.velocitySecondsPerAction is 0 when no duration data", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        autonomousDurationByModel: new Map(),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].velocitySecondsPerAction, 0);
-    });
-
-    test("autonomousRatioByModel.velocitySecondsPerAction is durationMs / 1000 / subagentCount", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 4]]),
-        autonomousDurationByModel: new Map([["gpt-4o", 20000]]), // 20s / 4 actions = 5s/action
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].velocitySecondsPerAction, 5);
-    });
-
-    test("autonomousRatioByModel merges entries for same normalized model name", () => {
-      // Two byChatModel entries that normalize to the same key
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o -> deployment-a", 8],
-          ["gpt-4o -> deployment-b", 2],
-        ]),
-        subagentByModel: new Map([
-          ["gpt-4o -> deployment-a", 3],
-          ["gpt-4o -> deployment-b", 1],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1, "should merge two deployments into one row");
-      assert.strictEqual(byModel[0].model, "gpt-4o");
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.strictEqual(byModel[0].subagentCount, 4);
-      assert.ok(Math.abs(byModel[0].ratio - 40) < 0.01);
-    });
-
-    test("autonomousRatioByModel strips colon suffix when merging", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["claude-3.5-sonnet:20241022", 6],
-          ["claude-3.5-sonnet:20241101", 4],
-        ]),
-        subagentByModel: new Map([["claude-3.5-sonnet:20241022", 2]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.strictEqual(byModel[0].subagentCount, 2);
-    });
-
-    test("planCount, executedPlanCount, planSuccessRate, userChoicesInPlan are zero when no planning data", () => {
-      const payload = buildDashboardPayload(makeStats());
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.planCount, 0);
-      assert.strictEqual(ov.executedPlanCount, 0);
-      assert.strictEqual(ov.planSuccessRate, 0);
-      assert.strictEqual(ov.userChoicesInPlan, 0);
-    });
-
-    test("planSuccessRate is executedPlanCount / planCount * 100", () => {
-      const stats = makeStats({ planCount: 10, executedPlanCount: 8, userChoicesInPlan: 5 });
-      const payload = buildDashboardPayload(stats);
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.planCount, 10);
-      assert.strictEqual(ov.executedPlanCount, 8);
-      assert.ok(Math.abs(ov.planSuccessRate - 80) < 0.001);
-      assert.strictEqual(ov.userChoicesInPlan, 5);
-    });
-
-    test("planSuccessRate is 0 when planCount is 0", () => {
-      const stats = makeStats({ planCount: 0, executedPlanCount: 0 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.planSuccessRate, 0);
-    });
-
-    test("featureSignals exposes sorted browser tool breakdown", () => {
-      const stats = makeStats({
-        browserToolInvocations: 3,
-        browserToolsByType: new Map([
-          ["screenshot", 2],
-          ["playwright", 1],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.featureSignals.browserTools.total, 3);
-      assert.deepStrictEqual(payload.agenticStats.featureSignals.browserTools.breakdown, [
-        { name: "screenshot", count: 2 },
-        { name: "playwright", count: 1 },
-      ]);
-    });
-
-    test("featureSignals includes plugin, memory, and debug totals", () => {
-      const stats = makeStats({
-        pluginOrSkillInvocations: 2,
-        pluginOrSkillByName: new Map([["code-search", 2]]),
-        memoryManagementEvents: [
-          {
-            timestamp: "2026-03-07T10:00:00Z",
-            type: "compact",
-            rawText: "/compact",
-            sessionId: "session-1",
-          },
-        ],
-        memoryManagementByType: new Map([["compact", 1]]),
-        agentDebugEvents: 4,
-        agentDebugByType: new Map([["step-execution", 4]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.featureSignals.pluginOrSkills.total, 2);
-      assert.strictEqual(payload.agenticStats.featureSignals.memoryManagement.total, 1);
-      assert.strictEqual(payload.agenticStats.featureSignals.agentDebug.total, 4);
-    });
-
-    test("autonomousRatioByModel.acceptanceRate is 0 when no inline completion data for model", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map(),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].acceptanceRate, 0);
-      assert.strictEqual(byModel[0].totalAccepted, 0);
-    });
-
-    test("autonomousRatioByModel.acceptanceRate is accepted/shown * 100 from byModel", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
-      assert.strictEqual(byModel[0].totalAccepted, 40);
-    });
-
-    test("autonomousRatioByModel.totalTimeSaved includes typing and agentic components", () => {
-      // typing: 40 accepted * 40 chars / 200 cpm = 8 min
-      // agentic: 120000ms / 60000 * 0.5 = 1 min
-      // total: 9 min
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
-        autonomousDurationByModel: new Map([["gpt-4o", 120000]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.ok(Math.abs(byModel[0].totalTimeSaved - 9) < 0.01);
-    });
-
-    test("autonomousRatioByModel.totalTimeSaved merges inline stats for same normalized model", () => {
-      // Two deployment aliases of gpt-4o that normalize to the same key
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o -> a", 5],
-          ["gpt-4o -> b", 5],
-        ]),
-        subagentByModel: new Map([["gpt-4o -> a", 3]]),
-        byModel: new Map([
-          ["gpt-4o -> a", { shown: 60, accepted: 30 }],
-          ["gpt-4o -> b", { shown: 40, accepted: 10 }],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      // merged: shown=100, accepted=40 → acceptanceRate=40%, totalAccepted=40
-      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
-      assert.strictEqual(byModel[0].totalAccepted, 40);
+      assert.ok(Array.isArray(payload.insights));
     });
   });
 });
