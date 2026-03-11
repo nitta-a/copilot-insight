@@ -1,8 +1,28 @@
 import * as vscode from "vscode";
 import type { CopilotUsageStats, DateStat } from "../types";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
+import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 
 type TreeElement = CategoryItem | StatItem;
+
+/** Maps a ROI tier to a VS Code ThemeColor id. */
+const ROI_TIER_COLORS: Record<string, string> = {
+  gold: "charts.orange",
+  green: "charts.green",
+  blue: "charts.blue",
+};
+
+/** Returns the ROI rank badge and ThemeColor based on total minutes saved. */
+function getRoiRankStyle(totalMinutesSaved: number): { badge: string; color: vscode.ThemeColor } | null {
+  const tier = getRoiTier(totalMinutesSaved);
+  if (!tier) {
+    return null;
+  }
+  return {
+    badge: getRoiBadge(tier),
+    color: new vscode.ThemeColor(ROI_TIER_COLORS[tier]),
+  };
+}
 
 export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeElement> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeElement | undefined | void>();
@@ -47,7 +67,7 @@ export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeEle
 
   private _buildRootNodes(stats: CopilotUsageStats): CategoryItem[] {
     const nodes: CategoryItem[] = [
-      new CategoryItem("summary", "Summary", "dashboard", stats),
+      new CategoryItem("summary", "Key Performance Indicators", "dashboard", stats),
       new CategoryItem("trend", "Weekly Trend", "graph-line", stats),
       new CategoryItem("daily", "Daily (7 days)", "calendar", stats),
     ];
@@ -88,18 +108,22 @@ class CategoryItem extends vscode.TreeItem {
   }
 
   private _buildSummary(stats: CopilotUsageStats): StatItem[] {
+    const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+    const roiRank = getRoiRankStyle(totalMinutesSaved);
+    const timeSavedLabel = `${roiRank?.badge ?? ""}${formatMinutesSaved(totalMinutesSaved)}`;
+    const totalSessions = stats.bySession.size;
+
     const items: StatItem[] = [
-      new StatItem("Shown", String(stats.totalShown), "symbol-event"),
       new StatItem("Accepted", String(stats.totalAccepted), "check"),
       new StatItem("Acceptance Rate", `${stats.acceptanceRate.toFixed(1)}%`, "percentage"),
-      new StatItem("Chat Requests", String(stats.totalChat), "comment-discussion"),
+      new StatItem("Time Saved (ROI)", timeSavedLabel, "clock", roiRank?.color),
     ];
 
     if (stats.avgLatencyMs > 0) {
-      items.push(new StatItem("Avg Latency", `${stats.avgLatencyMs.toFixed(0)}ms`, "clock"));
+      items.push(new StatItem("Avg Latency", `${stats.avgLatencyMs.toFixed(0)}ms`, "pulse"));
     }
 
-    items.push(new StatItem("Log Files", String(stats.logFilesFound), "file"));
+    items.push(new StatItem("Active Sessions", String(totalSessions), "server-process"));
 
     return items;
   }
@@ -167,10 +191,10 @@ class CategoryItem extends vscode.TreeItem {
 }
 
 class StatItem extends vscode.TreeItem {
-  constructor(label: string, description: string, icon: string) {
+  constructor(label: string, description: string, icon: string, iconColor?: vscode.ThemeColor) {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.description = description;
-    this.iconPath = new vscode.ThemeIcon(icon);
+    this.iconPath = new vscode.ThemeIcon(icon, iconColor);
   }
 }
 

@@ -9,6 +9,7 @@ import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat, SessionSummary } from "../types";
+import { formatMinutesSaved } from "../utils";
 import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
@@ -117,6 +118,9 @@ export function buildDashboardPayload(
     typingMinutesSaved,
     agenticMinutesSaved,
     bestModel,
+    totalMinutesSaved: estimatedMinutesSaved,
+    estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
+    totalSessions: stats.bySession.size,
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────
