@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.16] - 2026-03-11
+
+### Added
+- 🏆 **Core KPI panel** — new 5-column (later 6-column) KPI grid at the top of the Overview tab surfaces **Accepted Completions**, **Acceptance Rate**, **Est. Time Saved (ROI)**, **Avg Latency**, **Active Sessions**, and **Best Model: highest acceptance** at a glance
+- 🌟 **ROI gamification** — Time Saved card (and the Tree View item) displays a tier badge and colour based on cumulative minutes saved: 🏆 gold (≥ 10 h), ⭐ green (≥ 3 h), ✨ blue (≥ 1 h)
+- 🤖 **Best Model KPI** — Overview KPI card now always shows the inline-completion model with the highest acceptance rate (minimum 5 suggestions shown), formatted as `model (rate%)`; no longer requires optional external metrics data
+- 🌲 **Tree View KPIs** — Activity Bar sidebar renamed "Summary" → **Key Performance Indicators**; surfaces the same 5 KPIs with ROI-tier icon colours via `vscode.ThemeColor`
+
+### Changed
+- **`buildDashboardPayload`** — Best Model derivation moved from the optional `modelPerformance` argument to `stats.byModel` (always populated by the log parser); hoisted `normalizedInlineByModel` computation to avoid duplicate work; added defensive `shown === 0` guard
+
 ## [1.0.15] - 2026-03-10
 
 ### Added
