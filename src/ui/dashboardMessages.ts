@@ -46,6 +46,12 @@ export interface SummaryData {
   agenticMinutesSaved: number;
   /** Best-performing model name (null when no model-performance data). */
   bestModel: string | null;
+  /** Total estimated minutes saved (numeric, for ROI rank calculation). */
+  totalMinutesSaved: number;
+  /** Estimated time saved formatted for display (e.g. "1h 23m"). */
+  estimatedTimeSaved: string;
+  /** Total number of active sessions observed. */
+  totalSessions: number;
 }
 
 export interface TimelineEntry {

@@ -118,7 +118,7 @@ suite("CopilotUsageTreeProvider", () => {
       provider.updateStats(makeStats());
       const roots = provider.getChildren();
       const labels = roots.map((r) => (typeof r.label === "string" ? r.label : ""));
-      assert.ok(labels.includes("Summary"));
+      assert.ok(labels.includes("Key Performance Indicators"));
       assert.ok(labels.includes("Weekly Trend"));
       assert.ok(!labels.includes("By Language"));
       assert.ok(labels.includes("Daily (7 days)"));
@@ -126,20 +126,27 @@ suite("CopilotUsageTreeProvider", () => {
   });
 
   suite("getChildren (summary category)", () => {
-    test("summary has at least 5 items", () => {
+    test("KPI section has at least 4 items", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats());
       const roots = provider.getChildren();
-      const summary = roots[0];
-      const children = provider.getChildren(summary);
-      assert.ok(children.length >= 5, `Expected >= 5 summary items but got ${children.length}`);
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection, "Key Performance Indicators section should exist");
+      const children = provider.getChildren(kpiSection);
+      assert.ok(children.length >= 4, `Expected >= 4 KPI items but got ${children.length}`);
     });
 
-    test("summary shows correct acceptance rate", () => {
+    test("KPI section shows correct acceptance rate", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ acceptanceRate: 75.3 }));
       const roots = provider.getChildren();
-      const children = provider.getChildren(roots[0]);
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
       const rateItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Acceptance Rate");
       assert.ok(rateItem);
       assert.strictEqual(rateItem.description, "75.3%");
@@ -148,7 +155,12 @@ suite("CopilotUsageTreeProvider", () => {
     test("includes avg latency when > 0", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ avgLatencyMs: 300 }));
-      const children = provider.getChildren(provider.getChildren()[0]);
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
       const latencyItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Avg Latency");
       assert.ok(latencyItem, "Should include latency item");
       assert.strictEqual(latencyItem.description, "300ms");
@@ -157,9 +169,79 @@ suite("CopilotUsageTreeProvider", () => {
     test("omits avg latency when 0", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ avgLatencyMs: 0 }));
-      const children = provider.getChildren(provider.getChildren()[0]);
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
       const latencyItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Avg Latency");
       assert.strictEqual(latencyItem, undefined, "Should not include latency when 0");
+    });
+
+    test("ROI rank badge: no badge below 60 minutes", () => {
+      const provider = new CopilotUsageTreeProvider();
+      // totalAccepted=10, formula: 10*40/200=2 minutes, autonomousDurationMs=0
+      provider.updateStats(makeStats({ totalAccepted: 10, autonomousDurationMs: 0 }));
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
+      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
+      assert.ok(roiItem);
+      const desc = roiItem.description as string;
+      assert.ok(
+        !desc.includes("✨") && !desc.includes("⭐") && !desc.includes("🏆"),
+        `Expected no badge but got: ${desc}`,
+      );
+    });
+
+    test("ROI rank badge: ✨ at 60 minutes", () => {
+      const provider = new CopilotUsageTreeProvider();
+      // totalAccepted=750: 750*40/200 = 150 minutes → ≥60 but <180 → ✨ tier
+      provider.updateStats(makeStats({ totalAccepted: 750, autonomousDurationMs: 0 }));
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
+      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
+      assert.ok(roiItem);
+      const desc = roiItem.description as string;
+      assert.ok(desc.includes("✨"), `Expected ✨ badge but got: ${desc}`);
+    });
+
+    test("ROI rank badge: 🏆 at 600+ minutes", () => {
+      const provider = new CopilotUsageTreeProvider();
+      // autonomousDurationMs = 600 min * 60000ms / 0.5 = 72_000_000ms
+      provider.updateStats(makeStats({ totalAccepted: 0, autonomousDurationMs: 72_000_000 }));
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
+      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
+      assert.ok(roiItem);
+      const desc = roiItem.description as string;
+      assert.ok(desc.includes("🏆"), `Expected 🏆 badge but got: ${desc}`);
+    });
+
+    test("shows Active Sessions count", () => {
+      const provider = new CopilotUsageTreeProvider();
+      provider.updateStats(makeStats());
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
+      const sessItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Active Sessions");
+      assert.ok(sessItem, "Should have Active Sessions item");
+      assert.strictEqual(sessItem.description, "1"); // makeStats has 1 session
     });
   });
 

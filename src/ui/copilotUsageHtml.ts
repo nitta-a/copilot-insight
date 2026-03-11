@@ -1,12 +1,16 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, LanguageStat } from "../types";
+import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 import type { DashboardPayload } from "./dashboardMessages";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
 const HOUR_CELL_BASE_OPACITY = 0.15;
 const HOUR_CELL_SCALE = 0.85;
 const SESSION_ID_MAX_LENGTH = 20;
+
+/** Latency (ms) above which a warning colour is applied. */
+const LATENCY_WARN_MS = 500;
 
 export function getHtmlContent(
   stats: CopilotUsageStats,
@@ -42,6 +46,7 @@ export function getHtmlContent(
   const sessionSection = buildSessionSection(stats.bySession);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
   const contextEffectivenessSection = buildContextEffectivenessSection(stats.byContextEffectiveness);
+  const coreKpiPanel = buildCoreKpiPanel(stats);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -61,6 +66,36 @@ export function getHtmlContent(
     h1 { font-size: 1.5em; margin-bottom: 4px; }
     .date-range-label { font-size: 0.85em; opacity: 0.65; margin: 0 0 16px; }
     h2 { font-size: 1.1em; margin: 24px 0 10px; }
+    /* ── Core KPI grid ─────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); } }
+    .kpi-card {
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border-radius: 8px;
+      padding: 14px 12px;
+      text-align: center;
+      border: 1px solid transparent;
+    }
+    .kpi-value {
+      font-size: 1.6em;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+    .kpi-label { font-size: 0.78em; opacity: 0.75; }
+    .kpi-roi-blue  { border-color: var(--vscode-charts-blue);   }
+    .kpi-roi-blue  .kpi-value { color: var(--vscode-charts-blue); }
+    .kpi-roi-green { border-color: var(--vscode-charts-green);  }
+    .kpi-roi-green .kpi-value { color: var(--vscode-charts-green); }
+    .kpi-roi-gold  { border-color: var(--vscode-charts-orange); }
+    .kpi-roi-gold  .kpi-value { color: var(--vscode-charts-orange); }
+    .kpi-latency-warn { border-color: var(--vscode-charts-red, #f14c4c); }
+    .kpi-latency-warn .kpi-value { color: var(--vscode-charts-red, #f14c4c); }
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -373,6 +408,7 @@ export function getHtmlContent(
         <span></span>
         <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
       </div>
+      ${coreKpiPanel}
       <div id="db-summary-cards" class="stats-grid"></div>
       <div id="db-freshness-container"></div>
       <div id="db-refresh-analysis-container"></div>
@@ -422,6 +458,47 @@ export function getHtmlContent(
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
 </html>`;
+}
+
+/** Builds the server-rendered core KPI grid for the Overview tab. */
+function buildCoreKpiPanel(stats: CopilotUsageStats): string {
+  const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+  const tier = getRoiTier(totalMinutesSaved);
+  const roiBadge = getRoiBadge(tier);
+  const roiColorClass = tier ? `kpi-roi-${tier}` : "";
+
+  const timeSavedDisplay = escapeHtml(`${roiBadge}${formatMinutesSaved(totalMinutesSaved)}`);
+  const latencyDisplay = stats.avgLatencyMs > 0 ? escapeHtml(`${stats.avgLatencyMs.toFixed(0)}ms`) : "—";
+  const latencyClass = stats.avgLatencyMs > LATENCY_WARN_MS ? "kpi-latency-warn" : "";
+  const latencyTitle =
+    stats.avgLatencyMs > LATENCY_WARN_MS
+      ? ` title="${escapeHtml(`Latency is high (>${LATENCY_WARN_MS}ms). Copilot responses may feel slow.`)}"`
+      : "";
+
+  const totalSessions = stats.bySession.size;
+
+  return `<div class="kpi-grid" aria-label="Key Performance Indicators">
+  <div class="kpi-card">
+    <div class="kpi-value">${escapeHtml(String(stats.totalAccepted))}</div>
+    <div class="kpi-label">Accepted Completions</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}</div>
+    <div class="kpi-label">Acceptance Rate</div>
+  </div>
+  <div class="kpi-card ${roiColorClass}">
+    <div class="kpi-value">${timeSavedDisplay}</div>
+    <div class="kpi-label">Time Saved (ROI)</div>
+  </div>
+  <div class="kpi-card ${latencyClass}"${latencyTitle}>
+    <div class="kpi-value">${latencyDisplay}</div>
+    <div class="kpi-label">Avg Latency${stats.avgLatencyMs > LATENCY_WARN_MS ? " ⚠️" : ""}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-value">${escapeHtml(String(totalSessions))}</div>
+    <div class="kpi-label">Active Sessions</div>
+  </div>
+</div>`;
 }
 
 function buildDateSection(dateData: [string, LanguageStat][], chatByDate: Map<string, number>): string {
