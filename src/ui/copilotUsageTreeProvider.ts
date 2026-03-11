@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import type { CopilotUsageStats, DateStat } from "../types";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
+import type { CopilotUsageStats, DateStat } from "../types";
 import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 
-type TreeElement = CategoryItem | StatItem;
+type TreeElement = CategoryItem | StatItem | ActionItem;
 
 /** Maps a ROI tier to a VS Code ThemeColor id. */
 const ROI_TIER_COLORS: Record<string, string> = {
@@ -65,8 +65,9 @@ export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeEle
     this._onDidChangeTreeData.dispose();
   }
 
-  private _buildRootNodes(stats: CopilotUsageStats): CategoryItem[] {
-    const nodes: CategoryItem[] = [
+  private _buildRootNodes(stats: CopilotUsageStats): TreeElement[] {
+    const nodes: TreeElement[] = [
+      new ActionItem("Show Usage", SHOW_USAGE_COMMAND, "open-preview"),
       new CategoryItem("summary", "Key Performance Indicators", "dashboard", stats),
       new CategoryItem("trend", "Weekly Trend", "graph-line", stats),
       new CategoryItem("daily", "Daily (7 days)", "calendar", stats),
@@ -77,6 +78,15 @@ export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeEle
     }
 
     return nodes;
+  }
+}
+
+class ActionItem extends vscode.TreeItem {
+  constructor(label: string, command: vscode.Command, icon: string) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.command = command;
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.contextValue = "action-item";
   }
 }
 
@@ -197,6 +207,11 @@ class StatItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon(icon, iconColor);
   }
 }
+
+const SHOW_USAGE_COMMAND: vscode.Command = {
+  command: "copilot-insight.showCopilotUsage",
+  title: "Show Usage",
+};
 
 function formatTreeDateLabel(dateStr: string): string {
   try {

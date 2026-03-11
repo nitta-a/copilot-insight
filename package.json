@@ -7,7 +7,7 @@
   "publisher": "nitta-a",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nitta-a/plugin-draft"
+    "url": "https://github.com/nitta-a/copilot-insight"
   },
   "engines": {
     "vscode": "^1.105.0"

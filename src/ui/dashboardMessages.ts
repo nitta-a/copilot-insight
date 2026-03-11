@@ -44,8 +44,18 @@ export interface SummaryData {
   typingMinutesSaved: number;
   /** Minutes saved from AI autonomous actions (50% of autonomous duration). */
   agenticMinutesSaved: number;
-  /** Best-performing model name (null when no model-performance data). */
-  bestModel: string | null;
+  /** Most frequently used non-inline model name (null when unavailable). */
+  topChatModel: string | null;
+  /** Number of chat requests attributed to `topChatModel`. */
+  topChatModelCount: number;
+  /** Most frequently used Ask model, combining Ask and old Ask intents. */
+  topAskModel: string | null;
+  /** Number of Ask requests attributed to `topAskModel`. */
+  topAskModelCount: number;
+  /** Most frequent model among model-tagged plan proposals. */
+  topPlanModel: string | null;
+  /** Number of model-tagged plan proposals attributed to `topPlanModel`. */
+  topPlanModelCount: number;
   /** Total estimated minutes saved (numeric, for ROI rank calculation). */
   totalMinutesSaved: number;
   /** Estimated time saved formatted for display (e.g. "1h 23m"). */

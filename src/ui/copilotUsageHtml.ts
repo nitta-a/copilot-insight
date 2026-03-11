@@ -476,7 +476,6 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
       : "";
 
   const totalSessions = stats.bySession.size;
-  const bestModelDisplay = escapeHtml(dashboardPayload?.summary.bestModel ?? "N/A");
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
   <div class="kpi-card">
@@ -498,10 +497,6 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   <div class="kpi-card">
     <div class="kpi-value">${escapeHtml(String(totalSessions))}</div>
     <div class="kpi-label">Active Sessions</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-value" style="font-size:1.05em">${bestModelDisplay}</div>
-    <div class="kpi-label">Best Model: highest acceptance</div>
   </div>
 </div>`;
 }

@@ -8,7 +8,14 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import type { AgenticDepthStat, CopilotUsageStats, RefreshAnalysis, SessionStat, SessionSummary } from "../types";
+import type {
+  AgenticDepthStat,
+  CopilotUsageStats,
+  LanguageStat,
+  RefreshAnalysis,
+  SessionStat,
+  SessionSummary,
+} from "../types";
 import { formatMinutesSaved } from "../utils";
 import type {
   AgentIntelligenceOverview,
@@ -37,9 +44,6 @@ const TYPING_SPEED_CPM = 200;
  * Intended to be made user-configurable in a future settings panel.
  */
 const AGENTIC_COGNITIVE_WEIGHT = 0.5;
-
-/** Minimum number of suggestions shown for a model to qualify as "best model". */
-const MIN_SHOWN_FOR_BEST_MODEL = 5;
 
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
@@ -76,6 +80,44 @@ function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary
     .sort((a, b) => b.date.localeCompare(a.date) || b.totalActions - a.totalActions);
 }
 
+function findTopCountModel(byModel: Map<string, number>): { model: string | null; count: number } {
+  let topModel: string | null = null;
+  let topCount = 0;
+
+  for (const [model, count] of byModel) {
+    if (count <= 0) {
+      continue;
+    }
+    if (count > topCount || (count === topCount && topModel !== null && model.localeCompare(topModel) < 0)) {
+      topModel = model;
+      topCount = count;
+    }
+  }
+
+  return { model: topModel, count: topCount };
+}
+
+function isAskIntent(intent: string): boolean {
+  return intent === "vscodePrompt" || intent === "copilotLanguageModelWrapper";
+}
+
+function buildModelCountFromSessionSignals(
+  stats: CopilotUsageStats,
+  predicate: (signal: CopilotUsageStats["sessionSignals"][number]) => boolean,
+): Map<string, number> {
+  const byModel = new Map<string, number>();
+
+  for (const signal of stats.sessionSignals) {
+    const modelName = signal.modelName.trim();
+    if (!modelName || !predicate(signal)) {
+      continue;
+    }
+    byModel.set(modelName, (byModel.get(modelName) ?? 0) + 1);
+  }
+
+  return mergeCountByNormalizedModel(byModel);
+}
+
 /**
  * Convert raw Copilot stats + optional advanced-metrics into the data shape
  * consumed by the dashboard WebView.
@@ -101,24 +143,18 @@ export function buildDashboardPayload(
   const estimatedMinutesSaved = typingMinutesSaved + agenticMinutesSaved;
   const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
-  // Normalize and merge byModel entries early so we can use the result for both
-  // the "Best Model" KPI and the per-model autonomous ratio table below.
+  // Normalize and merge model maps early so we can use them consistently across
+  // summary KPIs and the per-model autonomous ratio table below.
   const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
-
-  // Best model = the model with the highest inline acceptance rate among those
-  // with at least MIN_SHOWN_FOR_BEST_MODEL suggestions shown (statistical reliability).
-  let bestModel: string | null = null;
-  let bestModelRate = -1;
-  for (const [model, { shown, accepted }] of normalizedInlineByModel) {
-    if (shown === 0 || shown < MIN_SHOWN_FOR_BEST_MODEL) {
-      continue;
-    }
-    const rate = accepted / shown;
-    if (rate > bestModelRate) {
-      bestModelRate = rate;
-      bestModel = `${model} (${(rate * 100).toFixed(1)}%)`;
-    }
-  }
+  const normalizedChatModelForSummary = mergeCountByNormalizedModel(stats.byChatModel);
+  const askModelCounts = buildModelCountFromSessionSignals(
+    stats,
+    (signal) => signal.signalType === "chat-request" && isAskIntent(signal.intent),
+  );
+  const planModelCounts = buildModelCountFromSessionSignals(stats, (signal) => signal.signalType === "plan-proposal");
+  const topChatModel = findTopCountModel(normalizedChatModelForSummary);
+  const topAskModel = findTopCountModel(askModelCounts);
+  const topPlanModel = findTopCountModel(planModelCounts);
 
   const summary: SummaryData = {
     totalShown: stats.totalShown,
@@ -128,7 +164,12 @@ export function buildDashboardPayload(
     estimatedMinutesSaved,
     typingMinutesSaved,
     agenticMinutesSaved,
-    bestModel,
+    topChatModel: topChatModel.model,
+    topChatModelCount: topChatModel.count,
+    topAskModel: topAskModel.model,
+    topAskModelCount: topAskModel.count,
+    topPlanModel: topPlanModel.model,
+    topPlanModelCount: topPlanModel.count,
     totalMinutesSaved: estimatedMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
@@ -276,7 +317,7 @@ export function buildDashboardPayload(
   const normalizedChatModel = mergeCountByNormalizedModel(stats.byChatModel);
   const normalizedSubagentByModel = mergeCountByNormalizedModel(stats.subagentByModel);
   const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
-  // normalizedInlineByModel is already computed above for the bestModel KPI.
+  // normalizedInlineByModel is already computed above for the summary KPI.
 
   const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
   for (const [model, totalCount] of normalizedChatModel) {
