@@ -99,18 +99,25 @@ suite("CopilotUsageTreeProvider", () => {
   });
 
   suite("getChildren (root)", () => {
-    test("returns 3 category nodes when no errors", () => {
+    test("returns show-usage action plus 3 category nodes when no errors", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ totalErrors: 0 }));
       const roots = provider.getChildren();
-      assert.strictEqual(roots.length, 3);
+      assert.strictEqual(roots.length, 4);
     });
 
-    test("returns 4 category nodes when errors exist", () => {
+    test("returns show-usage action plus 4 category nodes when errors exist", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ totalErrors: 3, errorsByType: new Map([["HTTP 500", 3]]) }));
       const roots = provider.getChildren();
-      assert.strictEqual(roots.length, 4);
+      assert.strictEqual(roots.length, 5);
+    });
+
+    test("show usage action appears before KPI category", () => {
+      const provider = new CopilotUsageTreeProvider();
+      provider.updateStats(makeStats());
+      const roots = provider.getChildren();
+      assert.strictEqual(typeof roots[0]?.label === "string" ? roots[0].label : "", "Show Usage");
     });
 
     test("root labels are correct", () => {
@@ -118,6 +125,7 @@ suite("CopilotUsageTreeProvider", () => {
       provider.updateStats(makeStats());
       const roots = provider.getChildren();
       const labels = roots.map((r) => (typeof r.label === "string" ? r.label : ""));
+      assert.ok(labels.includes("Show Usage"));
       assert.ok(labels.includes("Key Performance Indicators"));
       assert.ok(labels.includes("Weekly Trend"));
       assert.ok(!labels.includes("By Language"));

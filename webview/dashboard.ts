@@ -156,7 +156,19 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   const agenticHours = (summary.agenticMinutesSaved / 60).toFixed(1);
   const roiDetail =
     summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
-  const bestModelStr = summary.bestModel ?? "—";
+  const topChatModelStr = summary.topChatModel ?? "—";
+  const topChatModelDetail =
+    summary.topChatModel && summary.topChatModelCount > 0
+      ? `${summary.topChatModelCount} requests`
+      : "no chat model data";
+  const topAskModelStr = summary.topAskModel ?? "—";
+  const topAskModelDetail =
+    summary.topAskModel && summary.topAskModelCount > 0 ? `${summary.topAskModelCount} requests` : "no ask model data";
+  const topPlanModelStr = summary.topPlanModel ?? "—";
+  const topPlanModelDetail =
+    summary.topPlanModel && summary.topPlanModelCount > 0
+      ? `${summary.topPlanModelCount} model-tagged proposals`
+      : "no model-tagged plan data";
 
   el.innerHTML = `
     <div class="stat-card db-highlight">
@@ -170,9 +182,19 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
       <div class="stat-detail">${roiDetail}</div>
     </div>
     <div class="stat-card db-highlight">
-      <div class="stat-value db-model" title="${escHtml(bestModelStr)}">${escHtml(trunc(bestModelStr, 18))}</div>
-      <div class="stat-label">Best Model</div>
-      <div class="stat-detail">highest acceptance</div>
+      <div class="stat-value db-model" title="${escHtml(topChatModelStr)}">${escHtml(trunc(topChatModelStr, 18))}</div>
+      <div class="stat-label">Top Chat Model</div>
+      <div class="stat-detail">${escHtml(topChatModelDetail)}</div>
+    </div>
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-model" title="${escHtml(topAskModelStr)}">${escHtml(trunc(topAskModelStr, 18))}</div>
+      <div class="stat-label">Top Ask Model</div>
+      <div class="stat-detail">${escHtml(topAskModelDetail)}</div>
+    </div>
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-model" title="${escHtml(topPlanModelStr)}">${escHtml(trunc(topPlanModelStr, 18))}</div>
+      <div class="stat-label">Top Plan Model</div>
+      <div class="stat-detail">${escHtml(topPlanModelDetail)}</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${summary.totalShown}</div>

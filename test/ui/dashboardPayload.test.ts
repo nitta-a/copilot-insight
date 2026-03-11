@@ -1,9 +1,6 @@
 import * as assert from "assert";
-import type {
-  ModelPerformanceResult,
-  TrueAcceptanceResult,
-  VelocityAnalysisResult,
-} from "../../src/metrics/metricsEngine";
+import type { SessionSignalEvent } from "../../src/events/eventSchema";
+import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
 import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
 
@@ -140,6 +137,24 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   };
 }
 
+function makeSessionSignal(overrides?: Partial<SessionSignalEvent>): SessionSignalEvent {
+  return {
+    sessionId: "s1",
+    timestamp: "2026-03-07T10:00:00Z",
+    eventType: "sessionSignal",
+    languageId: "typescript",
+    signalType: "chat-request",
+    actor: "human",
+    phase: "human",
+    intent: "vscodePrompt",
+    rawText: "prompt",
+    modelName: "gpt-4o",
+    latencyMs: 0,
+    success: true,
+    ...overrides,
+  };
+}
+
 suite("buildDashboardPayload", () => {
   suite("summary", () => {
     test("sets totalShown, totalAccepted, acceptanceRate from stats", () => {
@@ -196,22 +211,113 @@ suite("buildDashboardPayload", () => {
       );
     });
 
-    test("bestModel is null when no modelPerformance passed", () => {
+    test("topChatModel uses the most requested non-inline model from byChatModel", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.summary.bestModel, null);
+      assert.strictEqual(payload.summary.topChatModel, "gpt-4o");
+      assert.strictEqual(payload.summary.topChatModelCount, 20);
     });
 
-    test("bestModel is the most-frequent best model across languages", () => {
-      const mp: ModelPerformanceResult = {
-        crossTab: [],
-        bestModelByLanguage: new Map([
-          ["typescript", "gpt-4o"],
-          ["python", "gpt-4o"],
-          ["go", "claude-3.5"],
+    test("topChatModel picks the model with the highest request count", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o", 10],
+          ["claude-3.5", 12],
         ]),
-      };
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, mp);
-      assert.strictEqual(payload.summary.bestModel, "gpt-4o");
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topChatModel, "claude-3.5");
+      assert.strictEqual(payload.summary.topChatModelCount, 12);
+    });
+
+    test("topChatModel is returned even for low request counts", () => {
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 4]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topChatModel, "gpt-4o");
+      assert.strictEqual(payload.summary.topChatModelCount, 4);
+    });
+
+    test("topChatModel is null when byChatModel is empty", () => {
+      const stats = makeStats({ byChatModel: new Map() });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topChatModel, null);
+      assert.strictEqual(payload.summary.topChatModelCount, 0);
+    });
+
+    test("topChatModel works with normalized non-inline model names", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["claude-sonnet-4.6 -> claude-sonnet-4-6", 12],
+          ["gpt-4o", 8],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topChatModel, "claude-sonnet-4.6");
+      assert.strictEqual(payload.summary.topChatModelCount, 12);
+    });
+
+    test("topChatModel breaks equal-count ties alphabetically", () => {
+      const stats = makeStats({
+        byChatModel: new Map([
+          ["gpt-4o", 10],
+          ["claude-3.5", 10],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topChatModel, "claude-3.5");
+      assert.strictEqual(payload.summary.topChatModelCount, 10);
+    });
+
+    test("topAskModel combines Ask and old Ask requests", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ intent: "vscodePrompt", modelName: "gpt-4o" }),
+          makeSessionSignal({ intent: "copilotLanguageModelWrapper", modelName: "gpt-4o" }),
+          makeSessionSignal({ intent: "vscodePrompt", modelName: "claude-3.5" }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topAskModel, "gpt-4o");
+      assert.strictEqual(payload.summary.topAskModelCount, 2);
+    });
+
+    test("topAskModel ignores non-Ask intents and blank model names", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ intent: "Agent", modelName: "claude-3.5" }),
+          makeSessionSignal({ intent: "vscodePrompt", modelName: "   " }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topAskModel, null);
+      assert.strictEqual(payload.summary.topAskModelCount, 0);
+    });
+
+    test("topPlanModel uses only model-tagged plan proposals", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "", intent: "agent/plan" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-3.5", intent: "vscodePrompt" }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topPlanModel, "o3");
+      assert.strictEqual(payload.summary.topPlanModelCount, 2);
+    });
+
+    test("topPlanModel breaks equal-count ties alphabetically", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "claude-3.5", intent: "panel/unknown" }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topPlanModel, "claude-3.5");
+      assert.strictEqual(payload.summary.topPlanModelCount, 1);
     });
 
     test("sessionSummaries are forwarded into the payload", () => {

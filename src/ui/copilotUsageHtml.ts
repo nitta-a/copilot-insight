@@ -46,7 +46,7 @@ export function getHtmlContent(
   const sessionSection = buildSessionSection(stats.bySession);
   const contextInsightsSection = buildContextInsightsSection(stats.byContextSource);
   const contextEffectivenessSection = buildContextEffectivenessSection(stats.byContextEffectiveness);
-  const coreKpiPanel = buildCoreKpiPanel(stats);
+  const coreKpiPanel = buildCoreKpiPanel(stats, dashboardPayload);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -69,7 +69,7 @@ export function getHtmlContent(
     /* ── Core KPI grid ─────────────────────────────────────────────────── */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 10px;
       margin-bottom: 20px;
     }
@@ -461,7 +461,7 @@ export function getHtmlContent(
 }
 
 /** Builds the server-rendered core KPI grid for the Overview tab. */
-function buildCoreKpiPanel(stats: CopilotUsageStats): string {
+function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: DashboardPayload): string {
   const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
   const tier = getRoiTier(totalMinutesSaved);
   const roiBadge = getRoiBadge(tier);
