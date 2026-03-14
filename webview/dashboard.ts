@@ -720,7 +720,7 @@ function setupExportButtons(): void {
 // Tab switching
 // ---------------------------------------------------------------------------
 
-const VALID_TABS = new Set(["overview", "health", "flow", "sessions"]);
+const VALID_TABS = new Set(["overview", "health", "flow", "prompt-insights", "sessions"]);
 
 function switchTab(tabId: string): void {
   currentTab = tabId;
@@ -739,6 +739,11 @@ function switchTab(tabId: string): void {
   // Trigger resize so Chart.js renders correctly after becoming visible.
   if (tabId === "health" && timelineChart) {
     timelineChart.resize();
+  }
+  if (tabId === "prompt-insights") {
+    intentDonutChart?.resize();
+    commandDonutChart?.resize();
+    promptLengthScatterChart?.resize();
   }
 }
 

@@ -421,6 +421,7 @@ export function getHtmlContent(
       <button class="db-tab-btn active" data-tab="overview" role="tab" aria-selected="true">📊 Overview (ROI)</button>
       <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
       <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
+      <button class="db-tab-btn" data-tab="prompt-insights" role="tab" aria-selected="false">💬 Prompt Insights</button>
       <button class="db-tab-btn" data-tab="sessions" role="tab" aria-selected="false">📂 Sessions</button>
     </div>
     <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
@@ -433,11 +434,9 @@ export function getHtmlContent(
       <div id="db-freshness-container"></div>
       <div id="db-refresh-analysis-container"></div>
       <div id="db-insights-container"></div>
-      <div id="db-tag-cloud-container"></div>
       <div id="db-weekly-trend-container"></div>
       <div id="db-agent-intelligence-container"></div>
       <div id="db-autonomy-evolution-container"></div>
-      <div id="db-intent-command-donut-container"></div>
     </div>
 
     <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
@@ -457,11 +456,18 @@ export function getHtmlContent(
 
     <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
       <div id="model-autonomy-leverage-map"></div>
-      <div id="db-prompt-length-scatter-container"></div>
       ${hourSection}
       ${chatHourSection}
       ${contextInsightsSection}
       ${contextEffectivenessSection}
+    </div>
+
+    <div id="db-tab-prompt-insights" class="db-tab-pane" role="tabpanel">
+      <div id="db-tag-cloud-container"></div>
+      <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
+        <div id="db-intent-command-donut-container"></div>
+        <div id="db-prompt-length-scatter-container"></div>
+      </div>
     </div>
 
     <div id="db-tab-sessions" class="db-tab-pane" role="tabpanel">
