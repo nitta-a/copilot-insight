@@ -425,12 +425,13 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byChatModel.get("gpt-4o"), 1);
     });
 
-    test("ccreq with XtabProvider tracks model in byModel (inline), not byChatModel", () => {
+    test("ccreq with XtabProvider tracks model in byModel (inline shown), not byChatModel", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 ccreq:mno345 | success | gpt-4o | 120ms | [XtabProvider]", stats);
       assert.strictEqual(stats.totalChat, 0);
-      assert.strictEqual(stats.totalAccepted, 1);
-      assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 0, accepted: 1 });
+      assert.strictEqual(stats.totalShown, 1);
+      assert.strictEqual(stats.totalAccepted, 0);
+      assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 1, accepted: 0 });
       assert.strictEqual(stats.byChatModel.size, 0);
     });
 
@@ -567,10 +568,11 @@ suite("logContentParser", () => {
         stats,
       );
       parseTextLogLine("2024-06-01 ccreq:abc | success | gpt-4o | 100ms | [XtabProvider]", stats);
+      parseTextLogLine("2024-06-01 ccreq:xyz | success | gpt-4o | 80ms | [nes.nextCursorPosition]", stats);
       parseTextLogLine("2024-06-01 ccreq:def | success | gpt-4o | 800ms | [vscodePrompt]", stats);
       const session = stats.bySession.get("session-001");
       assert.ok(session);
-      assert.strictEqual(session.shown, 1);
+      assert.strictEqual(session.shown, 2);
       assert.strictEqual(session.accepted, 1);
       assert.strictEqual(session.chat, 1);
     });
@@ -1465,26 +1467,31 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
     assert.strictEqual(ctx.activeSubagentLoop, "2026-02-28 19:25:27.878");
   });
 
-  test("XtabProvider ccreq increments totalAccepted (inline completion)", () => {
+  test("XtabProvider ccreq increments totalShown (inline completion shown)", () => {
     // Real line: ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]
+    // XtabProvider fetches and displays a suggestion — this is a "Shown" event, not "Accepted".
     const ctx = makeEmptyStats();
     parseTextLogLine(
       "2026-03-04 19:36:15.954 [info] ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]",
       ctx,
     );
-    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
     assert.strictEqual(ctx.totalChat, 0);
-    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted, 1);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.shown, 1);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted, 0);
   });
 
-  test("nes.nextCursorPosition ccreq increments totalAccepted (inline completion)", () => {
+  test("nes.nextCursorPosition ccreq increments totalAccepted (inline completion accepted)", () => {
     // Real line: ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]
+    // nes.nextCursorPosition fires after user accepts (Tab key) — this is the true "Accepted" event.
     const ctx = makeEmptyStats();
     parseTextLogLine(
       "2026-03-04 19:36:16.514 [info] ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]",
       ctx,
     );
     assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalShown, 0, "nes.nextCursorPosition must not count as shown");
     assert.strictEqual(ctx.totalChat, 0);
   });
 
@@ -1512,8 +1519,9 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
       "2026-03-04 19:38:04.104 [info] ccreq:20ce1418.copilotmd | success | copilot-nes-oct | -161ms | [XtabProvider]",
       ctx,
     );
-    // Should still count as accepted, but no latency recorded
-    assert.strictEqual(ctx.totalAccepted, 1);
+    // Should still count as shown (XtabProvider = shown), but no latency recorded
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
     assert.strictEqual(ctx.latencies.length, 0);
     assert.strictEqual(ctx.latencyCount, 0);
   });
@@ -1527,6 +1535,109 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
     );
     // Model: "oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime" normalizes to "oswe-vscode-prime"
     assert.strictEqual(ctx.byChatModel.get("oswe-vscode-prime"), 1);
+  });
+});
+
+suite("real log format: XtabProvider=Shown vs nes.nextCursorPosition=Accepted", () => {
+  test("mixed XtabProvider + nes.nextCursorPosition produces correct shown/accepted counts", () => {
+    // Real log sequence: XtabProvider fires first (fetches and shows suggestion),
+    // then nes.nextCursorPosition fires after user presses Tab to accept.
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-12 20:02:06.601 [info] ccreq:96bb7a6e.copilotmd | success | copilot-nes-oct | 909ms | [XtabProvider]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-12 20:02:07.145 [info] ccreq:7c403803.copilotmd | success | copilot-suggestions-himalia-001 | 533ms | [nes.nextCursorPosition]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalShown, 1, "XtabProvider should count as shown");
+    assert.strictEqual(ctx.totalAccepted, 1, "nes.nextCursorPosition should count as accepted");
+    assert.strictEqual(ctx.totalChat, 0, "neither should count as chat");
+  });
+
+  test("multiple XtabProvider lines without nes.nextCursorPosition means shown but not accepted", () => {
+    // User saw suggestions but did not accept any.
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-14 11:36:22.951 [info] ccreq:da8d9005.copilotmd | success | copilot-nes-oct | 308ms | [XtabProvider]",
+      ctx,
+    );
+    parseTextLogLine(
+      "2026-03-14 11:36:29.893 [info] ccreq:2210e63d.copilotmd | success | copilot-nes-oct | 343ms | [XtabProvider]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalShown, 2);
+    assert.strictEqual(ctx.totalAccepted, 0);
+  });
+
+  test("nes.nextCursorPosition records accepted in byDate and byModel", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-12 20:02:07.145 [info] ccreq:7c403803.copilotmd | success | copilot-suggestions-himalia-001 | 533ms | [nes.nextCursorPosition]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalShown, 0, "nes.nextCursorPosition must not inflate totalShown");
+    assert.strictEqual(ctx.byDate.get("2026-03-12")?.accepted, 1);
+    assert.strictEqual(ctx.byDate.get("2026-03-12")?.shown ?? 0, 0);
+    assert.strictEqual(ctx.byModel.get("copilot-suggestions-himalia-001")?.accepted, 1);
+  });
+
+  test("XtabProvider records shown in byDate and byModel, not accepted", () => {
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2026-03-14 11:36:22.951 [info] ccreq:da8d9005.copilotmd | success | copilot-nes-oct | 308ms | [XtabProvider]",
+      ctx,
+    );
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
+    assert.strictEqual(ctx.byDate.get("2026-03-14")?.shown, 1);
+    assert.strictEqual(ctx.byDate.get("2026-03-14")?.accepted ?? 0, 0);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.shown, 1);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted ?? 0, 0);
+  });
+
+  test("realistic session: multiple shown with some accepted yields correct acceptance rate", () => {
+    // Simulates a real coding session extracted from actual logs.
+    const ctx = makeEmptyStats();
+    // Shown 1
+    parseTextLogLine(
+      "2026-03-13 15:58:04.715 [info] ccreq:222786da.copilotmd | success | copilot-nes-oct | 796ms | [XtabProvider]",
+      ctx,
+    );
+    // Accepted 1 (user pressed Tab)
+    parseTextLogLine(
+      "2026-03-13 15:58:06.822 [info] ccreq:bd339cfe.copilotmd | success | copilot-suggestions-himalia-001 | 433ms | [nes.nextCursorPosition]",
+      ctx,
+    );
+    // Shown 2
+    parseTextLogLine(
+      "2026-03-13 15:58:08.024 [info] ccreq:4e88fb4c.copilotmd | success | copilot-nes-oct | 384ms | [XtabProvider]",
+      ctx,
+    );
+    // Shown 3 (user did not accept this one)
+    parseTextLogLine(
+      "2026-03-14 11:36:17.360 [info] ccreq:2c29e453.copilotmd | success | copilot-nes-oct | 1058ms | [XtabProvider]",
+      ctx,
+    );
+
+    assert.strictEqual(ctx.totalShown, 3, "three XtabProvider lines = 3 shown");
+    assert.strictEqual(ctx.totalAccepted, 1, "one nes.nextCursorPosition = 1 accepted");
+    assert.strictEqual(ctx.totalChat, 0);
+  });
+
+  test("ccreq success lines (fetchCompletions/chat) are not counted as accepted", () => {
+    // Ensures that HTTP 200 completion fetches and chat requests remain correctly classified.
+    const ctx = makeEmptyStats();
+    parseTextLogLine(
+      "2024-06-01 [fetchCompletions] Request to /v1/engines/gpt-4o/completions finished with 200 status after 290ms",
+      ctx,
+    );
+    parseTextLogLine("2024-06-01 ccreq:abc123 | success | gpt-4o | 800ms | [vscodePrompt]", ctx);
+    assert.strictEqual(ctx.totalShown, 1, "fetchCompletions 200 = shown");
+    assert.strictEqual(ctx.totalChat, 1, "vscodePrompt ccreq = chat");
+    assert.strictEqual(ctx.totalAccepted, 0, "neither should count as accepted");
   });
 });
 
