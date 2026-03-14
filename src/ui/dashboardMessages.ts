@@ -246,6 +246,10 @@ export interface DashboardPayload {
   freshness: ContextFreshness | null;
   /** Precomputed session summaries for the Sessions master list. */
   sessionSummaries: SessionSummary[];
+  /** Chat intent breakdown (Agent/Ask/Plan/…) sorted by count desc — for donut chart. */
+  chatIntentBreakdown: CountBreakdownEntry[];
+  /** Slash-command / @participant usage breakdown sorted by count desc — for donut chart. */
+  commandUsageBreakdown: CountBreakdownEntry[];
 }
 
 // ---------------------------------------------------------------------------

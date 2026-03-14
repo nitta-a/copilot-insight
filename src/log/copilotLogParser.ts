@@ -112,6 +112,7 @@ export async function parseCopilotLogs(
     activePlanPending: false,
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    commandUsage: new Map(),
   };
 
   try {

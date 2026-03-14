@@ -23,6 +23,67 @@ export const KNOWN_CHAT_INTENTS = new Set(Object.keys(INTENT_DISPLAY_NAMES));
 /** Intent tags that identify subagent-initiated requests. */
 export const SUBAGENT_INTENTS = new Set(["tool/runSubagent", "panel/editAgent", "tool/searchSubagentTool"]);
 
+/**
+ * Known Copilot Chat slash commands with their display labels.
+ * These may appear in the `command` field of JSON log entries.
+ */
+export const SLASH_COMMAND_DISPLAY_NAMES: Record<string, string> = {
+  "/fix": "/fix",
+  "/explain": "/explain",
+  "/tests": "/tests",
+  "/test": "/test",
+  "/doc": "/doc",
+  "/new": "/new",
+  "/newNotebook": "/newNotebook",
+  "/clear": "/clear",
+  "/help": "/help",
+  "/search": "/search",
+  "/simplify": "/simplify",
+};
+
+/** Known @participant identifiers used in Copilot Chat. */
+export const PARTICIPANT_DISPLAY_NAMES: Record<string, string> = {
+  "@workspace": "@workspace",
+  "@terminal": "@terminal",
+  "@vscode": "@vscode",
+  "@github": "@github",
+};
+
+export const KNOWN_SLASH_COMMANDS = new Set(Object.keys(SLASH_COMMAND_DISPLAY_NAMES));
+export const KNOWN_PARTICIPANTS = new Set(Object.keys(PARTICIPANT_DISPLAY_NAMES));
+
+/**
+ * Attempt to detect a slash command or @participant reference in a raw string.
+ * Returns the canonical display name (e.g. "/fix", "@workspace") or "" if none detected.
+ */
+export function detectCommandUsage(raw: string): string {
+  if (!raw) {
+    return "";
+  }
+  const trimmed = raw.trim();
+  // Exact match first (e.g. command field is exactly "/fix")
+  if (KNOWN_SLASH_COMMANDS.has(trimmed)) {
+    return SLASH_COMMAND_DISPLAY_NAMES[trimmed] ?? trimmed;
+  }
+  if (KNOWN_PARTICIPANTS.has(trimmed)) {
+    return PARTICIPANT_DISPLAY_NAMES[trimmed] ?? trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  // Prefix match for slash commands (e.g. "/fix: …" or "/explain code")
+  for (const cmd of KNOWN_SLASH_COMMANDS) {
+    if (lower === cmd || lower.startsWith(`${cmd} `) || lower.startsWith(`${cmd}:`)) {
+      return SLASH_COMMAND_DISPLAY_NAMES[cmd] ?? cmd;
+    }
+  }
+  // Prefix match for participants
+  for (const participant of KNOWN_PARTICIPANTS) {
+    if (lower === participant || lower.startsWith(`${participant} `) || lower.startsWith(`${participant}:`)) {
+      return PARTICIPANT_DISPLAY_NAMES[participant] ?? participant;
+    }
+  }
+  return "";
+}
+
 export const FEATURE_VALUE_KEYS = [
   "event",
   "eventName",

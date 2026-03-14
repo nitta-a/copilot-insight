@@ -417,6 +417,7 @@ export function getHtmlContent(
       <div id="db-weekly-trend-container"></div>
       <div id="db-agent-intelligence-container"></div>
       <div id="db-autonomy-evolution-container"></div>
+      <div id="db-intent-command-donut-container"></div>
     </div>
 
     <div id="db-tab-health" class="db-tab-pane" role="tabpanel">

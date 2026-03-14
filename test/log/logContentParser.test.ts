@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import {
+  detectCommandUsage,
   extractThreadTitleFromPayload,
   incrementStatCount,
   mergeCountByNormalizedModel,
@@ -84,6 +85,7 @@ function makeEmptyStats(): ParsingContext {
     agentDebugByType: new Map(),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    commandUsage: new Map(),
     activePlanPending: false,
   };
 }
@@ -1880,5 +1882,39 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.planCount, 2);
     assert.strictEqual(ctx.executedPlanCount, 2);
     assert.strictEqual(ctx.activePlanPending, false);
+  });
+});
+
+suite("detectCommandUsage", () => {
+  test("returns /fix for exact slash command", () => {
+    assert.strictEqual(detectCommandUsage("/fix"), "/fix");
+  });
+
+  test("returns /explain for exact slash command", () => {
+    assert.strictEqual(detectCommandUsage("/explain"), "/explain");
+  });
+
+  test("returns @workspace for participant", () => {
+    assert.strictEqual(detectCommandUsage("@workspace"), "@workspace");
+  });
+
+  test("returns command for prefix match with trailing text", () => {
+    assert.strictEqual(detectCommandUsage("/fix the error"), "/fix");
+  });
+
+  test("returns empty string for unknown string", () => {
+    assert.strictEqual(detectCommandUsage("some random text"), "");
+  });
+
+  test("returns empty string for empty input", () => {
+    assert.strictEqual(detectCommandUsage(""), "");
+  });
+
+  test("returns /tests for /tests command", () => {
+    assert.strictEqual(detectCommandUsage("/tests"), "/tests");
+  });
+
+  test("case-insensitive match for slash commands", () => {
+    assert.strictEqual(detectCommandUsage("/FIX"), "/fix");
   });
 });

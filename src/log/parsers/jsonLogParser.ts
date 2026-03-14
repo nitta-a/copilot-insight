@@ -6,6 +6,7 @@
 import type { ParsingContext } from "../../types";
 import {
   CHAT_TITLE_JSON_KEY_PATTERN,
+  detectCommandUsage,
   extractThreadTitleFromPayload,
   extractTimestampFromText,
   getJsonFeatureText,
@@ -86,6 +87,15 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       if (timestamp) {
         recordReferenceSignal(ctx, source, timestamp, source);
       }
+    }
+  }
+
+  // Slash command / @participant detection from JSON `command` or `action` fields.
+  const rawCommand = data.command ?? data.action;
+  if (typeof rawCommand === "string") {
+    const detected = detectCommandUsage(rawCommand);
+    if (detected) {
+      incrementCount(ctx.commandUsage, detected);
     }
   }
 

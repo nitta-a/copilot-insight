@@ -433,6 +433,8 @@ export function buildDashboardPayload(
     refreshAnalysis,
     freshness,
     sessionSummaries: effectiveSessionSummaries,
+    chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
+    commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
   };
 }
 

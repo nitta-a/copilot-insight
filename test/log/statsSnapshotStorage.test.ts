@@ -108,6 +108,7 @@ function makeStats(): CopilotUsageStats {
     agentDebugByType: new Map([["step-execution", 4]]),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    commandUsage: new Map([["@workspace", 3]]),
   };
 }
 
