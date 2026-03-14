@@ -135,6 +135,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agentDebugByType: new Map(),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    commandUsage: new Map(),
     ...overrides,
   };
 }
@@ -1068,5 +1069,51 @@ suite("buildDashboardPayload — CLI integration", () => {
       assert.strictEqual(entry.cliShown, 0);
       assert.strictEqual(entry.cliAccepted, 0);
     }
+  });
+});
+
+suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown", () => {
+  test("chatIntentBreakdown is empty when byChatIntent is empty", () => {
+    const payload = buildDashboardPayload(makeStats({ byChatIntent: new Map() }));
+    assert.deepStrictEqual(payload.chatIntentBreakdown, []);
+  });
+
+  test("chatIntentBreakdown reflects byChatIntent sorted by count desc", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        byChatIntent: new Map([
+          ["Ask", 5],
+          ["Agent", 20],
+          ["Plan", 3],
+        ]),
+      }),
+    );
+    assert.strictEqual(payload.chatIntentBreakdown.length, 3);
+    assert.strictEqual(payload.chatIntentBreakdown[0].name, "Agent");
+    assert.strictEqual(payload.chatIntentBreakdown[0].count, 20);
+    assert.strictEqual(payload.chatIntentBreakdown[1].name, "Ask");
+    assert.strictEqual(payload.chatIntentBreakdown[2].name, "Plan");
+  });
+
+  test("commandUsageBreakdown is empty when commandUsage is empty", () => {
+    const payload = buildDashboardPayload(makeStats({ commandUsage: new Map() }));
+    assert.deepStrictEqual(payload.commandUsageBreakdown, []);
+  });
+
+  test("commandUsageBreakdown reflects commandUsage sorted by count desc", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        commandUsage: new Map([
+          ["/fix", 4],
+          ["@workspace", 10],
+          ["/explain", 2],
+        ]),
+      }),
+    );
+    assert.strictEqual(payload.commandUsageBreakdown.length, 3);
+    assert.strictEqual(payload.commandUsageBreakdown[0].name, "@workspace");
+    assert.strictEqual(payload.commandUsageBreakdown[0].count, 10);
+    assert.strictEqual(payload.commandUsageBreakdown[1].name, "/fix");
+    assert.strictEqual(payload.commandUsageBreakdown[2].name, "/explain");
   });
 });

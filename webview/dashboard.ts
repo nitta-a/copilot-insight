@@ -16,10 +16,12 @@
  */
 
 import {
+  ArcElement,
   BarController,
   BarElement,
   CategoryScale,
   Chart,
+  DoughnutController,
   Legend,
   LinearScale,
   LineController,
@@ -34,6 +36,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   ContextFreshness,
+  CountBreakdownEntry,
   DashboardPayload,
   HostToWebviewMessage,
   TimelineEntry,
@@ -59,7 +62,9 @@ import {
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
+  ArcElement,
   CategoryScale,
+  DoughnutController,
   LinearScale,
   BarElement,
   LineElement,
@@ -95,6 +100,8 @@ const vscode = acquireVsCodeApi();
 // ---------------------------------------------------------------------------
 
 let timelineChart: Chart | null = null;
+let intentDonutChart: Chart | null = null;
+let commandDonutChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
@@ -161,6 +168,157 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
     return;
   }
   el.innerHTML = buildSummaryCardsHtml(summary);
+}
+
+// ---------------------------------------------------------------------------
+// Chat Intent & Command Usage Doughnut Charts
+// ---------------------------------------------------------------------------
+
+/** Palette for doughnut chart segments (cycles when more entries than colours). */
+const DONUT_PALETTE = [
+  "#0078d4",
+  "#16825d",
+  "#b180d7",
+  "#cca700",
+  "#f14c4c",
+  "#00b7c3",
+  "#e8721c",
+  "#8764b8",
+  "#5ea1d8",
+  "#73c991",
+];
+
+function buildDonutChart(
+  canvasId: string,
+  entries: CountBreakdownEntry[],
+  title: string,
+  existingChart: Chart | null,
+): Chart | null {
+  const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+  if (!canvas) {
+    return existingChart;
+  }
+  if (existingChart) {
+    existingChart.destroy();
+  }
+  if (entries.length === 0) {
+    canvas.style.display = "none";
+    return null;
+  }
+  canvas.style.display = "";
+
+  const labels = entries.map((e) => e.name);
+  const data = entries.map((e) => e.count);
+  const colors = entries.map((_, i) => DONUT_PALETTE[i % DONUT_PALETTE.length]);
+  const c = getColors();
+
+  return new Chart(canvas, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: colors,
+          borderColor: "transparent",
+          hoverOffset: 6,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: false },
+        legend: {
+          position: "right",
+          labels: {
+            color: c.foreground,
+            boxWidth: 12,
+            padding: 10,
+            font: { size: 12 },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (item: TooltipItem<"doughnut">) => {
+              const total = (item.dataset.data as number[]).reduce((s, v) => s + v, 0);
+              const val = item.raw as number;
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+              return ` ${item.label}: ${val} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+    plugins: [
+      {
+        id: `${canvasId}-center-label`,
+        afterDraw(chart) {
+          const { ctx, chartArea } = chart;
+          if (!chartArea) {
+            return;
+          }
+          const total = (chart.data.datasets[0]?.data as number[]).reduce((s, v) => s + (v as number), 0);
+          ctx.save();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const cx = (chartArea.left + chartArea.right) / 2;
+          const cy = (chartArea.top + chartArea.bottom) / 2;
+          ctx.fillStyle = c.foreground;
+          ctx.font = "bold 18px var(--vscode-font-family, sans-serif)";
+          ctx.fillText(String(total), cx, cy - 8);
+          ctx.font = "11px var(--vscode-font-family, sans-serif)";
+          ctx.fillStyle = c.foreground;
+          ctx.globalAlpha = 0.65;
+          ctx.fillText(title, cx, cy + 10);
+          ctx.restore();
+        },
+      },
+    ],
+  });
+}
+
+function renderChatIntentCommandDonutCharts(payload: DashboardPayload): void {
+  const container = document.getElementById("db-intent-command-donut-container");
+  if (!container) {
+    return;
+  }
+  const hasIntent = payload.chatIntentBreakdown.length > 0;
+  const hasCommand = payload.commandUsageBreakdown.length > 0;
+
+  if (!hasIntent && !hasCommand) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🍩 Chat Intent &amp; Command Usage</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:32px;margin-top:16px;align-items:flex-start">
+      <div style="flex:1;min-width:240px">
+        <h3 style="margin:0 0 8px;font-size:13px;font-weight:600">Intent Breakdown</h3>
+        <canvas id="db-intent-donut" style="max-height:220px;max-width:420px"></canvas>
+        ${!hasIntent ? '<p class="no-data">No intent data available.</p>' : ""}
+      </div>
+      <div style="flex:1;min-width:240px">
+        <h3 style="margin:0 0 8px;font-size:13px;font-weight:600">Command &amp; Participant Usage</h3>
+        <canvas id="db-command-donut" style="max-height:220px;max-width:420px"></canvas>
+        ${!hasCommand ? '<p class="no-data" style="font-size:12px;opacity:0.7">No slash command or @participant data detected in logs.</p>' : ""}
+      </div>
+    </div>`;
+
+  intentDonutChart = buildDonutChart(
+    "db-intent-donut",
+    payload.chatIntentBreakdown,
+    "intents",
+    intentDonutChart,
+  );
+  commandDonutChart = buildDonutChart(
+    "db-command-donut",
+    payload.commandUsageBreakdown,
+    "commands",
+    commandDonutChart,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -667,6 +825,7 @@ function render(payload: DashboardPayload): void {
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderAutonomyEvolution(payload.evolutionData);
+  renderChatIntentCommandDonutCharts(payload);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
   for (const session of payload.sessionSummaries) {

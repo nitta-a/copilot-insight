@@ -313,6 +313,7 @@ suite("parseRemoteExthostLog", () => {
       agentDebugByType: new Map(),
       cliByDate: new Map(),
       cliTotalInteractions: 0,
+      commandUsage: new Map(),
       activePlanPending: false,
     };
   }

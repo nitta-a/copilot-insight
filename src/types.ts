@@ -344,6 +344,10 @@ export interface CopilotUsageStats {
   cliByDate: Map<string, CliDateStat>;
   /** Total number of CLI prompt interactions across all sessions. */
   cliTotalInteractions: number;
+
+  // Slash commands and @participants usage
+  /** Usage counts for slash commands (/fix, /explain, …) and @participants (@workspace, …). */
+  commandUsage: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

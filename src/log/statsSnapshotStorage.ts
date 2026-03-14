@@ -71,6 +71,7 @@ interface SerializedCopilotUsageStats {
   agentDebugByType: Array<[string, number]>;
   cliByDate: Array<[string, CliDateStat]>;
   cliTotalInteractions: number;
+  commandUsage: Array<[string, number]>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -136,6 +137,7 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     agentDebugByType: mapEntries(stats.agentDebugByType),
     cliByDate: mapEntries(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions,
+    commandUsage: mapEntries(stats.commandUsage),
   };
 }
 
@@ -194,6 +196,7 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     agentDebugByType: toMap(stats.agentDebugByType),
     cliByDate: toMap(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions ?? 0,
+    commandUsage: toMap(stats.commandUsage),
   };
 }
 

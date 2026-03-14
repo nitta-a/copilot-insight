@@ -65,6 +65,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agentDebugByType: new Map(),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    commandUsage: new Map(),
     ...overrides,
   };
 }

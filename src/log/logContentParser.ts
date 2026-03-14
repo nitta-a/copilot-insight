@@ -18,6 +18,7 @@ import { parseTextLogLine } from "./parsers/textLogParser";
 // Re-export public API from sub-modules so that existing consumers keep working
 // without changing their import paths.
 export {
+  detectCommandUsage,
   extractThreadTitleFromPayload,
   incrementCount,
   incrementStatCount,
