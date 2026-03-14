@@ -1,6 +1,6 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
-import type { CopilotUsageStats, LanguageStat } from "../types";
+import type { CopilotUsageStats, UsageStatCount } from "../types";
 import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 import type { DashboardPayload } from "./dashboardMessages";
 
@@ -501,7 +501,7 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
 </div>`;
 }
 
-function buildDateSection(dateData: [string, LanguageStat][], chatByDate: Map<string, number>): string {
+function buildDateSection(dateData: [string, UsageStatCount][], chatByDate: Map<string, number>): string {
   if (dateData.length === 0) {
     return `<h2>📅 Daily Usage</h2>
   <p class="no-data">No date-specific data found in logs.</p>`;
@@ -569,7 +569,7 @@ function buildWarningSection(logFilesFound: number): string {
   </div>`;
 }
 
-function renderBarChartWithRate(data: [string, LanguageStat][]): string {
+function renderBarChartWithRate(data: [string, UsageStatCount][]): string {
   const maxVal = Math.max(...data.map(([, v]) => v.shown), 1);
   return data
     .map(([label, { shown, accepted }]) => {
@@ -590,7 +590,7 @@ function renderBarChartWithRate(data: [string, LanguageStat][]): string {
     .join("\n");
 }
 
-function renderDateBarChart(data: [string, LanguageStat][], chatByDate: Map<string, number>): string {
+function renderDateBarChart(data: [string, UsageStatCount][], chatByDate: Map<string, number>): string {
   const allValues = data.map(([, v]) => v.shown);
   const chatValues = data.map(([dateStr]) => chatByDate.get(dateStr) ?? 0);
   const maxVal = Math.max(...allValues, ...chatValues, 1);
@@ -866,7 +866,7 @@ ${bars}`;
 }
 
 /** Build the Context Effectiveness Dashboard: acceptance rate per context source. */
-function buildContextEffectivenessSection(byContextEffectiveness: Map<string, LanguageStat>): string {
+function buildContextEffectivenessSection(byContextEffectiveness: Map<string, UsageStatCount>): string {
   if (byContextEffectiveness.size === 0) {
     return "";
   }
@@ -906,8 +906,8 @@ function buildContextEffectivenessSection(byContextEffectiveness: Map<string, La
 ${rows}`;
 }
 
-/** Render a bar chart with shown/accepted/rate for Map<string, LanguageStat> data (model stats). */
-function buildModelBarChart(data: Map<string, LanguageStat>, title: string): string {
+/** Render a bar chart with shown/accepted/rate for Map<string, UsageStatCount> data (model stats). */
+function buildModelBarChart(data: Map<string, UsageStatCount>, title: string): string {
   const sorted = Array.from(data.entries()).sort((a, b) => b[1].shown - a[1].shown);
   if (sorted.length === 0) {
     return "";

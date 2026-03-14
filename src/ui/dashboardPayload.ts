@@ -11,7 +11,7 @@ import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metri
 import type {
   AgenticDepthStat,
   CopilotUsageStats,
-  LanguageStat,
+  UsageStatCount,
   RefreshAnalysis,
   SessionStat,
   SessionSummary,
