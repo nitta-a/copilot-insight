@@ -12,12 +12,12 @@ suite("keywordExtractor", () => {
   });
 
   test("counts and ranks basic English words", () => {
-    const texts = ["typescript refactor", "typescript test", "refactor code"];
+    const texts = ["typescript refactor", "typescript test", "typescript code"];
     const result = extractTopKeywords(texts);
     const words = result.map((k) => k.word);
-    // "typescript" appears twice, should rank first.
+    // "typescript" appears three times — unambiguously the top word.
     assert.strictEqual(result[0].word, "typescript");
-    assert.strictEqual(result[0].count, 2);
+    assert.strictEqual(result[0].count, 3);
     assert.ok(words.includes("refactor"), "refactor should be present");
     assert.ok(words.includes("code") || words.includes("test"), "other words should be present");
   });

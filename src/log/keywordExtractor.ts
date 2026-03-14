@@ -191,8 +191,11 @@ const SPLIT_PATTERN =
  * shorter than `minLength` characters.
  */
 function tokenise(text: string, minLength = 2): string[] {
+  // Strip URLs before splitting so that "https://example.com" doesn't bleed
+  // through as "https", "example.com" when the splitter breaks on "/" and ":".
+  const stripped = text.replace(/https?:\/\/[^\s]*/g, " ");
   const tokens: string[] = [];
-  const raw = text.split(SPLIT_PATTERN);
+  const raw = stripped.split(SPLIT_PATTERN);
   for (const part of raw) {
     // Strip leading/trailing backticks (inline code markers).
     const cleaned = part.replace(BACKTICK_PATTERN, "").trim();
