@@ -85,6 +85,9 @@ function makeEmptyStats(): ParsingContext {
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     activePlanPending: false,
+    editsAccepted: 0,
+    editsDiscarded: 0,
+    editsFilesChanged: 0,
   };
 }
 
@@ -1880,5 +1883,93 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.planCount, 2);
     assert.strictEqual(ctx.executedPlanCount, 2);
     assert.strictEqual(ctx.activePlanPending, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Copilot Edits tracking tests
+// ---------------------------------------------------------------------------
+
+suite("Copilot Edits tracking — processJsonEntry", () => {
+  test("edits.accepted event increments editsAccepted", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.accepted", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsDiscarded, 0);
+  });
+
+  test("edits.kept event increments editsAccepted", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.kept", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsDiscarded, 0);
+  });
+
+  test("edits.applied event increments editsAccepted", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.applied", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsDiscarded, 0);
+  });
+
+  test("edits.discarded event increments editsDiscarded", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.discarded", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 0);
+    assert.strictEqual(ctx.editsDiscarded, 1);
+  });
+
+  test("edits.rejected event increments editsDiscarded", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.rejected", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 0);
+    assert.strictEqual(ctx.editsDiscarded, 1);
+  });
+
+  test("copilotEdits accepted event increments editsAccepted", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "copilotEdits/accepted", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsDiscarded, 0);
+  });
+
+  test("copilotEdits discarded event increments editsDiscarded", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "copilotEdits/discarded", timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 0);
+    assert.strictEqual(ctx.editsDiscarded, 1);
+  });
+
+  test("edits.accepted with filesChanged accumulates editsFilesChanged", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.accepted", filesChanged: 3, timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsFilesChanged, 3);
+  });
+
+  test("edits.accepted with fileCount accumulates editsFilesChanged", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.accepted", fileCount: 5, timestamp: "2024-06-01T10:00:00Z" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 1);
+    assert.strictEqual(ctx.editsFilesChanged, 5);
+  });
+
+  test("multiple edits events accumulate correctly", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.accepted", filesChanged: 2 }, ctx);
+    processJsonEntry({ event: "edits.accepted", filesChanged: 3 }, ctx);
+    processJsonEntry({ event: "edits.discarded" }, ctx);
+    assert.strictEqual(ctx.editsAccepted, 2);
+    assert.strictEqual(ctx.editsDiscarded, 1);
+    assert.strictEqual(ctx.editsFilesChanged, 5);
+  });
+
+  test("edits events do not affect inline completion counts", () => {
+    const ctx = makeEmptyStats();
+    processJsonEntry({ event: "edits.accepted", filesChanged: 2 }, ctx);
+    processJsonEntry({ event: "edits.discarded" }, ctx);
+    assert.strictEqual(ctx.totalAccepted, 0);
+    assert.strictEqual(ctx.totalShown, 0);
+    assert.strictEqual(ctx.totalRejected, 0);
   });
 });

@@ -93,6 +93,41 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
     maybeRecordFeatureSignals(featureText, ctx, timestamp);
   }
 
+  // Copilot Edits: detect multi-file editing session events.
+  // Accepted / kept events: edits.accepted, edits.kept, edits.applied, copilotEdits/accepted
+  const isCopilotEditsAccepted =
+    eventLower === "edits.accepted" ||
+    eventLower === "edits.kept" ||
+    eventLower === "edits.applied" ||
+    eventLower === "copilotedits/accepted" ||
+    eventLower === "copilotedits.accepted" ||
+    eventLower === "copilotedits/kept" ||
+    eventLower === "copilotedits.kept" ||
+    (eventLower.includes("copilotedits") && (eventLower.endsWith("/accepted") || eventLower.endsWith(".accepted"))) ||
+    (eventLower.includes("copilotedits") && (eventLower.endsWith("/kept") || eventLower.endsWith(".kept"))) ||
+    (eventLower.includes("edits") && eventLower.includes("session.completed") && data.accepted === true);
+  // Discarded events: edits.discarded, edits.rejected, copilotEdits/discarded
+  const isCopilotEditsDiscarded =
+    eventLower === "edits.discarded" ||
+    eventLower === "edits.rejected" ||
+    eventLower === "copilotedits/discarded" ||
+    eventLower === "copilotedits.discarded" ||
+    (eventLower.includes("copilotedits") && (eventLower.endsWith("/discarded") || eventLower.endsWith(".discarded"))) ||
+    (eventLower.includes("edits") && eventLower.includes("session.completed") && data.accepted === false);
+
+  if (isCopilotEditsAccepted) {
+    ctx.editsAccepted++;
+    const filesChanged =
+      typeof data.filesChanged === "number"
+        ? data.filesChanged
+        : typeof data.fileCount === "number"
+          ? data.fileCount
+          : 0;
+    ctx.editsFilesChanged += filesChanged;
+  } else if (isCopilotEditsDiscarded) {
+    ctx.editsDiscarded++;
+  }
+
   // Planning & Execution: check event name for plan/execution signals.
   trackPlanningStats(eventLower, ctx, timestamp, event);
 }

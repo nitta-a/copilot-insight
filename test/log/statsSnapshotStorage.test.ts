@@ -108,6 +108,9 @@ function makeStats(): CopilotUsageStats {
     agentDebugByType: new Map([["step-execution", 4]]),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    editsAccepted: 3,
+    editsDiscarded: 1,
+    editsFilesChanged: 7,
   };
 }
 
@@ -151,6 +154,9 @@ suite("StatsSnapshotStorage", () => {
         [...(restored?.agentDebugByType.entries() ?? [])],
         [...expected.agentDebugByType.entries()],
       );
+      assert.strictEqual(restored?.editsAccepted, expected.editsAccepted);
+      assert.strictEqual(restored?.editsDiscarded, expected.editsDiscarded);
+      assert.strictEqual(restored?.editsFilesChanged, expected.editsFilesChanged);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

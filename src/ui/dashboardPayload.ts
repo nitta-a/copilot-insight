@@ -46,6 +46,9 @@ const TYPING_SPEED_CPM = 200;
  */
 const AGENTIC_COGNITIVE_WEIGHT = 0.5;
 
+/** Estimated minutes saved per accepted Copilot Edits session (higher than inline due to multi-file scope). */
+const EDITS_MINUTES_PER_ACCEPTED = 5;
+
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
 
@@ -162,12 +165,21 @@ export function buildDashboardPayload(
   const cliInteractions = stats.cliTotalInteractions ?? 0;
   const cliMinutesSaved = cliInteractions * cliRoiMinutesPerInteraction;
 
+  // Copilot Edits ROI: each accepted edit session saves an estimated 5 minutes
+  // (significantly higher value than inline completions due to multi-file scope).
+  const editsAccepted = stats.editsAccepted ?? 0;
+  const editsDiscarded = stats.editsDiscarded ?? 0;
+  const editsMinutesSaved = editsAccepted * EDITS_MINUTES_PER_ACCEPTED;
+  const editsTotal = editsAccepted + editsDiscarded;
+  const editsKeepRate = editsTotal > 0 ? (editsAccepted / editsTotal) * 100 : 0;
+
   // All current VS Code editor data is attributed to "editor".
-  // CLI contribution is tracked separately via the CLI log pipeline.
+  // CLI and Edits contributions are tracked separately via their own pipelines.
   const totalMinutesSaved: RoiBreakdown = {
-    total: estimatedMinutesSaved + cliMinutesSaved,
+    total: estimatedMinutesSaved + cliMinutesSaved + editsMinutesSaved,
     editor: estimatedMinutesSaved,
     cli: cliMinutesSaved,
+    edits: editsMinutesSaved,
   };
 
   const summary: SummaryData = {
@@ -187,6 +199,9 @@ export function buildDashboardPayload(
     totalMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
+    editsAccepted,
+    editsDiscarded,
+    editsKeepRate,
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────

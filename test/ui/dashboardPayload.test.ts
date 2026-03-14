@@ -135,6 +135,9 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agentDebugByType: new Map(),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    editsAccepted: 0,
+    editsDiscarded: 0,
+    editsFilesChanged: 0,
     ...overrides,
   };
 }
@@ -1068,5 +1071,62 @@ suite("buildDashboardPayload — CLI integration", () => {
       assert.strictEqual(entry.cliShown, 0);
       assert.strictEqual(entry.cliAccepted, 0);
     }
+  });
+});
+
+suite("buildDashboardPayload — Copilot Edits integration", () => {
+  test("edits ROI is zero when editsAccepted is 0", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 0, editsDiscarded: 0 }));
+    assert.strictEqual(payload.summary.totalMinutesSaved.edits, 0);
+  });
+
+  test("edits ROI equals editsAccepted * 5 minutes", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 4, editsDiscarded: 1 }));
+    // 4 accepted × 5 min = 20 min
+    assert.strictEqual(payload.summary.totalMinutesSaved.edits, 20);
+  });
+
+  test("totalMinutesSaved.total includes edits component", () => {
+    // editor: 0 accepted × 40/200 = 0; cli: 0; edits: 3 × 5 = 15
+    const payload = buildDashboardPayload(
+      makeStats({ totalAccepted: 0, autonomousDurationMs: 0, cliTotalInteractions: 0, editsAccepted: 3 }),
+    );
+    assert.strictEqual(payload.summary.totalMinutesSaved.total, 15);
+    assert.strictEqual(payload.summary.totalMinutesSaved.editor, 0);
+    assert.strictEqual(payload.summary.totalMinutesSaved.edits, 15);
+  });
+
+  test("editsKeepRate is 0 when no edits sessions", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 0, editsDiscarded: 0 }));
+    assert.strictEqual(payload.summary.editsKeepRate, 0);
+  });
+
+  test("editsKeepRate is 100 when all edits accepted", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 5, editsDiscarded: 0 }));
+    assert.strictEqual(payload.summary.editsKeepRate, 100);
+  });
+
+  test("editsKeepRate is 50 when half accepted", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 3, editsDiscarded: 3 }));
+    assert.strictEqual(payload.summary.editsKeepRate, 50);
+  });
+
+  test("summary exposes editsAccepted and editsDiscarded from stats", () => {
+    const payload = buildDashboardPayload(makeStats({ editsAccepted: 7, editsDiscarded: 2 }));
+    assert.strictEqual(payload.summary.editsAccepted, 7);
+    assert.strictEqual(payload.summary.editsDiscarded, 2);
+  });
+
+  test("totalMinutesSaved.total equals editor + cli + edits", () => {
+    const stats = makeStats({ editsAccepted: 2, cliTotalInteractions: 1, autonomousDurationMs: 0, totalAccepted: 0 });
+    const payload = buildDashboardPayload(stats);
+    assert.ok(
+      Math.abs(
+        payload.summary.totalMinutesSaved.total -
+          (payload.summary.totalMinutesSaved.editor +
+            payload.summary.totalMinutesSaved.cli +
+            payload.summary.totalMinutesSaved.edits),
+      ) < 0.0001,
+    );
   });
 });

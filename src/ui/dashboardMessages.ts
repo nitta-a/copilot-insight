@@ -32,7 +32,7 @@ export interface ContextFreshness {
   latestRecoveryDelta: number | null;
 }
 
-/** Breakdown of a numeric ROI metric by source category (editor vs CLI). */
+/** Breakdown of a numeric ROI metric by source category (editor vs CLI vs edits). */
 export interface RoiBreakdown {
   /** Combined total across all sources. */
   total: number;
@@ -40,6 +40,8 @@ export interface RoiBreakdown {
   editor: number;
   /** Contribution from Copilot CLI. */
   cli: number;
+  /** Contribution from Copilot Edits (multi-file autonomous editing sessions). */
+  edits: number;
 }
 
 export interface SummaryData {
@@ -66,12 +68,18 @@ export interface SummaryData {
   topPlanModel: string | null;
   /** Number of model-tagged plan proposals attributed to `topPlanModel`. */
   topPlanModelCount: number;
-  /** Total estimated minutes saved with editor/CLI breakdown (for ROI display). */
+  /** Total estimated minutes saved with editor/CLI/edits breakdown (for ROI display). */
   totalMinutesSaved: RoiBreakdown;
   /** Estimated time saved formatted for display (e.g. "1h 23m"). */
   estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
   totalSessions: number;
+  /** Total number of Copilot Edits sessions where changes were accepted/kept. */
+  editsAccepted: number;
+  /** Total number of Copilot Edits sessions where changes were discarded. */
+  editsDiscarded: number;
+  /** Copilot Edits keep rate as percentage 0–100 (0 when no edits sessions). */
+  editsKeepRate: number;
 }
 
 export interface TimelineEntry {

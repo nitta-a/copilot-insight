@@ -339,6 +339,14 @@ export interface CopilotUsageStats {
   /** Agent-debug events grouped by detected subtype. */
   agentDebugByType: Map<string, number>;
 
+  // Copilot Edits (multi-file autonomous editing sessions)
+  /** Total number of Copilot Edits sessions where changes were accepted/kept. */
+  editsAccepted: number;
+  /** Total number of Copilot Edits sessions where changes were discarded. */
+  editsDiscarded: number;
+  /** Total number of files changed across all Copilot Edits sessions. */
+  editsFilesChanged: number;
+
   // CLI usage (GitHub Copilot CLI / copilot-agent sessions)
   /** Per-date CLI interaction statistics (prompts + output tokens). */
   cliByDate: Map<string, CliDateStat>;

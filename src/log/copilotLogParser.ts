@@ -110,6 +110,9 @@ export async function parseCopilotLogs(
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
     activePlanPending: false,
+    editsAccepted: 0,
+    editsDiscarded: 0,
+    editsFilesChanged: 0,
     cliByDate: new Map(),
     cliTotalInteractions: 0,
   };

@@ -42,7 +42,8 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
   const cliHours = (summary.totalMinutesSaved.cli / 60).toFixed(1);
   const roiDetail =
     summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
-  const sourceDetail = `Editor: ${editorHours}h / CLI: ${cliHours}h`;
+  const editsHours = (summary.totalMinutesSaved.edits / 60).toFixed(1);
+  const sourceDetail = `Editor: ${editorHours}h / CLI: ${cliHours}h / Edits: ${editsHours}h`;
   const topChatModelStr = summary.topChatModel ?? "—";
   const topChatModelDetail =
     summary.topChatModel && summary.topChatModelCount > 0
@@ -95,6 +96,11 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
     <div class="stat-card">
       <div class="stat-value">${summary.acceptanceRate.toFixed(1)}%</div>
       <div class="stat-label">Raw Acceptance Rate</div>
+    </div>
+    <div class="stat-card db-highlight">
+      <div class="stat-value db-accent">${summary.editsAccepted}</div>
+      <div class="stat-label">Copilot Edits Accepted</div>
+      <div class="stat-detail">${summary.editsKeepRate.toFixed(1)}% kept · ${summary.editsDiscarded} discarded</div>
     </div>`;
 }
 
