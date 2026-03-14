@@ -425,12 +425,13 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.byChatModel.get("gpt-4o"), 1);
     });
 
-    test("ccreq with XtabProvider tracks model in byModel (inline), not byChatModel", () => {
+    test("ccreq with XtabProvider tracks model in byModel (inline shown), not byChatModel", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 ccreq:mno345 | success | gpt-4o | 120ms | [XtabProvider]", stats);
       assert.strictEqual(stats.totalChat, 0);
-      assert.strictEqual(stats.totalAccepted, 1);
-      assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 0, accepted: 1 });
+      assert.strictEqual(stats.totalShown, 1);
+      assert.strictEqual(stats.totalAccepted, 0);
+      assert.deepStrictEqual(stats.byModel.get("gpt-4o"), { shown: 1, accepted: 0 });
       assert.strictEqual(stats.byChatModel.size, 0);
     });
 
@@ -570,8 +571,8 @@ suite("logContentParser", () => {
       parseTextLogLine("2024-06-01 ccreq:def | success | gpt-4o | 800ms | [vscodePrompt]", stats);
       const session = stats.bySession.get("session-001");
       assert.ok(session);
-      assert.strictEqual(session.shown, 1);
-      assert.strictEqual(session.accepted, 1);
+      assert.strictEqual(session.shown, 2);
+      assert.strictEqual(session.accepted, 0);
       assert.strictEqual(session.chat, 1);
     });
 
@@ -1465,26 +1466,31 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
     assert.strictEqual(ctx.activeSubagentLoop, "2026-02-28 19:25:27.878");
   });
 
-  test("XtabProvider ccreq increments totalAccepted (inline completion)", () => {
+  test("XtabProvider ccreq increments totalShown (inline completion shown, not accepted)", () => {
     // Real line: ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]
+    // A successful API response means the suggestion was SHOWN to the user, not accepted.
     const ctx = makeEmptyStats();
     parseTextLogLine(
       "2026-03-04 19:36:15.954 [info] ccreq:d2536215.copilotmd | success | copilot-nes-oct | 921ms | [XtabProvider]",
       ctx,
     );
-    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
     assert.strictEqual(ctx.totalChat, 0);
-    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted, 1);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.shown, 1);
+    assert.strictEqual(ctx.byModel.get("copilot-nes-oct")?.accepted, 0);
   });
 
-  test("nes.nextCursorPosition ccreq increments totalAccepted (inline completion)", () => {
+  test("nes.nextCursorPosition ccreq increments totalShown (inline completion shown, not accepted)", () => {
     // Real line: ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]
+    // A successful API response means the suggestion was SHOWN to the user, not accepted.
     const ctx = makeEmptyStats();
     parseTextLogLine(
       "2026-03-04 19:36:16.514 [info] ccreq:5c02644a.copilotmd | success | copilot-suggestions-himalia-001 | 554ms | [nes.nextCursorPosition]",
       ctx,
     );
-    assert.strictEqual(ctx.totalAccepted, 1);
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
     assert.strictEqual(ctx.totalChat, 0);
   });
 
@@ -1512,8 +1518,9 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
       "2026-03-04 19:38:04.104 [info] ccreq:20ce1418.copilotmd | success | copilot-nes-oct | -161ms | [XtabProvider]",
       ctx,
     );
-    // Should still count as accepted, but no latency recorded
-    assert.strictEqual(ctx.totalAccepted, 1);
+    // Should still count as shown, but no latency recorded
+    assert.strictEqual(ctx.totalShown, 1);
+    assert.strictEqual(ctx.totalAccepted, 0);
     assert.strictEqual(ctx.latencies.length, 0);
     assert.strictEqual(ctx.latencyCount, 0);
   });

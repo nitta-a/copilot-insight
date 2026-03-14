@@ -143,6 +143,31 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): stri
   return rawIntent;
 }
 
+function recordInlineShown(
+  ctx: ParsingContext,
+  dateKey: string,
+  hourKey: string,
+  model: string,
+  latency: number,
+): void {
+  ctx.totalShown++;
+  if (dateKey) {
+    incrementStatCount(ctx.byDate, dateKey, "shown");
+  }
+  if (hourKey) {
+    incrementCount(ctx.byHour, hourKey);
+  }
+  if (model) {
+    incrementStatCount(ctx.byModel, model, "shown");
+  }
+  if (latency > 0) {
+    ctx.latencySum += latency;
+    ctx.latencyCount++;
+    ctx.latencies.push(latency);
+  }
+  trackSessionActivity(ctx, "shown");
+}
+
 function recordInlineAccepted(
   ctx: ParsingContext,
   dateKey: string,
@@ -235,7 +260,7 @@ function parseCcreqLine(
 
   const isNes = lower.includes("[xtabprovider]") || lower.includes("[nes.");
   if (isNes) {
-    recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
+    recordInlineShown(ctx, dateKey, hourKey, model, latency);
   } else {
     recordChatRequest(ctx, dateKey, hourKey, model, latency);
     const classification = classifyIntent(rawIntent);
