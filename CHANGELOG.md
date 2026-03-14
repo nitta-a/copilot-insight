@@ -4,6 +4,16 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.17] - 2026-03-14
+
+### Fixed
+- 🐛 **Inline-completion Shown/Accepted classification** — `[XtabProvider] ccreq success` lines now correctly record a **Shown** event (NES fetching and displaying a suggestion) instead of being misclassified as Accepted; only `[nes.nextCursorPosition] ccreq` lines — which fire after the user presses Tab — are counted as Accepted, making the acceptance-rate calculation accurate
+
+### Changed
+- ♻️ **Parser refactor** — `logContentParser.ts` split into three focused modules: `parsers/jsonLogParser.ts` (JSON-embedded log lines), `parsers/textLogParser.ts` (plain-text inline-completion lines), and `parsers/parserHelpers.ts` (shared accumulation utilities); the legacy `parseLegacyKeywordLine` function removed
+- ♻️ **Type rename** — `LanguageStat` renamed to `UsageStatCount` throughout the codebase for clarity
+- ♻️ **Webview refactor** — `webview/dashboard.ts` HTML-builder functions extracted into `webview/htmlBuilders.ts` and shared utilities moved to `webview/dashboardUtils.ts`, reducing file size and improving maintainability
+
 ## [1.0.16] - 2026-03-11
 
 ### Added
