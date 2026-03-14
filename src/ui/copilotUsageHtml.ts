@@ -198,6 +198,25 @@ export function getHtmlContent(
     .insight-card.positive { border-left-color: var(--vscode-charts-green); }
     .insight-card.negative { border-left-color: var(--vscode-charts-red, #f14c4c); }
     .insight-icon { margin-right: 6px; }
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      padding: 14px 16px;
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .tag-cloud-item {
+      display: inline-block;
+      color: var(--vscode-charts-blue);
+      font-weight: 600;
+      line-height: 1.3;
+      cursor: default;
+      transition: opacity 0.15s;
+    }
+    .tag-cloud-item:hover { opacity: 1 !important; }
     .rate-bar-track { height: 8px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 2px; overflow: hidden; margin-bottom: 2px; }
     /* ── Dashboard interactive section ───────────────────────────────── */
     .db-highlight { border: 1px solid var(--vscode-charts-blue); }
@@ -414,6 +433,7 @@ export function getHtmlContent(
       <div id="db-freshness-container"></div>
       <div id="db-refresh-analysis-container"></div>
       <div id="db-insights-container"></div>
+      <div id="db-tag-cloud-container"></div>
       <div id="db-weekly-trend-container"></div>
       <div id="db-agent-intelligence-container"></div>
       <div id="db-autonomy-evolution-container"></div>

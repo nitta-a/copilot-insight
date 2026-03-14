@@ -5,6 +5,7 @@
  * requiring a VS Code process.
  */
 
+import { extractTopKeywords } from "../log/keywordExtractor";
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
@@ -421,6 +422,31 @@ export function buildDashboardPayload(
 
   const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
 
+  // ── Keyword extraction ────────────────────────────────────────────────────
+  const keywordTexts: string[] = [];
+  for (const record of stats.chatSessionTitles ?? []) {
+    if (record.title) {
+      keywordTexts.push(record.title);
+    }
+    if (record.firstRequestText) {
+      keywordTexts.push(record.firstRequestText);
+    }
+  }
+  for (const session of stats.chatSessions ?? []) {
+    if (session.title) {
+      keywordTexts.push(session.title);
+    }
+    if (session.firstRequestText) {
+      keywordTexts.push(session.firstRequestText);
+    }
+    for (const req of session.requests) {
+      if (req.messageText) {
+        keywordTexts.push(req.messageText);
+      }
+    }
+  }
+  const topKeywords = extractTopKeywords(keywordTexts, 20);
+
   return {
     days: timeline.length,
     availableRange,
@@ -437,6 +463,7 @@ export function buildDashboardPayload(
     chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
     commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
+    topKeywords,
   };
 }
 

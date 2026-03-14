@@ -56,6 +56,7 @@ import {
   buildRefreshAnalysisHtml,
   buildSelectedThreadHtml,
   buildSummaryCardsHtml,
+  buildTagCloudHtml,
   buildThreadListHtml,
   buildWeeklyTrendHtml,
   getSelectableThreadsSorted,
@@ -640,6 +641,14 @@ function renderInsights(insights: string[]): void {
   el.innerHTML = buildInsightsHtml(insights);
 }
 
+function renderTagCloud(topKeywords: DashboardPayload["topKeywords"]): void {
+  const el = document.getElementById("db-tag-cloud-container");
+  if (!el) {
+    return;
+  }
+  el.innerHTML = buildTagCloudHtml(topKeywords);
+}
+
 function renderContextFreshness(
   freshness: ContextFreshness | null,
   refreshAnalysis: DashboardPayload["refreshAnalysis"],
@@ -904,6 +913,7 @@ function render(payload: DashboardPayload): void {
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
+  renderTagCloud(payload.topKeywords);
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderAutonomyEvolution(payload.evolutionData);
