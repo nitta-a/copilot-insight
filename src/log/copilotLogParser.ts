@@ -7,6 +7,7 @@ import {
   readChatSessionTitleRecords,
   resolveWorkspaceStorageRoot,
 } from "./chatSessionTitleReader";
+import { readCliStats } from "./cliLogReader";
 import {
   findCopilotDirs,
   getAllSessionDirs,
@@ -109,6 +110,8 @@ export async function parseCopilotLogs(
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
     activePlanPending: false,
+    cliByDate: new Map(),
+    cliTotalInteractions: 0,
   };
 
   try {
@@ -256,6 +259,33 @@ export async function parseCopilotLogs(
     ctx.chatLatencies.sort((a, b) => a - b);
     ctx.chatLatencyP50 = percentile(ctx.chatLatencies, 0.5);
     ctx.chatLatencyP95 = percentile(ctx.chatLatencies, 0.95);
+  }
+
+  // Read CLI usage data from ~/.copilot/session-state/*/events.jsonl
+  try {
+    const channel = getOutputChannel();
+    const config = vscode.workspace.getConfiguration("copilot-insight");
+    const cliLogPath = config.get<string>("cliLogPath") || undefined;
+    const cliDefaultModel = config.get<string>("cliDefaultModel")?.trim() || "Copilot CLI";
+    const cliResult = await readCliStats(cliLogPath, cliDefaultModel);
+    for (const [date, stat] of cliResult.byDate) {
+      const existing = ctx.cliByDate.get(date) ?? { prompts: 0, outputTokens: 0 };
+      ctx.cliByDate.set(date, {
+        prompts: existing.prompts + stat.prompts,
+        outputTokens: existing.outputTokens + stat.outputTokens,
+      });
+    }
+    ctx.cliTotalInteractions = cliResult.totalInteractions;
+    // Merge CLI per-model interactions into subagentByModel and byChatModel so that
+    // CLI models appear in "Autonomous Ratio by Model" and agentic charts.
+    // CLI sessions are fully autonomous, so both maps receive the same count (ratio = 100%).
+    for (const [model, count] of cliResult.interactionsByModel) {
+      ctx.byChatModel.set(model, (ctx.byChatModel.get(model) ?? 0) + count);
+      ctx.subagentByModel.set(model, (ctx.subagentByModel.get(model) ?? 0) + count);
+    }
+    channel.appendLine(`CLI stats: ${ctx.cliTotalInteractions} interactions across ${cliResult.byDate.size} days`);
+  } catch {
+    // CLI stats are optional — never abort the main scan
   }
 
   return ctx;

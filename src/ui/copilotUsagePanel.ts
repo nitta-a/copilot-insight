@@ -171,6 +171,7 @@ export class CopilotUsagePanel {
       this._advanced.modelPerformance,
       this._advanced.refreshAnalysis,
       this._advanced.sessionSummaries,
+      vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30,
     );
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 

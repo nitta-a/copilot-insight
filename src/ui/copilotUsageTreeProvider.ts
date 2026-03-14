@@ -118,7 +118,11 @@ class CategoryItem extends vscode.TreeItem {
   }
 
   private _buildSummary(stats: CopilotUsageStats): StatItem[] {
-    const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+    const editorMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+    const cliRoiPerInteraction =
+      vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30;
+    const cliMinutesSaved = (stats.cliTotalInteractions ?? 0) * cliRoiPerInteraction;
+    const totalMinutesSaved = editorMinutesSaved + cliMinutesSaved;
     const roiRank = getRoiRankStyle(totalMinutesSaved);
     const timeSavedLabel = `${roiRank?.badge ?? ""}${formatMinutesSaved(totalMinutesSaved)}`;
     const totalSessions = stats.bySession.size;

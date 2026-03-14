@@ -222,8 +222,9 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 
   const c = getColors();
   const labels = timeline.map((e) => fmtDate(e.date));
-  const shown = timeline.map((e) => e.shown);
-  const accepted = timeline.map((e) => e.accepted);
+  const editorInline = timeline.map((e) => e.editorAccepted);
+  const editorChat = timeline.map((e) => e.chatCount);
+  const cliAccepted = timeline.map((e) => e.cliAccepted);
   const rates = timeline.map((e) => e.rate);
   const trueRates = timeline.map((e) =>
     e.trueAccepted !== null ? (e.trueAccepted / Math.max(e.shown, 1)) * 100 : null,
@@ -231,10 +232,6 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
   const hasTrueRates = trueRates.some((r) => r !== null);
 
   // Per-point styling for anomaly detection.
-  // Anomaly points use ANOMALY_COLOR (#FF4B4B) — a hardcoded bright red that
-  // stands out across light, dark, and high-contrast themes — rather than the
-  // theme's generic red.  A larger radius and explicit border further
-  // emphasise the anomalous day.
   const pointColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
   const pointBorderColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
   const pointBorderWidths = timeline.map((e) => (e.isAnomaly ? 2 : 1));
@@ -259,6 +256,7 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
           tension: 0.3,
           borderDash: [5, 5],
           order: 1,
+          stack: "rate",
         },
       ]
     : [];
@@ -270,20 +268,32 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
       datasets: [
         {
           type: "bar" as const,
-          label: "Shown",
-          data: shown,
-          backgroundColor: `${c.blue}80`,
+          label: "Editor (Inline)",
+          data: editorInline,
+          backgroundColor: `${c.blue}B3`,
           // biome-ignore lint/style/useNamingConvention: Chart.js API property
           yAxisID: "yCount",
+          stack: "usage",
           order: 2,
         },
         {
           type: "bar" as const,
-          label: "Accepted",
-          data: accepted,
-          backgroundColor: `${c.green}80`,
+          label: "Editor (Chat)",
+          data: editorChat,
+          backgroundColor: `${c.green}B3`,
           // biome-ignore lint/style/useNamingConvention: Chart.js API property
           yAxisID: "yCount",
+          stack: "usage",
+          order: 2,
+        },
+        {
+          type: "bar" as const,
+          label: "CLI",
+          data: cliAccepted,
+          backgroundColor: `${c.purple}B3`,
+          // biome-ignore lint/style/useNamingConvention: Chart.js API property
+          yAxisID: "yCount",
+          stack: "usage",
           order: 2,
         },
         {
@@ -301,6 +311,7 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
           pointRadius: pointRadii,
           tension: 0.3,
           order: 1,
+          stack: "rate",
         },
         ...extraDatasets,
       ],
@@ -332,11 +343,12 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
         },
       },
       scales: {
-        x: { ticks: { color: c.foreground }, grid: { color: c.grid } },
+        x: { ticks: { color: c.foreground }, grid: { color: c.grid }, stacked: true },
         yCount: {
           type: "linear" as const,
           position: "left" as const,
           beginAtZero: true,
+          stacked: true,
           ticks: { color: c.foreground },
           grid: { color: c.grid },
           title: { display: true, text: "Count", color: c.foreground },
@@ -346,6 +358,7 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
           position: "right" as const,
           beginAtZero: true,
           max: 100,
+          stacked: false,
           ticks: { color: c.foreground, callback: (v) => `${v}%` },
           grid: { display: false },
           title: { display: true, text: "Rate (%)", color: c.foreground },

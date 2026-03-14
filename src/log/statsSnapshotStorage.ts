@@ -4,11 +4,12 @@ import type { SessionSignalEvent } from "../events/eventSchema";
 import type {
   AgenticDepthStat,
   ChatSessionTitleRecord,
+  CliDateStat,
   CopilotUsageStats,
   DateStat,
-  UsageStatCount,
   MemoryManagementEvent,
   SessionStat,
+  UsageStatCount,
 } from "../types";
 
 interface SerializedStatsSnapshot {
@@ -68,6 +69,8 @@ interface SerializedCopilotUsageStats {
   memoryManagementByType: Array<[string, number]>;
   agentDebugEvents: number;
   agentDebugByType: Array<[string, number]>;
+  cliByDate: Array<[string, CliDateStat]>;
+  cliTotalInteractions: number;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -131,6 +134,8 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     memoryManagementByType: mapEntries(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: mapEntries(stats.agentDebugByType),
+    cliByDate: mapEntries(stats.cliByDate),
+    cliTotalInteractions: stats.cliTotalInteractions,
   };
 }
 
@@ -187,6 +192,8 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     memoryManagementByType: toMap(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: toMap(stats.agentDebugByType),
+    cliByDate: toMap(stats.cliByDate),
+    cliTotalInteractions: stats.cliTotalInteractions ?? 0,
   };
 }
 

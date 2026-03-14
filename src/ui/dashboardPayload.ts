@@ -11,10 +11,10 @@ import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metri
 import type {
   AgenticDepthStat,
   CopilotUsageStats,
-  UsageStatCount,
   RefreshAnalysis,
   SessionStat,
   SessionSummary,
+  UsageStatCount,
 } from "../types";
 import { formatMinutesSaved } from "../utils";
 import type {
@@ -25,6 +25,7 @@ import type {
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
+  RoiBreakdown,
   SummaryData,
   TimelineEntry,
   VelocityPoint,
@@ -129,6 +130,7 @@ export function buildDashboardPayload(
   modelPerformance?: ModelPerformanceResult,
   refreshAnalysis: RefreshAnalysis[] = [],
   sessionSummaries: SessionSummary[] = [],
+  cliRoiMinutesPerInteraction = 30,
 ): DashboardPayload {
   const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
   const effectiveSessionSummaries =
@@ -156,6 +158,18 @@ export function buildDashboardPayload(
   const topAskModel = findTopCountModel(askModelCounts);
   const topPlanModel = findTopCountModel(planModelCounts);
 
+  // CLI ROI: each CLI interaction saves an estimated <cliRoiMinutesPerInteraction> minutes.
+  const cliInteractions = stats.cliTotalInteractions ?? 0;
+  const cliMinutesSaved = cliInteractions * cliRoiMinutesPerInteraction;
+
+  // All current VS Code editor data is attributed to "editor".
+  // CLI contribution is tracked separately via the CLI log pipeline.
+  const totalMinutesSaved: RoiBreakdown = {
+    total: estimatedMinutesSaved + cliMinutesSaved,
+    editor: estimatedMinutesSaved,
+    cli: cliMinutesSaved,
+  };
+
   const summary: SummaryData = {
     totalShown: stats.totalShown,
     totalAccepted: stats.totalAccepted,
@@ -170,7 +184,7 @@ export function buildDashboardPayload(
     topAskModelCount: topAskModel.count,
     topPlanModel: topPlanModel.model,
     topPlanModelCount: topPlanModel.count,
-    totalMinutesSaved: estimatedMinutesSaved,
+    totalMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
   };
@@ -227,6 +241,13 @@ export function buildDashboardPayload(
       rate,
       isAnomaly,
       anomalyReason,
+      // Source-category breakdown: when sourceCategory data is not available, all
+      // values fall back to "editor" (backward compat with older log formats).
+      editorShown: stat.shown,
+      editorAccepted: stat.accepted,
+      chatCount: stats.chatByDate.get(date) ?? 0,
+      cliShown: stats.cliByDate?.get(date)?.prompts ?? 0,
+      cliAccepted: stats.cliByDate?.get(date)?.prompts ?? 0,
     };
   });
 
@@ -319,12 +340,17 @@ export function buildDashboardPayload(
   const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
   // normalizedInlineByModel is already computed above for the summary KPI.
 
+  // Union of all models that appear in either chat or subagent maps so that models
+  // used only via CLI / agentic paths (absent from byChatModel) are still included.
+  const allModels = new Set([...normalizedChatModel.keys(), ...normalizedSubagentByModel.keys()]);
+
   const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
-  for (const [model, totalCount] of normalizedChatModel) {
+  for (const model of allModels) {
     const subagentCount = normalizedSubagentByModel.get(model) ?? 0;
     if (subagentCount === 0) {
       continue;
     }
+    const totalCount = normalizedChatModel.get(model) ?? 0;
     const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
     const durationMs = normalizedDurationByModel.get(model) ?? 0;
     const velocitySecondsPerAction = subagentCount > 0 && durationMs > 0 ? durationMs / 1000 / subagentCount : 0;

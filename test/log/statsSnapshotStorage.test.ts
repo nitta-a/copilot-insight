@@ -106,6 +106,8 @@ function makeStats(): CopilotUsageStats {
     memoryManagementByType: new Map([["compact", 1]]),
     agentDebugEvents: 4,
     agentDebugByType: new Map([["step-execution", 4]]),
+    cliByDate: new Map(),
+    cliTotalInteractions: 0,
   };
 }
 
