@@ -62,6 +62,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
+    cliByDate: new Map(),
+    cliTotalInteractions: 0,
     ...overrides,
   };
 }
@@ -250,6 +252,24 @@ suite("CopilotUsageTreeProvider", () => {
       const sessItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Active Sessions");
       assert.ok(sessItem, "Should have Active Sessions item");
       assert.strictEqual(sessItem.description, "1"); // makeStats has 1 session
+    });
+
+    test("CLI interactions are included in Time Saved (ROI)", () => {
+      const provider = new CopilotUsageTreeProvider();
+      // editor=0, cli=2 interactions × 30min = 60min → should show ✨1h
+      provider.updateStats(makeStats({ totalAccepted: 0, autonomousDurationMs: 0, cliTotalInteractions: 2 }));
+      const roots = provider.getChildren();
+      const kpiSection = roots.find(
+        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
+      );
+      assert.ok(kpiSection);
+      const children = provider.getChildren(kpiSection);
+      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
+      assert.ok(roiItem, "Should have Time Saved (ROI) item");
+      const desc = roiItem.description as string;
+      // 2 interactions × 30min default = 60min = 1h → ✨ tier badge
+      assert.ok(desc.includes("1h"), `Expected '1h' in description but got: ${desc}`);
+      assert.ok(desc.includes("✨"), `Expected ✨ badge (CLI brings total to 60 min) but got: ${desc}`);
     });
   });
 

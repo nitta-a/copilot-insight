@@ -59,6 +59,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
+    cliByDate: new Map(),
+    cliTotalInteractions: 0,
     ...overrides,
   };
 }

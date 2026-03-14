@@ -88,6 +88,7 @@ export function getHtmlContent(
       margin-bottom: 4px;
     }
     .kpi-label { font-size: 0.78em; opacity: 0.75; }
+    .kpi-card .sub-text { display: block; font-size: 0.7em; opacity: 0.6; margin-top: 2px; }
     .kpi-roi-blue  { border-color: var(--vscode-charts-blue);   }
     .kpi-roi-blue  .kpi-value { color: var(--vscode-charts-blue); }
     .kpi-roi-green { border-color: var(--vscode-charts-green);  }
@@ -462,12 +463,20 @@ export function getHtmlContent(
 
 /** Builds the server-rendered core KPI grid for the Overview tab. */
 function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: DashboardPayload): string {
-  const totalMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+  const editorMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
+  const cliMinutesSaved = dashboardPayload ? dashboardPayload.summary.totalMinutesSaved.cli : 0;
+  const totalMinutesSaved = editorMinutesSaved + cliMinutesSaved;
   const tier = getRoiTier(totalMinutesSaved);
   const roiBadge = getRoiBadge(tier);
   const roiColorClass = tier ? `kpi-roi-${tier}` : "";
 
   const timeSavedDisplay = escapeHtml(`${roiBadge}${formatMinutesSaved(totalMinutesSaved)}`);
+  const editorHours = dashboardPayload
+    ? (dashboardPayload.summary.totalMinutesSaved.editor / 60).toFixed(1)
+    : (editorMinutesSaved / 60).toFixed(1);
+  const cliHours = dashboardPayload ? (dashboardPayload.summary.totalMinutesSaved.cli / 60).toFixed(1) : "0.0";
+  const roiTooltip = ` title="${escapeHtml(`Editor: ${editorHours}h / CLI: ${cliHours}h`)}"`;
+  const roiSubText = `<span class="sub-text">Editor: ${escapeHtml(editorHours)}h / CLI: ${escapeHtml(cliHours)}h</span>`;
   const latencyDisplay = stats.avgLatencyMs > 0 ? escapeHtml(`${stats.avgLatencyMs.toFixed(0)}ms`) : "—";
   const latencyClass = stats.avgLatencyMs > LATENCY_WARN_MS ? "kpi-latency-warn" : "";
   const latencyTitle =
@@ -486,9 +495,10 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
     <div class="kpi-value">${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}</div>
     <div class="kpi-label">Acceptance Rate</div>
   </div>
-  <div class="kpi-card ${roiColorClass}">
+  <div class="kpi-card ${roiColorClass}"${roiTooltip}>
     <div class="kpi-value">${timeSavedDisplay}</div>
     <div class="kpi-label">Time Saved (ROI)</div>
+    ${roiSubText}
   </div>
   <div class="kpi-card ${latencyClass}"${latencyTitle}>
     <div class="kpi-value">${latencyDisplay}</div>

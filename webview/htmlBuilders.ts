@@ -35,11 +35,14 @@ import {
 
 export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): string {
   const trueRateStr = summary.trueAcceptanceRate !== null ? `${summary.trueAcceptanceRate.toFixed(1)}%` : "—";
-  const totalHours = (summary.estimatedMinutesSaved / 60).toFixed(1);
+  const totalHours = (summary.totalMinutesSaved.total / 60).toFixed(1);
   const typingHours = (summary.typingMinutesSaved / 60).toFixed(1);
   const agenticHours = (summary.agenticMinutesSaved / 60).toFixed(1);
+  const editorHours = (summary.totalMinutesSaved.editor / 60).toFixed(1);
+  const cliHours = (summary.totalMinutesSaved.cli / 60).toFixed(1);
   const roiDetail =
     summary.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
+  const sourceDetail = `Editor: ${editorHours}h / CLI: ${cliHours}h`;
   const topChatModelStr = summary.topChatModel ?? "—";
   const topChatModelDetail =
     summary.topChatModel && summary.topChatModelCount > 0
@@ -60,10 +63,11 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
       <div class="stat-label">True Acceptance Rate</div>
       <div class="stat-detail">vs ${summary.acceptanceRate.toFixed(1)}% raw</div>
     </div>
-    <div class="stat-card db-highlight">
+    <div class="stat-card db-highlight" title="${escHtml(sourceDetail)}">
       <div class="stat-value db-accent">${totalHours} hours</div>
       <div class="stat-label">Estimated Time Saved</div>
       <div class="stat-detail">${roiDetail}</div>
+      <div class="stat-detail" style="opacity:0.6;font-size:0.85em">${escHtml(sourceDetail)}</div>
     </div>
     <div class="stat-card db-highlight">
       <div class="stat-value db-model" title="${escHtml(topChatModelStr)}">${escHtml(trunc(topChatModelStr, 18))}</div>
@@ -435,9 +439,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
 // ---------------------------------------------------------------------------
 
 /** Sort and filter threads to those with activity, newest first. */
-export function getSelectableThreadsSorted(
-  threads: SessionDetailPayload["threads"],
-): SessionDetailPayload["threads"] {
+export function getSelectableThreadsSorted(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
   return [...threads].filter((t) => t.stepCount > 0).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 

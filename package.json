@@ -131,6 +131,23 @@
           "type": "boolean",
           "default": true,
           "description": "Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance). When disabled, raw JSONL event logging continues but the metrics dashboard is unavailable."
+        },
+        "copilot-insight.cliLogPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the GitHub Copilot CLI session-state directory. Leave empty for automatic discovery (~/.copilot/session-state)."
+        },
+        "copilot-insight.cliRoiMinutesPerInteraction": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Estimated minutes saved per GitHub Copilot CLI interaction (used for ROI calculation)."
+        },
+        "copilot-insight.cliDefaultModel": {
+          "type": "string",
+          "default": "Copilot CLI",
+          "description": "Fallback model name label for GitHub Copilot CLI interactions when a model name cannot be detected from the CLI log (e.g. 'claude-opus-4.6')."
         }
       }
     },

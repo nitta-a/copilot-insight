@@ -133,6 +133,8 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
+    cliByDate: new Map(),
+    cliTotalInteractions: 0,
     ...overrides,
   };
 }
@@ -207,6 +209,25 @@ suite("buildDashboardPayload", () => {
         Math.abs(
           payload.summary.estimatedMinutesSaved -
             (payload.summary.typingMinutesSaved + payload.summary.agenticMinutesSaved),
+        ) < 0.0001,
+      );
+    });
+
+    test("totalMinutesSaved is a RoiBreakdown with total, editor, cli", () => {
+      const payload = buildDashboardPayload(makeStats());
+      assert.strictEqual(typeof payload.summary.totalMinutesSaved, "object");
+      assert.strictEqual(payload.summary.totalMinutesSaved.total, payload.summary.estimatedMinutesSaved);
+      assert.strictEqual(payload.summary.totalMinutesSaved.editor, payload.summary.estimatedMinutesSaved);
+      assert.strictEqual(payload.summary.totalMinutesSaved.cli, 0);
+    });
+
+    test("totalMinutesSaved.total equals editor + cli", () => {
+      const stats = makeStats({ autonomousDurationMs: 120000 });
+      const payload = buildDashboardPayload(stats);
+      assert.ok(
+        Math.abs(
+          payload.summary.totalMinutesSaved.total -
+            (payload.summary.totalMinutesSaved.editor + payload.summary.totalMinutesSaved.cli),
         ) < 0.0001,
       );
     });
@@ -381,6 +402,30 @@ suite("buildDashboardPayload", () => {
     test("days field in payload equals timeline length", () => {
       const payload = buildDashboardPayload(makeStats());
       assert.strictEqual(payload.days, payload.timeline.length);
+    });
+
+    test("timeline entries include source-category breakdown fields", () => {
+      const payload = buildDashboardPayload(makeStats());
+      for (const entry of payload.timeline) {
+        assert.strictEqual(entry.editorShown, entry.shown);
+        assert.strictEqual(entry.editorAccepted, entry.accepted);
+        assert.strictEqual(entry.cliShown, 0);
+        assert.strictEqual(entry.cliAccepted, 0);
+      }
+    });
+
+    test("timeline chatCount maps from chatByDate", () => {
+      const stats = makeStats({
+        chatByDate: new Map([
+          ["2026-02-26", 5],
+          ["2026-02-27", 10],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const feb26 = payload.timeline.find((e) => e.date === "2026-02-26");
+      const feb25 = payload.timeline.find((e) => e.date === "2026-02-25");
+      assert.strictEqual(feb26?.chatCount, 5);
+      assert.strictEqual(feb25?.chatCount, 0);
     });
   });
 
@@ -824,6 +869,27 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(byModel[0].subagentCount, 2);
     });
 
+    test("autonomousRatioByModel includes model present only in subagentByModel (not in byChatModel)", () => {
+      // Simulate Claude Opus 4.6 used only via CLI/agentic path,
+      // so it appears in subagentByModel but not in byChatModel.
+      const stats = makeStats({
+        byChatModel: new Map([["gpt-4o", 10]]),
+        subagentByModel: new Map([
+          ["gpt-4o", 5],
+          ["claude-opus-4.6", 3],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
+      const models = byModel.map((e) => e.model);
+      assert.ok(models.includes("claude-opus-4.6"), `Expected claude-opus-4.6 in ${models.join(", ")}`);
+      const claudeEntry = byModel.find((e) => e.model === "claude-opus-4.6");
+      assert.ok(claudeEntry);
+      assert.strictEqual(claudeEntry.subagentCount, 3);
+      assert.strictEqual(claudeEntry.totalCount, 0);
+      assert.strictEqual(claudeEntry.ratio, 0);
+    });
+
     test("planCount, executedPlanCount, planSuccessRate, userChoicesInPlan are zero when no planning data", () => {
       const payload = buildDashboardPayload(makeStats());
       const ov = payload.agenticStats.agentIntelligenceOverview;
@@ -949,5 +1015,58 @@ suite("buildDashboardPayload", () => {
       assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
       assert.strictEqual(byModel[0].totalAccepted, 40);
     });
+  });
+});
+
+suite("buildDashboardPayload — CLI integration", () => {
+  test("cli ROI is zero when cliTotalInteractions is 0", () => {
+    const payload = buildDashboardPayload(makeStats({ cliTotalInteractions: 0, cliByDate: new Map() }));
+    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 0);
+  });
+
+  test("cli ROI equals interactions * default 30 minutes", () => {
+    const payload = buildDashboardPayload(makeStats({ cliTotalInteractions: 4, cliByDate: new Map() }));
+    // 4 interactions × 30 min = 120
+    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 120);
+  });
+
+  test("cli ROI uses custom cliRoiMinutesPerInteraction parameter", () => {
+    const payload = buildDashboardPayload(
+      makeStats({ cliTotalInteractions: 3, cliByDate: new Map() }),
+      undefined,
+      undefined,
+      undefined,
+      [],
+      [],
+      15, // custom: 15 min per interaction
+    );
+    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 45);
+  });
+
+  test("totalMinutesSaved.total includes both editor and cli components", () => {
+    // editor: 0 accepted × 40 / 200 = 0 min; cli: 2 × 30 = 60 min
+    const payload = buildDashboardPayload(
+      makeStats({ totalAccepted: 0, autonomousDurationMs: 0, cliTotalInteractions: 2, cliByDate: new Map() }),
+    );
+    assert.strictEqual(payload.summary.totalMinutesSaved.total, 60);
+    assert.strictEqual(payload.summary.totalMinutesSaved.editor, 0);
+    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 60);
+  });
+
+  test("timeline cliShown/cliAccepted come from cliByDate prompts", () => {
+    const cliByDate = new Map([["2026-02-25", { prompts: 3, outputTokens: 600 }]]);
+    const payload = buildDashboardPayload(makeStats({ cliByDate, cliTotalInteractions: 3 }));
+    const day = payload.timeline.find((e) => e.date === "2026-02-25");
+    assert.ok(day, "Expected timeline entry for 2026-02-25");
+    assert.strictEqual(day.cliShown, 3);
+    assert.strictEqual(day.cliAccepted, 3);
+  });
+
+  test("timeline cliShown/cliAccepted is 0 for dates without CLI activity", () => {
+    const payload = buildDashboardPayload(makeStats({ cliByDate: new Map(), cliTotalInteractions: 0 }));
+    for (const entry of payload.timeline) {
+      assert.strictEqual(entry.cliShown, 0);
+      assert.strictEqual(entry.cliAccepted, 0);
+    }
   });
 });

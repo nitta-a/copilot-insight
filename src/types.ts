@@ -142,6 +142,14 @@ export interface DateStat {
   accepted: number;
 }
 
+/** Daily statistics for GitHub Copilot CLI interactions. */
+export interface CliDateStat {
+  /** Number of user prompts sent to the CLI on this day. */
+  prompts: number;
+  /** Total output tokens returned by the AI on this day. */
+  outputTokens: number;
+}
+
 export interface SessionStat {
   sessionId: string;
   shown: number;
@@ -330,6 +338,12 @@ export interface CopilotUsageStats {
   agentDebugEvents: number;
   /** Agent-debug events grouped by detected subtype. */
   agentDebugByType: Map<string, number>;
+
+  // CLI usage (GitHub Copilot CLI / copilot-agent sessions)
+  /** Per-date CLI interaction statistics (prompts + output tokens). */
+  cliByDate: Map<string, CliDateStat>;
+  /** Total number of CLI prompt interactions across all sessions. */
+  cliTotalInteractions: number;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

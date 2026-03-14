@@ -32,6 +32,16 @@ export interface ContextFreshness {
   latestRecoveryDelta: number | null;
 }
 
+/** Breakdown of a numeric ROI metric by source category (editor vs CLI). */
+export interface RoiBreakdown {
+  /** Combined total across all sources. */
+  total: number;
+  /** Contribution from VS Code editor (inline + chat). */
+  editor: number;
+  /** Contribution from Copilot CLI. */
+  cli: number;
+}
+
 export interface SummaryData {
   totalShown: number;
   totalAccepted: number;
@@ -56,8 +66,8 @@ export interface SummaryData {
   topPlanModel: string | null;
   /** Number of model-tagged plan proposals attributed to `topPlanModel`. */
   topPlanModelCount: number;
-  /** Total estimated minutes saved (numeric, for ROI rank calculation). */
-  totalMinutesSaved: number;
+  /** Total estimated minutes saved with editor/CLI breakdown (for ROI display). */
+  totalMinutesSaved: RoiBreakdown;
   /** Estimated time saved formatted for display (e.g. "1h 23m"). */
   estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
@@ -77,6 +87,18 @@ export interface TimelineEntry {
   isAnomaly: boolean;
   /** Human-readable explanation of why this day is anomalous, or null when not anomalous. */
   anomalyReason: string | null;
+
+  // ── Source-category breakdown (Editor vs CLI) ────────────────────────
+  /** Inline completions shown from VS Code editor. */
+  editorShown: number;
+  /** Inline completions accepted from VS Code editor. */
+  editorAccepted: number;
+  /** Chat interactions from VS Code editor for this day. */
+  chatCount: number;
+  /** Completions shown from Copilot CLI. */
+  cliShown: number;
+  /** Completions accepted from Copilot CLI. */
+  cliAccepted: number;
 }
 
 export interface VelocityPoint {
