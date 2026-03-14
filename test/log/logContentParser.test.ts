@@ -88,6 +88,7 @@ function makeEmptyStats(): ParsingContext {
     commandUsage: new Map(),
     promptEffectiveness: {},
     activePlanPending: false,
+    chatSessionStates: new Map(),
   };
 }
 

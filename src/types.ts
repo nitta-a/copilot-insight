@@ -275,6 +275,13 @@ export function getPromptLengthBucket(charLength: number): string {
   return PROMPT_LENGTH_BUCKETS[PROMPT_LENGTH_BUCKETS.length - 1]!.key;
 }
 
+/** Tracks turn count and acceptance state for a single chat session. */
+export interface ChatSessionState {
+  sessionId: string;
+  turnCount: number;
+  isAccepted: boolean;
+}
+
 export interface CopilotUsageStats {
   totalShown: number;
   totalAccepted: number;
@@ -392,6 +399,13 @@ export interface CopilotUsageStats {
    * Only aggregate counts are stored (never raw strings) to keep memory bounded.
    */
   promptEffectiveness: Record<string, { shown: number; accepted: number }>;
+
+  /**
+   * Per-session chat turn tracking for resolution-rate analysis.
+   * Keys are session IDs. Only populated from JSON log entries that carry
+   * explicit session identifiers; sessions without IDs are silently skipped.
+   */
+  chatSessionStates: Map<string, ChatSessionState>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

@@ -114,6 +114,7 @@ export async function parseCopilotLogs(
     cliTotalInteractions: 0,
     commandUsage: new Map(),
     promptEffectiveness: {},
+    chatSessionStates: new Map(),
   };
 
   try {

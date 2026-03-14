@@ -316,6 +316,7 @@ suite("parseRemoteExthostLog", () => {
       commandUsage: new Map(),
       promptEffectiveness: {},
       activePlanPending: false,
+      chatSessionStates: new Map(),
     };
   }
 
