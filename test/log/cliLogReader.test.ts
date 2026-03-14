@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as assert from "assert";
 import { parseEventsJsonl, readCliStats } from "../../src/log/cliLogReader";
+import { PROMPT_LENGTH_BUCKETS, getPromptLengthBucket } from "../../src/types";
 
 // ---------------------------------------------------------------------------
 // parseEventsJsonl — unit tests (no disk I/O)
@@ -239,5 +240,169 @@ suite("readCliStats", () => {
     const result = await readCliStats(tmpDir);
     assert.strictEqual(result.totalInteractions, 1);
     assert.strictEqual(result.byDate.get("2026-06-01")?.prompts, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getPromptLengthBucket — unit tests
+// ---------------------------------------------------------------------------
+
+suite("getPromptLengthBucket", () => {
+  test("assigns 0-char message to bucket 0-50", () => {
+    assert.strictEqual(getPromptLengthBucket(0), "0-50");
+  });
+
+  test("assigns 25-char message to bucket 0-50", () => {
+    assert.strictEqual(getPromptLengthBucket(25), "0-50");
+  });
+
+  test("assigns 50-char message to bucket 0-50", () => {
+    assert.strictEqual(getPromptLengthBucket(50), "0-50");
+  });
+
+  test("assigns 51-char message to bucket 51-100", () => {
+    assert.strictEqual(getPromptLengthBucket(51), "51-100");
+  });
+
+  test("assigns 75-char message to bucket 51-100", () => {
+    assert.strictEqual(getPromptLengthBucket(75), "51-100");
+  });
+
+  test("assigns 100-char message to bucket 51-100", () => {
+    assert.strictEqual(getPromptLengthBucket(100), "51-100");
+  });
+
+  test("assigns 101-char message to bucket 101-200", () => {
+    assert.strictEqual(getPromptLengthBucket(101), "101-200");
+  });
+
+  test("assigns 150-char message to bucket 101-200", () => {
+    assert.strictEqual(getPromptLengthBucket(150), "101-200");
+  });
+
+  test("assigns 200-char message to bucket 101-200", () => {
+    assert.strictEqual(getPromptLengthBucket(200), "101-200");
+  });
+
+  test("assigns 201-char message to bucket 201+", () => {
+    assert.strictEqual(getPromptLengthBucket(201), "201+");
+  });
+
+  test("assigns very long message to bucket 201+", () => {
+    assert.strictEqual(getPromptLengthBucket(5000), "201+");
+  });
+
+  test("PROMPT_LENGTH_BUCKETS covers all buckets with correct midpoints", () => {
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS.length, 4);
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[0]!.key, "0-50");
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[0]!.midpoint, 25);
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[1]!.key, "51-100");
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[1]!.midpoint, 75);
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[2]!.key, "101-200");
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[2]!.midpoint, 150);
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[3]!.key, "201+");
+    assert.strictEqual(PROMPT_LENGTH_BUCKETS[3]!.midpoint, 300);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseEventsJsonl — promptEffectiveness tests
+// ---------------------------------------------------------------------------
+
+suite("parseEventsJsonl — promptEffectiveness", () => {
+  test("returns empty promptEffectiveness for empty content", () => {
+    const result = parseEventsJsonl("");
+    assert.deepStrictEqual(result.promptEffectiveness, {});
+  });
+
+  test("records shown for user.message with short content", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"user.message","data":{"content":"hi"}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 0);
+  });
+
+  test("increments accepted when assistant.message follows user.message", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"user.message","data":{"content":"hello world"}}',
+      '{"type":"assistant.message","data":{"outputTokens":100}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 1);
+  });
+
+  test("does not increment accepted when assistant.message has zero outputTokens", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"user.message","data":{"content":"hi"}}',
+      '{"type":"assistant.message","data":{"outputTokens":0}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 0);
+  });
+
+  test("routes messages to correct buckets by length", () => {
+    // Build content string with one message per length bucket.
+    const short = "x".repeat(30); // 0-50
+    const medium = "x".repeat(75); // 51-100
+    const long = "x".repeat(150); // 101-200
+    const veryLong = "x".repeat(300); // 201+
+
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      `{"type":"user.message","data":{"content":"${short}"}}`,
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+      `{"type":"user.message","data":{"content":"${medium}"}}`,
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+      `{"type":"user.message","data":{"content":"${long}"}}`,
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+      `{"type":"user.message","data":{"content":"${veryLong}"}}`,
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 1);
+    assert.strictEqual(result.promptEffectiveness["51-100"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["51-100"]?.accepted, 1);
+    assert.strictEqual(result.promptEffectiveness["101-200"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["101-200"]?.accepted, 1);
+    assert.strictEqual(result.promptEffectiveness["201+"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["201+"]?.accepted, 1);
+  });
+
+  test("treats user.message with no content field as zero-length (bucket 0-50)", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"user.message","data":{}}',
+      '{"type":"assistant.message","data":{"outputTokens":50}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 1);
+  });
+
+  test("accumulates multiple messages in the same bucket", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"user.message","data":{"content":"first"}}',
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+      '{"type":"user.message","data":{"content":"second"}}',
+      '{"type":"assistant.message","data":{"outputTokens":10}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 2);
+    assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 2);
   });
 });

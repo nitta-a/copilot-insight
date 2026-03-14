@@ -16,6 +16,7 @@ import type {
   SessionSummary,
   UsageStatCount,
 } from "../types";
+import { PROMPT_LENGTH_BUCKETS } from "../types";
 import { formatMinutesSaved } from "../utils";
 import type {
   AgentIntelligenceOverview,
@@ -435,12 +436,35 @@ export function buildDashboardPayload(
     sessionSummaries: effectiveSessionSummaries,
     chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
     commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
+    promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
   };
 }
 
 function getLatestSession(stats: CopilotUsageStats): SessionStat | null {
   const latestEntry = Array.from(stats.bySession.entries()).sort((a, b) => b[0].localeCompare(a[0]))[0];
   return latestEntry?.[1] ?? null;
+}
+
+/**
+ * Convert `promptEffectiveness` bucket counts into Chart.js bubble-chart data points.
+ * - x: bucket midpoint (character count)
+ * - y: acceptance rate (0–100), 0 when no samples
+ * - r: bubble radius proportional to the square root of shown count (min 4 px)
+ */
+function buildPromptLengthScatterData(
+  promptEffectiveness: Record<string, { shown: number; accepted: number }>,
+): { x: number; y: number; r: number }[] {
+  const points: { x: number; y: number; r: number }[] = [];
+  for (const bucket of PROMPT_LENGTH_BUCKETS) {
+    const counts = promptEffectiveness[bucket.key];
+    if (!counts || counts.shown === 0) {
+      continue;
+    }
+    const y = (counts.accepted / counts.shown) * 100;
+    const r = Math.max(4, Math.round(Math.sqrt(counts.shown) * 3));
+    points.push({ x: bucket.midpoint, y: Math.round(y * 10) / 10, r });
+  }
+  return points;
 }
 
 function calculateContextFreshness(

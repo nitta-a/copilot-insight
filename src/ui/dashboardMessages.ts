@@ -250,6 +250,13 @@ export interface DashboardPayload {
   chatIntentBreakdown: CountBreakdownEntry[];
   /** Slash-command / @participant usage breakdown sorted by count desc — for donut chart. */
   commandUsageBreakdown: CountBreakdownEntry[];
+  /**
+   * Scatter data for the Prompt Length vs Acceptance Rate bubble chart.
+   * - `x`: prompt character count midpoint of the bucket
+   * - `y`: acceptance rate (0–100)
+   * - `r`: bubble radius proportional to the number of samples (shown)
+   */
+  promptLengthScatterData: { x: number; y: number; r: number }[];
 }
 
 // ---------------------------------------------------------------------------

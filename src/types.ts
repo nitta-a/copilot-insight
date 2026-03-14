@@ -238,6 +238,43 @@ export interface RefreshAnalysis {
   refreshRoi: number | null;
 }
 
+// ---------------------------------------------------------------------------
+// Prompt-length bucketing for correlation analysis
+// ---------------------------------------------------------------------------
+
+/** A single prompt-length bucket definition. */
+export interface PromptLengthBucket {
+  /** Bucket label used as the record key (e.g. "0-50"). */
+  key: string;
+  /** Minimum character count (inclusive). */
+  min: number;
+  /** Maximum character count (inclusive, use Infinity for the last bucket). */
+  max: number;
+  /** Representative midpoint value used as the X-axis coordinate in scatter charts. */
+  midpoint: number;
+}
+
+/** Ordered list of prompt-length buckets used for correlation analysis. */
+export const PROMPT_LENGTH_BUCKETS: readonly PromptLengthBucket[] = [
+  { key: "0-50", min: 0, max: 50, midpoint: 25 },
+  { key: "51-100", min: 51, max: 100, midpoint: 75 },
+  { key: "101-200", min: 101, max: 200, midpoint: 150 },
+  { key: "201+", min: 201, max: Number.POSITIVE_INFINITY, midpoint: 300 },
+];
+
+/**
+ * Return the bucket key for a given prompt character length.
+ * Falls back to the last bucket ("201+") when no bucket matches (should not occur).
+ */
+export function getPromptLengthBucket(charLength: number): string {
+  for (const bucket of PROMPT_LENGTH_BUCKETS) {
+    if (charLength >= bucket.min && charLength <= bucket.max) {
+      return bucket.key;
+    }
+  }
+  return PROMPT_LENGTH_BUCKETS[PROMPT_LENGTH_BUCKETS.length - 1]!.key;
+}
+
 export interface CopilotUsageStats {
   totalShown: number;
   totalAccepted: number;
@@ -348,6 +385,13 @@ export interface CopilotUsageStats {
   // Slash commands and @participants usage
   /** Usage counts for slash commands (/fix, /explain, …) and @participants (@workspace, …). */
   commandUsage: Map<string, number>;
+
+  /**
+   * Prompt-length effectiveness buckets — accumulated from CLI interactions.
+   * Keys are bucket labels from {@link PROMPT_LENGTH_BUCKETS} (e.g. "0-50").
+   * Only aggregate counts are stored (never raw strings) to keep memory bounded.
+   */
+  promptEffectiveness: Record<string, { shown: number; accepted: number }>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */
