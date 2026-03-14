@@ -434,11 +434,16 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
 // Thread detail
 // ---------------------------------------------------------------------------
 
+/** Sort and filter threads to those with activity, newest first. */
+export function getSelectableThreadsSorted(
+  threads: SessionDetailPayload["threads"],
+): SessionDetailPayload["threads"] {
+  return [...threads].filter((t) => t.stepCount > 0).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+}
+
 /** Render the step timeline for a selected thread. Returns an HTML string. */
 export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedThreadId: string): string {
-  const sortedThreads = [...detail.threads]
-    .filter((thread) => thread.stepCount > 0)
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+  const sortedThreads = getSelectableThreadsSorted(detail.threads);
   const selectedThread =
     sortedThreads.find((thread) => thread.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
   if (!selectedThread) {

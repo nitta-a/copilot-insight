@@ -385,6 +385,14 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalAccepted, 1);
       assert.strictEqual(stats.totalShown, 0);
     });
+
+    test("increments totalRejected via JSON rejected event", () => {
+      const stats = makeEmptyStats();
+      parseLogContent(JSON.stringify({ event: "suggestion_rejected", timestamp: "2024-01-15T10:00:00Z" }), stats);
+      assert.strictEqual(stats.totalRejected, 1);
+      assert.strictEqual(stats.totalShown, 0);
+      assert.strictEqual(stats.totalAccepted, 0);
+    });
   });
 
   suite("parseTextLogLine – ccreq chat model tracking", () => {

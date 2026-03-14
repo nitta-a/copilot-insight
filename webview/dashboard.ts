@@ -54,6 +54,7 @@ import {
   buildSummaryCardsHtml,
   buildThreadListHtml,
   buildWeeklyTrendHtml,
+  getSelectableThreadsSorted,
 } from "./htmlBuilders";
 
 // Register only the Chart.js components we actually use (tree-shaking).
@@ -631,11 +632,9 @@ function renderThreadDetail(): void {
     return;
   }
   const html = buildSelectedThreadHtml(detail, selectedThreadId);
-  // Sync selectedThreadId in case buildSelectedThreadHtml fell back to [0].
-  const firstThread = [...detail.threads]
-    .filter((t) => t.stepCount > 0)
-    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))[0];
-  if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId)) {
+  // Sync selectedThreadId if buildSelectedThreadHtml fell back to the first thread.
+  const firstThread = getSelectableThreadsSorted(detail.threads)[0];
+  if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId && t.stepCount > 0)) {
     selectedThreadId = firstThread.threadId;
   }
   el.innerHTML = html;
