@@ -443,6 +443,43 @@ export function getSelectableThreadsSorted(threads: SessionDetailPayload["thread
   return [...threads].filter((t) => t.stepCount > 0).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
+// ---------------------------------------------------------------------------
+// Tag cloud
+// ---------------------------------------------------------------------------
+
+/**
+ * Build an HTML tag cloud from a list of `{ word, count }` entries.
+ * Font size and opacity are scaled linearly between the min and max counts.
+ * Returns an empty string when the keyword list is empty.
+ */
+export function buildTagCloudHtml(topKeywords: DashboardPayload["topKeywords"]): string {
+  if (topKeywords.length === 0) {
+    return "";
+  }
+
+  const counts = topKeywords.map((k) => k.count);
+  const minCount = Math.min(...counts);
+  const maxCount = Math.max(...counts);
+  const range = maxCount - minCount || 1;
+
+  const MIN_EM = 0.85;
+  const MAX_EM = 2.2;
+  const MIN_OPACITY = 0.55;
+  const MAX_OPACITY = 1.0;
+
+  const tags = topKeywords
+    .map(({ word, count }) => {
+      const ratio = (count - minCount) / range;
+      const size = (MIN_EM + ratio * (MAX_EM - MIN_EM)).toFixed(2);
+      const opacity = (MIN_OPACITY + ratio * (MAX_OPACITY - MIN_OPACITY)).toFixed(2);
+      return `<span class="tag-cloud-item" style="font-size:${size}em;opacity:${opacity}" title="${escHtml(word)} (${count})">${escHtml(word)}</span>`;
+    })
+    .join("\n");
+
+  return `<h2>🔍 Top Keywords</h2>\n<div class="tag-cloud">${tags}</div>`;
+}
+
+
 /** Render the step timeline for a selected thread. Returns an HTML string. */
 export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedThreadId: string): string {
   const sortedThreads = getSelectableThreadsSorted(detail.threads);

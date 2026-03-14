@@ -257,6 +257,11 @@ export interface DashboardPayload {
    * - `r`: bubble radius proportional to the number of samples (shown)
    */
   promptLengthScatterData: { x: number; y: number; r: number }[];
+  /**
+   * Top keywords extracted from chat session titles and CLI prompts,
+   * sorted by frequency descending (up to 20 entries).
+   */
+  topKeywords: { word: string; count: number }[];
 }
 
 // ---------------------------------------------------------------------------
