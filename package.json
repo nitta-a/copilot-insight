@@ -1,7 +1,7 @@
 {
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
-  "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by language and date.",
+  "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
   "version": "1.0.17",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
@@ -182,10 +182,11 @@
     "vsce:package": "vsce package",
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
     "vsce:publish": "vsce publish",
-    "inext": "code --install-extension "
+    "inext": "code --install-extension ",
+    "p": "npm run package && npm run vsce:package"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.4",
+    "@biomejs/biome": "^2.4.7",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.x",
     "@types/react": "^19.2.14",
@@ -194,7 +195,7 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.27.3",
+    "esbuild": "^0.27.4",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3"
   },
@@ -204,5 +205,13 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0"
+  },
+  "overrides": {
+    "diff": ">8.0.2",
+    "express-rate-limit": ">8.2.1",
+    "hono": ">=4.12.7",
+    "undici": ">=7.23.0",
+    "@hono/node-server": ">=1.19.10",
+    "serialize-javascript": ">7.0.2"
   }
 }

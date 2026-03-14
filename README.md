@@ -16,12 +16,11 @@ A VS Code extension that parses GitHub Copilot's local log files and visualizes 
   - Total suggestions shown / accepted / declined
   - Overall acceptance rate, **True Acceptance Rate**, and estimated **minutes saved (ROI)** split into typing savings and agentic savings
   - **Best model** highlight derived from cross-language model performance
-  - Breakdown by programming language (top N languages configurable)
   - Daily usage chart with acceptance rate trendline (full span of available log data)
   - Weekly trend comparison (this week vs. last week)
   - AI model usage breakdown — Chat vs. Inline Completion, with per-model acceptance rate
   - Activity heatmap by hour of day
-  - Auto-generated **Insights** summary (best language, peak hour, weekly trend, chat/inline ratio)
+  - Auto-generated **Insights** summary (peak hour, weekly trend, chat/inline ratio)
 - **Four-tab dashboard** — content is organised into focused tabs:
   - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
   - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown, **Agent Intelligence Overview** (autonomous action count, loop completion rate, per-model agentic depth and velocity, **Planning & Execution** stats — Plans Proposed / Executed / Success Rate / User Choices)
@@ -82,12 +81,11 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - 提案の表示回数 / 受け入れ回数 / 拒否回数
   - 全体の受け入れ率・**真の受け入れ率 (True Acceptance Rate)**・推定**節約時間 (ROI)** (タイピング節約とエージェント節約の2分割表示)
   - クロス言語モデル性能から導出した**ベストモデル**ハイライト
-  - プログラミング言語別の内訳 (表示言語数は設定で変更可能)
   - 日次使用チャートと受け入れ率のトレンドライン (利用可能なログデータの全期間)
   - 週次トレンド比較 (今週 vs 先週)
   - AIモデル別の使用状況 — Chat vs. インライン補完、モデルごとの受け入れ率
   - 時間帯別のアクティビティヒートマップ
-  - 自動生成される **Insights** サマリー (最も受け入れ率が高い言語・ピーク時間帯・週次トレンド・Chat/Inline 比率)
+  - 自動生成される **Insights** サマリー (ピーク時間帯・週次トレンド・Chat/Inline 比率)
 - **4タブダッシュボード** — コンテンツを目的別の4タブに整理:
   - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
   - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳・**Agent Intelligence Overview** (自律アクション数・ループ完了率・モデル別エージェント深度と速度・**Planning & Execution** 統計 — 提案プラン数 / 実行プラン数 / 成功率 / ユーザー選択回数)
