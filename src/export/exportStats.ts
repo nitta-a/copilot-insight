@@ -1,4 +1,4 @@
-import type { CopilotUsageStats, LanguageStat, SessionStat } from "../types";
+import type { CopilotUsageStats, UsageStatCount, SessionStat } from "../types";
 
 /** Convert CopilotUsageStats to a CSV string. */
 export function exportAsCsv(stats: CopilotUsageStats): string {
@@ -155,7 +155,7 @@ export function exportAsJson(stats: CopilotUsageStats): string {
         { ...stat, chat: stats.chatByDate.get(dateStr) ?? 0 },
       ]),
     ),
-    byModel: mapToObject<LanguageStat>(stats.byModel),
+    byModel: mapToObject<UsageStatCount>(stats.byModel),
     byChatModel: mapToObject<number>(stats.byChatModel),
     byChatIntent: mapToObject<number>(stats.byChatIntent),
     byHour: mapToObject<number>(stats.byHour),

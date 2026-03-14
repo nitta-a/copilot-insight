@@ -33,5 +33,6 @@
         "nitta",
         "sess"
     ],
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "chat.autopilot.enabled": true
 }

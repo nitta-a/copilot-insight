@@ -1,7 +1,10 @@
-export interface LanguageStat {
+export interface UsageStatCount {
   shown: number;
   accepted: number;
 }
+
+/** @deprecated Use `UsageStatCount` instead. */
+export type LanguageStat = UsageStatCount;
 
 export interface SessionSummary {
   sessionId: string;
@@ -235,7 +238,7 @@ export interface CopilotUsageStats {
   acceptanceRate: number;
   avgLatencyMs: number;
   byDate: Map<string, DateStat>;
-  byModel: Map<string, LanguageStat>;
+  byModel: Map<string, UsageStatCount>;
   byChatModel: Map<string, number>;
   byHour: Map<string, number>;
   byChatIntent: Map<string, number>;
@@ -265,7 +268,7 @@ export interface CopilotUsageStats {
   // Context Window Insights
   byContextSource: Map<string, number>;
   /** Per context source shown/accepted counts for effectiveness analysis. */
-  byContextEffectiveness: Map<string, LanguageStat>;
+  byContextEffectiveness: Map<string, UsageStatCount>;
 
   // Subagent / Agentic activity
   /** Total number of requests identified as subagent-initiated. */

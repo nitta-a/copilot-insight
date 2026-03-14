@@ -6,7 +6,7 @@ import type {
   ChatSessionTitleRecord,
   CopilotUsageStats,
   DateStat,
-  LanguageStat,
+  UsageStatCount,
   MemoryManagementEvent,
   SessionStat,
 } from "../types";
@@ -24,7 +24,7 @@ interface SerializedCopilotUsageStats {
   acceptanceRate: number;
   avgLatencyMs: number;
   byDate: Array<[string, DateStat]>;
-  byModel: Array<[string, LanguageStat]>;
+  byModel: Array<[string, UsageStatCount]>;
   byChatModel: Array<[string, number]>;
   byHour: Array<[string, number]>;
   byChatIntent: Array<[string, number]>;
@@ -43,7 +43,7 @@ interface SerializedCopilotUsageStats {
   chatLatencyP95: number;
   bySession: Array<[string, SessionStat]>;
   byContextSource: Array<[string, number]>;
-  byContextEffectiveness: Array<[string, LanguageStat]>;
+  byContextEffectiveness: Array<[string, UsageStatCount]>;
   subagentRequests: number;
   agenticRatio: number;
   autonomousDurationMs: number;

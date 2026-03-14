@@ -354,83 +354,6 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.agentDebugEvents, 1);
       assert.strictEqual(stats.agentDebugByType.get("step-execution"), 1);
     });
-
-    test("increments totalShown for 'suggestion shown'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-01-15 suggestion shown language: typescript", stats);
-      assert.strictEqual(stats.totalShown, 1);
-    });
-
-    test("increments totalShown for 'completion shown'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("completion shown", stats);
-      assert.strictEqual(stats.totalShown, 1);
-    });
-
-    test("increments totalShown for 'shown suggestion'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("shown suggestion", stats);
-      assert.strictEqual(stats.totalShown, 1);
-    });
-
-    test("increments totalAccepted for 'suggestion accepted'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("suggestion accepted lang: python", stats);
-      assert.strictEqual(stats.totalAccepted, 1);
-    });
-
-    test("increments totalAccepted for 'completion accepted'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("completion accepted", stats);
-      assert.strictEqual(stats.totalAccepted, 1);
-    });
-
-    test("increments totalAccepted for 'accepted suggestion'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("accepted suggestion", stats);
-      assert.strictEqual(stats.totalAccepted, 1);
-    });
-
-    test("increments totalRejected for 'suggestion rejected'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("suggestion rejected", stats);
-      assert.strictEqual(stats.totalRejected, 1);
-    });
-
-    test("increments totalRejected for 'dismissed'", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("dismissed", stats);
-      assert.strictEqual(stats.totalRejected, 1);
-    });
-
-    test("extracts language from 'language: X' pattern", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-01-15 suggestion shown language: TypeScript", stats);
-      assert.strictEqual(stats.totalShown, 1);
-    });
-
-    test("extracts language from 'lang: X' pattern", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-01-15 suggestion shown lang: Python", stats);
-      assert.strictEqual(stats.totalShown, 1);
-    });
-
-    test("extracts date from log line", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-03-20 suggestion shown", stats);
-      assert.deepStrictEqual(stats.byDate.get("2024-03-20"), {
-        shown: 1,
-        accepted: 0,
-      });
-    });
-
-    test("does nothing for unrecognized lines", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("some unrelated log line", stats);
-      assert.strictEqual(stats.totalShown, 0);
-      assert.strictEqual(stats.totalAccepted, 0);
-      assert.strictEqual(stats.totalRejected, 0);
-    });
   });
 
   suite("parseLogContent", () => {
@@ -445,7 +368,7 @@ suite("logContentParser", () => {
       const content = [
         `${JSON.stringify({ event: "suggestion_shown", language: "typescript", timestamp: "2024-01-15T10:00:00Z" })}`,
         `${JSON.stringify({ event: "suggestion_accepted", language: "typescript", timestamp: "2024-01-15T10:01:00Z" })}`,
-        "suggestion rejected",
+        "[AsyncCompletionManager] AbortError: operation cancelled",
       ].join("\n");
       parseLogContent(content, stats);
       assert.strictEqual(stats.totalShown, 1);
@@ -463,10 +386,12 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalShown, 0);
     });
 
-    test("falls back to text parsing when JSON is invalid", () => {
+    test("increments totalRejected via JSON rejected event", () => {
       const stats = makeEmptyStats();
-      parseLogContent("suggestion shown language: go", stats);
-      assert.strictEqual(stats.totalShown, 1);
+      parseLogContent(JSON.stringify({ event: "suggestion_rejected", timestamp: "2024-01-15T10:00:00Z" }), stats);
+      assert.strictEqual(stats.totalRejected, 1);
+      assert.strictEqual(stats.totalShown, 0);
+      assert.strictEqual(stats.totalAccepted, 0);
     });
   });
 

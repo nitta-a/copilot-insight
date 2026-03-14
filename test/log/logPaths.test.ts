@@ -341,9 +341,9 @@ suite("parseRemoteExthostLog", () => {
   });
 
   test("parses remoteexthost.log content (acceptance counted) from exthost subdir", async () => {
-    // Use the plain-text format that parseLegacyKeywordLine recognises.
-    const shown = "suggestion shown\n";
-    const accepted = "suggestion accepted\n";
+    // Use JSON format recognised by the current JSON-log parser.
+    const shown = '{"event":"suggestion_shown"}\n';
+    const accepted = '{"event":"suggestion_accepted"}\n';
     await fs.mkdir(path.join(tmpDir, "exthost1"));
     await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), shown + accepted, "utf-8");
     const ctx = makeEmptyCtx();
@@ -354,7 +354,7 @@ suite("parseRemoteExthostLog", () => {
 
   test("parses remoteexthost.log from multiple numbered exthost dirs (e.g. exthost1 and exthost82)", async () => {
     // Session with multiple exthost processes — each has its own remoteexthost.log
-    const logContent = "suggestion shown\n";
+    const logContent = '{"event":"suggestion_shown"}\n';
     await fs.mkdir(path.join(tmpDir, "exthost1"));
     await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), logContent, "utf-8");
     await fs.mkdir(path.join(tmpDir, "exthost82"));
@@ -377,8 +377,8 @@ suite("parseRemoteExthostLog", () => {
   test("parses all .log files inside exthost1, not only remoteexthost.log", async () => {
     // Extended behaviour: all .log files inside exthost<N>/ are parsed, not only remoteexthost.log
     await fs.mkdir(path.join(tmpDir, "exthost1"));
-    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), "suggestion shown\n", "utf-8");
-    await fs.writeFile(path.join(tmpDir, "exthost1", "exthost.log"), "suggestion accepted\n", "utf-8");
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), '{"event":"suggestion_shown"}\n', "utf-8");
+    await fs.writeFile(path.join(tmpDir, "exthost1", "exthost.log"), '{"event":"suggestion_accepted"}\n', "utf-8");
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(ctx.logFilesFound, 2);
@@ -389,8 +389,8 @@ suite("parseRemoteExthostLog", () => {
   test("parses .log files inside window1/exthost for WSL-style nested layouts", async () => {
     const exthostDir = path.join(tmpDir, "window1", "exthost");
     await fs.mkdir(exthostDir, { recursive: true });
-    await fs.writeFile(path.join(exthostDir, "remoteexthost.log"), "suggestion shown\n", "utf-8");
-    await fs.writeFile(path.join(exthostDir, "exthost.log"), "suggestion accepted\n", "utf-8");
+    await fs.writeFile(path.join(exthostDir, "remoteexthost.log"), '{"event":"suggestion_shown"}\n', "utf-8");
+    await fs.writeFile(path.join(exthostDir, "exthost.log"), '{"event":"suggestion_accepted"}\n', "utf-8");
     const ctx = makeEmptyCtx();
     const result = await parseRemoteExthostLog(tmpDir, ctx);
     assert.strictEqual(result.matchedDirs, 1);
@@ -401,8 +401,8 @@ suite("parseRemoteExthostLog", () => {
 
   test("skips non-.log files inside exthost1", async () => {
     await fs.mkdir(path.join(tmpDir, "exthost1"));
-    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), "suggestion shown\n", "utf-8");
-    await fs.writeFile(path.join(tmpDir, "exthost1", "notes.txt"), "suggestion shown\n", "utf-8");
+    await fs.writeFile(path.join(tmpDir, "exthost1", "remoteexthost.log"), '{"event":"suggestion_shown"}\n', "utf-8");
+    await fs.writeFile(path.join(tmpDir, "exthost1", "notes.txt"), '{"event":"suggestion_shown"}\n', "utf-8");
     const ctx = makeEmptyCtx();
     await parseRemoteExthostLog(tmpDir, ctx);
     // Only the .log file should be counted
