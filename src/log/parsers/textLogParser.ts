@@ -143,6 +143,44 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): stri
   return rawIntent;
 }
 
+function recordInlineShown(
+  ctx: ParsingContext,
+  dateKey: string,
+  hourKey: string,
+  model: string,
+  latency: number,
+  timestamp: string,
+  line: string,
+): void {
+  ctx.totalShown++;
+  if (dateKey) {
+    incrementStatCount(ctx.byDate, dateKey, "shown");
+  }
+  if (hourKey) {
+    incrementCount(ctx.byHour, hourKey);
+  }
+  if (model) {
+    incrementStatCount(ctx.byModel, model, "shown");
+  }
+  if (latency > 0) {
+    ctx.latencySum += latency;
+    ctx.latencyCount++;
+    ctx.latencies.push(latency);
+  }
+  pushSessionSignal(ctx, {
+    timestamp,
+    signalType: "completion-shown",
+    actor: "ai",
+    phase: "execution",
+    intent: "XtabProvider",
+    rawText: line,
+    modelName: model,
+    latencyMs: latency,
+    success: true,
+  });
+  trackSessionActivity(ctx, "shown");
+}
+
 function recordInlineAccepted(
   ctx: ParsingContext,
   dateKey: string,
@@ -233,8 +271,11 @@ function parseCcreqLine(
     }
   }
 
-  const isNes = lower.includes("[xtabprovider]") || lower.includes("[nes.");
-  if (isNes) {
+  const isXtabShown = lower.includes("[xtabprovider]");
+  const isNesAccepted = !isXtabShown && lower.includes("[nes.");
+  if (isXtabShown) {
+    recordInlineShown(ctx, dateKey, hourKey, model, latency, timestamp, line);
+  } else if (isNesAccepted) {
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
   } else {
     recordChatRequest(ctx, dateKey, hourKey, model, latency);
