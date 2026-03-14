@@ -314,6 +314,7 @@ suite("parseRemoteExthostLog", () => {
       cliByDate: new Map(),
       cliTotalInteractions: 0,
       commandUsage: new Map(),
+      promptEffectiveness: {},
       activePlanPending: false,
     };
   }

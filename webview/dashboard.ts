@@ -19,6 +19,7 @@ import {
   ArcElement,
   BarController,
   BarElement,
+  BubbleController,
   CategoryScale,
   Chart,
   DoughnutController,
@@ -63,6 +64,7 @@ import {
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
   ArcElement,
+  BubbleController,
   CategoryScale,
   DoughnutController,
   LinearScale,
@@ -102,6 +104,7 @@ const vscode = acquireVsCodeApi();
 let timelineChart: Chart | null = null;
 let intentDonutChart: Chart | null = null;
 let commandDonutChart: Chart | null = null;
+let promptLengthScatterChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
@@ -527,6 +530,85 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Prompt Length vs Acceptance Rate Scatter (Bubble) Chart
+// ---------------------------------------------------------------------------
+
+function renderPromptLengthScatterChart(scatterData: DashboardPayload["promptLengthScatterData"]): void {
+  const container = document.getElementById("db-prompt-length-scatter-container");
+  if (!container) {
+    return;
+  }
+
+  if (scatterData.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🔍 Prompt Length vs Acceptance Rate</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">Bubble size represents number of samples (shown). Data from Copilot CLI interactions.</p>
+    <div class="chart-container" style="max-height:320px">
+      <canvas id="db-prompt-length-scatter-chart" style="max-height:320px"></canvas>
+    </div>`;
+
+  const canvas = document.getElementById("db-prompt-length-scatter-chart") as HTMLCanvasElement | null;
+  if (!canvas) {
+    return;
+  }
+
+  if (promptLengthScatterChart) {
+    promptLengthScatterChart.destroy();
+  }
+
+  const c = getColors();
+
+  promptLengthScatterChart = new Chart(canvas, {
+    type: "bubble",
+    data: {
+      datasets: [
+        {
+          label: "Prompt Length Buckets",
+          data: scatterData,
+          backgroundColor: `${c.blue}99`,
+          borderColor: c.blue,
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (item: TooltipItem<"bubble">) => {
+              const raw = item.raw as { x: number; y: number; r: number };
+              return `Midpoint: ${raw.x} chars | Acceptance: ${raw.y.toFixed(1)}%`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: "Prompt Length (Chars)", color: c.foreground },
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+          beginAtZero: true,
+        },
+        y: {
+          title: { display: true, text: "Acceptance Rate (%)", color: c.foreground },
+          ticks: { color: c.foreground, callback: (v) => `${v}%` },
+          grid: { color: c.grid },
+          beginAtZero: true,
+          max: 100,
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Model Autonomy Leverage Map
 // ---------------------------------------------------------------------------
 
@@ -828,6 +910,7 @@ function render(payload: DashboardPayload): void {
   renderChatIntentCommandDonutCharts(payload);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
+  renderPromptLengthScatterChart(payload.promptLengthScatterData);
   for (const session of payload.sessionSummaries) {
     if (!allSessionDetails.has(session.sessionId)) {
       sessionLoadQueue.push(session.sessionId);

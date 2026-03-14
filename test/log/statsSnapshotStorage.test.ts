@@ -109,6 +109,7 @@ function makeStats(): CopilotUsageStats {
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     commandUsage: new Map([["@workspace", 3]]),
+    promptEffectiveness: {},
   };
 }
 

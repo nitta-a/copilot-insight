@@ -136,6 +136,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     commandUsage: new Map(),
+    promptEffectiveness: {},
     ...overrides,
   };
 }
@@ -1115,5 +1116,77 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
     assert.strictEqual(payload.commandUsageBreakdown[0].count, 10);
     assert.strictEqual(payload.commandUsageBreakdown[1].name, "/fix");
     assert.strictEqual(payload.commandUsageBreakdown[2].name, "/explain");
+  });
+
+  // ── promptLengthScatterData ───────────────────────────────────────────────
+
+  test("promptLengthScatterData is empty when promptEffectiveness is empty", () => {
+    const payload = buildDashboardPayload(makeStats({ promptEffectiveness: {} }));
+    assert.deepStrictEqual(payload.promptLengthScatterData, []);
+  });
+
+  test("promptLengthScatterData omits buckets with zero shown count", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        promptEffectiveness: {
+          "0-50": { shown: 0, accepted: 0 },
+        },
+      }),
+    );
+    assert.deepStrictEqual(payload.promptLengthScatterData, []);
+  });
+
+  test("promptLengthScatterData computes acceptance rate as y", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        promptEffectiveness: {
+          "51-100": { shown: 10, accepted: 7 },
+        },
+      }),
+    );
+    assert.strictEqual(payload.promptLengthScatterData.length, 1);
+    const point = payload.promptLengthScatterData[0]!;
+    assert.strictEqual(point.x, 75); // midpoint of 51-100
+    assert.strictEqual(point.y, 70); // (7/10)*100 = 70.0
+    assert.ok(point.r >= 4, "radius should be at least 4");
+  });
+
+  test("promptLengthScatterData uses bucket midpoints as x values", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        promptEffectiveness: {
+          "0-50": { shown: 5, accepted: 5 },
+          "101-200": { shown: 5, accepted: 5 },
+          "201+": { shown: 5, accepted: 5 },
+        },
+      }),
+    );
+    const xs = payload.promptLengthScatterData.map((p) => p.x).sort((a, b) => a - b);
+    assert.deepStrictEqual(xs, [25, 150, 300]);
+  });
+
+  test("promptLengthScatterData prevents zero division when shown is zero", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        promptEffectiveness: {
+          "101-200": { shown: 0, accepted: 5 },
+        },
+      }),
+    );
+    assert.deepStrictEqual(payload.promptLengthScatterData, []);
+  });
+
+  test("promptLengthScatterData radius is proportional to shown count", () => {
+    const payload = buildDashboardPayload(
+      makeStats({
+        promptEffectiveness: {
+          "0-50": { shown: 1, accepted: 1 },
+          "51-100": { shown: 100, accepted: 50 },
+        },
+      }),
+    );
+    const small = payload.promptLengthScatterData.find((p) => p.x === 25)!;
+    const large = payload.promptLengthScatterData.find((p) => p.x === 75)!;
+    assert.ok(large.r > small.r, "larger sample count should produce larger radius");
   });
 });

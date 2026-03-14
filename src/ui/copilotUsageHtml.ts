@@ -437,6 +437,7 @@ export function getHtmlContent(
 
     <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
       <div id="model-autonomy-leverage-map"></div>
+      <div id="db-prompt-length-scatter-container"></div>
       ${hourSection}
       ${chatHourSection}
       ${contextInsightsSection}

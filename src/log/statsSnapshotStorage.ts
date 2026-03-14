@@ -72,6 +72,7 @@ interface SerializedCopilotUsageStats {
   cliByDate: Array<[string, CliDateStat]>;
   cliTotalInteractions: number;
   commandUsage: Array<[string, number]>;
+  promptEffectiveness?: Record<string, { shown: number; accepted: number }>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -138,6 +139,7 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     cliByDate: mapEntries(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions,
     commandUsage: mapEntries(stats.commandUsage),
+    promptEffectiveness: { ...stats.promptEffectiveness },
   };
 }
 
@@ -197,6 +199,7 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     cliByDate: toMap(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions ?? 0,
     commandUsage: toMap(stats.commandUsage),
+    promptEffectiveness: stats.promptEffectiveness ?? {},
   };
 }
 

@@ -18,6 +18,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { CliDateStat } from "../types";
+import { getPromptLengthBucket } from "../types";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -30,6 +31,11 @@ export interface CliStats {
   totalInteractions: number;
   /** Number of assistant-turn interactions attributed to each model name. */
   interactionsByModel: Map<string, number>;
+  /**
+   * Prompt-length effectiveness buckets accumulated from all scanned sessions.
+   * Keys are bucket labels (e.g. "0-50"); values hold shown/accepted counts.
+   */
+  promptEffectiveness: Record<string, { shown: number; accepted: number }>;
 }
 
 /**
@@ -47,6 +53,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   const byDate = new Map<string, CliDateStat>();
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
+  const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
 
   let sessionDirs: string[];
   try {
@@ -54,7 +61,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     sessionDirs = entries.map((e) => path.join(rootDir, e));
   } catch {
     // Directory does not exist — CLI not installed or never used.
-    return { byDate, totalInteractions, interactionsByModel };
+    return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
   }
 
   for (const sessionDir of sessionDirs) {
@@ -76,12 +83,20 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       for (const [model, count] of result.interactionsByModel) {
         interactionsByModel.set(model, (interactionsByModel.get(model) ?? 0) + count);
       }
+      // Merge prompt-length effectiveness buckets.
+      for (const [bucket, counts] of Object.entries(result.promptEffectiveness)) {
+        const existing = promptEffectiveness[bucket] ?? { shown: 0, accepted: 0 };
+        promptEffectiveness[bucket] = {
+          shown: existing.shown + counts.shown,
+          accepted: existing.accepted + counts.accepted,
+        };
+      }
     } catch {
       // Skip unreadable or missing files.
     }
   }
 
-  return { byDate, totalInteractions, interactionsByModel };
+  return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +107,7 @@ interface ParseResult {
   byDate: Map<string, CliDateStat>;
   totalInteractions: number;
   interactionsByModel: Map<string, number>;
+  promptEffectiveness: Record<string, { shown: number; accepted: number }>;
 }
 
 /**
@@ -104,12 +120,15 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
   const byDate = new Map<string, CliDateStat>();
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
+  const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
 
   // Derive today's date as a fallback (YYYY-MM-DD in UTC).
   const todayKey = new Date().toISOString().substring(0, 10);
   let dateKey = todayKey;
   // Model for the current session (from session.start or overridden per turn).
   let sessionModel = defaultModel;
+  // Track the bucket of the most recent user.message awaiting an assistant response.
+  let pendingBucket: string | null = null;
 
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
@@ -139,12 +158,28 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       // Extract optional session-level model name (e.g. "claude-opus-4.6").
       const model = data?.model as string | undefined;
       sessionModel = model?.trim() || defaultModel;
+      // Reset pending bucket when a new session starts.
+      pendingBucket = null;
       continue;
     }
 
     if (type === "user.message") {
-      const current = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
-      byDate.set(dateKey, { ...current, prompts: current.prompts + 1 });
+      const data = event.data as Record<string, unknown> | undefined;
+      const content = typeof data?.content === "string" ? data.content : "";
+      const bucket = getPromptLengthBucket(content.length);
+
+      // If a prior user message was never answered, it still counts as shown.
+      // (The pending bucket was already incremented as "shown" below.)
+
+      // Increment shown for this bucket.
+      const current = promptEffectiveness[bucket] ?? { shown: 0, accepted: 0 };
+      promptEffectiveness[bucket] = { shown: current.shown + 1, accepted: current.accepted };
+
+      // Record pending bucket for the next assistant.message.
+      pendingBucket = bucket;
+
+      const dateStat = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
+      byDate.set(dateKey, { ...dateStat, prompts: dateStat.prompts + 1 });
       totalInteractions++;
       continue;
     }
@@ -153,8 +188,15 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       const data = event.data as Record<string, unknown> | undefined;
       const outputTokens = typeof data?.outputTokens === "number" ? data.outputTokens : 0;
       if (outputTokens > 0) {
-        const current = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
-        byDate.set(dateKey, { ...current, outputTokens: current.outputTokens + outputTokens });
+        const dateStat = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
+        byDate.set(dateKey, { ...dateStat, outputTokens: dateStat.outputTokens + outputTokens });
+
+        // The preceding user.message was "accepted" (AI produced a response).
+        if (pendingBucket !== null) {
+          const existing = promptEffectiveness[pendingBucket] ?? { shown: 0, accepted: 0 };
+          promptEffectiveness[pendingBucket] = { shown: existing.shown, accepted: existing.accepted + 1 };
+          pendingBucket = null;
+        }
       }
       // Attribute this turn to a model (prefer per-message field over session model).
       const turnModel = (data?.model as string | undefined)?.trim() || sessionModel;
@@ -163,5 +205,5 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
     }
   }
 
-  return { byDate, totalInteractions, interactionsByModel };
+  return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
 }

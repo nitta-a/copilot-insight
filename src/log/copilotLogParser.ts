@@ -113,6 +113,7 @@ export async function parseCopilotLogs(
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     commandUsage: new Map(),
+    promptEffectiveness: {},
   };
 
   try {
@@ -283,6 +284,14 @@ export async function parseCopilotLogs(
     for (const [model, count] of cliResult.interactionsByModel) {
       ctx.byChatModel.set(model, (ctx.byChatModel.get(model) ?? 0) + count);
       ctx.subagentByModel.set(model, (ctx.subagentByModel.get(model) ?? 0) + count);
+    }
+    // Merge prompt-length effectiveness buckets from CLI logs.
+    for (const [bucket, counts] of Object.entries(cliResult.promptEffectiveness)) {
+      const existing = ctx.promptEffectiveness[bucket] ?? { shown: 0, accepted: 0 };
+      ctx.promptEffectiveness[bucket] = {
+        shown: existing.shown + counts.shown,
+        accepted: existing.accepted + counts.accepted,
+      };
     }
     channel.appendLine(`CLI stats: ${ctx.cliTotalInteractions} interactions across ${cliResult.byDate.size} days`);
   } catch {
