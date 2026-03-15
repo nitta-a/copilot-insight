@@ -4,6 +4,12 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.18] - 2026-03-15
+
+### Added
+- 💬 **Prompt Insights tab** — new dedicated tab in the dashboard that consolidates all prompt-analysis widgets (Tag Cloud, Intent Command donut, and Prompt Length scatter chart); previously these were scattered across the Overview and Flow tabs, cluttering the ROI-focused views
+- 🔧 **Chart.js resize-on-tab-switch fix** — `switchTab()` now calls `.resize()` on all three Chart.js instances whenever the Prompt Insights tab is activated, eliminating the zero-width render bug caused by `display:none` containers
+
 ## [1.0.17] - 2026-03-14
 
 ### Fixed

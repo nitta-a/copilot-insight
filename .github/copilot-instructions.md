@@ -20,15 +20,23 @@ copilot-insight/
 │   ├── utils.ts                  # Shared helpers (e.g. todayDateString)
 │   ├── globals.d.ts              # Ambient declarations for webview global (acquireVsCodeApi)
 │   ├── log/
-│   │   ├── copilotLogParser.ts   # Orchestrates log discovery and delegates to logFileReader / logContentParser
-│   │   ├── logFileReader.ts      # File-system utilities: session dir sorting, .log file reading
-│   │   └── logContentParser.ts  # Line-by-line parser for both JSON-embedded and plain-text log formats
+│   │   ├── copilotLogParser.ts       # Orchestrates log discovery and delegates to logFileReader / logContentParser
+│   │   ├── logFileReader.ts          # File-system utilities: session dir sorting, .log file reading
+│   │   ├── logContentParser.ts       # Top-level parser coordinator (delegates to parsers/ sub-modules)
+│   │   ├── chatSessionTitleReader.ts # Parses VS Code Copilot JSONL mutation log to reconstruct chat session titles
+│   │   ├── cliLogReader.ts           # Discovers and parses GitHub Copilot CLI session logs (~/.copilot/session-state/)
+│   │   ├── keywordExtractor.ts       # Tokenises chat titles / CLI prompts; returns top-N terms (stop-word filtered)
+│   │   ├── statsSnapshotStorage.ts   # Serialises/deserialises CopilotUsageStats to globalStoragePath/usage-stats.json
+│   │   └── parsers/
+│   │       ├── jsonLogParser.ts      # JSON-embedded log line parser (lines matching /\{.*\}/)
+│   │       ├── textLogParser.ts      # Plain-text inline-completion log line parser
+│   │       └── parserHelpers.ts      # Shared accumulation utilities used by both parsers
 │   ├── ui/
-│   │   ├── copilotUsagePanel.ts  # Singleton WebviewPanel (createOrShow pattern)
-│   │   ├── copilotUsageHtml.ts   # Generates the HTML shell that loads the webview bundle
-│   │   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Copilot Usage" sidebar view
-│   │   ├── dashboardMessages.ts  # Shared WebView ↔ Extension Host message types (HostToWebviewMessage, WebviewToHostMessage)
-│   │   ├── dashboardPayload.ts   # Standalone buildDashboardPayload() function (no VS Code deps; unit-testable)
+│   │   ├── copilotUsagePanel.ts      # Singleton WebviewPanel (createOrShow pattern)
+│   │   ├── copilotUsageHtml.ts       # Generates the HTML shell that loads the webview bundle
+│   │   ├── copilotUsageTreeProvider.ts  # TreeDataProvider powering the "Key Performance Indicators" sidebar view
+│   │   ├── dashboardMessages.ts      # Shared WebView ↔ Extension Host message types (HostToWebviewMessage, WebviewToHostMessage)
+│   │   ├── dashboardPayload.ts       # Standalone buildDashboardPayload() function (no VS Code deps; unit-testable)
 │   │   └── statusBarIndicator.ts
 │   ├── events/
 │   │   ├── eventSchema.ts
@@ -55,16 +63,26 @@ copilot-insight/
 │       ├── dbWorker.ts
 │       └── dbWorkerClient.ts
 ├── webview/                      # WebView frontend (compiled to dist/webview/ by tsconfig.webview.json)
-│   ├── dashboard.ts              # Chart.js dashboard: Timeline chart, Velocity scatter plot, export handling
+│   ├── dashboard.ts              # Main dashboard orchestrator: tab switching, Chart.js timeline, export handling
+│   ├── dashboardUtils.ts         # Pure formatting/escaping helpers shared across dashboard modules
+│   ├── htmlBuilders.ts           # Pure HTML-string builder functions (no DOM side-effects)
 │   └── charts/
 │       ├── AgenticEfficiencyScatterPlot.tsx  # React scatter plot (Avg Calls/Loop vs Completion Rate)
-│       └── ModelDepthVelocityChart.tsx       # React ComposedChart (agentic depth bars + velocity line)
+│       ├── AutonomyEvolutionChart.tsx        # React ComposedChart (daily Autonomous Volume + Thinking Depth)
+│       ├── ModelAutonomyLeverageMap.tsx      # React bubble chart (Autonomous Ratio × Duration, size = actions)
+│       ├── ModelDepthVelocityChart.tsx       # React ComposedChart (agentic depth bars + velocity line)
+│       └── ModelROIEfficiencyMap.tsx         # React bubble chart (Acceptance Rate × Time Saved per model)
 ├── test/                         # Mocha/vscode-test test files (*.test.ts)
 │   ├── extension.test.ts
 │   ├── utils.test.ts
 │   ├── log/
+│   │   ├── chatSessionTitleReader.test.ts
+│   │   ├── cliLogReader.test.ts
+│   │   ├── keywordExtractor.test.ts
 │   │   ├── logContentParser.test.ts
-│   │   └── logPaths.test.ts
+│   │   ├── logFileReader.test.ts
+│   │   ├── logPaths.test.ts
+│   │   └── statsSnapshotStorage.test.ts
 │   ├── ui/
 │   │   ├── copilotUsageTreeProvider.test.ts
 │   │   ├── dashboardPayload.test.ts
@@ -87,6 +105,7 @@ copilot-insight/
 │   │   ├── dbSchema.test.ts
 │   │   └── duckdbClient.test.ts
 │   └── worker/
+│       ├── dbWorker.test.ts
 │       └── dbWorkerClient.test.ts
 ├── dist/                         # Build output — extension.js + webview/ (CJS bundle, git-ignored)
 ├── bin/
@@ -102,10 +121,10 @@ copilot-insight/
 
 Four-layer pipeline:
 
-1. **`src/log/copilotLogParser.ts`** — reads `.log` files from VS Code's extension host log directory, parses both JSON-embedded lines (matching `/\{.*\}/`) and plain-text lines, and accumulates `CopilotUsageStats`.
+1. **`src/log/copilotLogParser.ts`** — reads `.log` files from VS Code's extension host log directory, parses both JSON-embedded lines (via `parsers/jsonLogParser.ts`) and plain-text lines (via `parsers/textLogParser.ts`), and accumulates `CopilotUsageStats`. Also coordinates chat session title resolution and CLI log ingestion.
 2. **`src/ui/dashboardPayload.ts`** — `buildDashboardPayload()` converts raw `CopilotUsageStats` + optional advanced-metrics into the typed `DashboardPayload` shape consumed by the WebView; no VS Code dependencies, fully unit-testable.
 3. **`src/ui/copilotUsagePanel.ts`** — singleton `WebviewPanel` via `createOrShow` pattern; holds `static currentPanel` reference; `enableScripts: true`; serves the bundled webview from `dist/webview/` via `localResourceRoots`.
-4. **`webview/dashboard.ts`** — Chart.js frontend (bundled separately by `tsconfig.webview.json`); renders the Timeline, Velocity, and export charts; communicates with the host via `vscode.postMessage` using the typed protocol in `dashboardMessages.ts`.
+4. **`webview/dashboard.ts`** — main dashboard orchestrator (bundled separately by `tsconfig.webview.json`); manages tab switching across **Overview**, **Flow**, **Agent Intelligence**, **Prompt Insights**, and **Sessions** tabs; renders Chart.js timeline and export charts; communicates with the host via `vscode.postMessage` using the typed protocol in `dashboardMessages.ts`. HTML fragments are generated by `htmlBuilders.ts`; utility formatting functions live in `dashboardUtils.ts`.
 
 `extension.ts` wires commands to the pipeline using `vscode.window.withProgress` for the parsing step.
 
@@ -114,6 +133,11 @@ Four-layer pipeline:
 - **`src/utils/logPaths.ts`** — `findSessionRoot(fsPath)` locates the VS Code session root by splitting the path on the native separator and finding the `logs/<timestamp>` landmark; depth-independent and correct on macOS, Linux, and Windows.
 - **`src/ui/dashboardMessages.ts`** — shared TypeScript union types (`HostToWebviewMessage`, `WebviewToHostMessage`) imported by both the host and the WebView; erased at runtime.
 - **`src/mcp/server.ts`** — MCP server exposing `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; entry point is `bin/mcp-server.js`, registered via `contributes.mcpServers`.
+- **`src/log/chatSessionTitleReader.ts`** — parses the VS Code Copilot JSONL mutation log to reconstruct human-readable chat session titles used in the Sessions tab.
+- **`src/log/cliLogReader.ts`** — discovers and parses GitHub Copilot CLI session JSONL files under `~/.copilot/session-state/`; contributes `CliStats` (per-date prompts and output tokens) to the dashboard.
+- **`src/log/keywordExtractor.ts`** — tokenises chat session titles and CLI prompt text, filters English stop words, and returns the top-N most frequent terms for the Tag Cloud widget.
+- **`src/log/statsSnapshotStorage.ts`** — serialises `CopilotUsageStats` to `globalStoragePath/usage-stats.json` so usage history survives VS Code restarts without re-parsing all log files.
+- **`src/log/parsers/`** — three focused modules split from the original `logContentParser.ts`: `jsonLogParser.ts` handles JSON-embedded lines, `textLogParser.ts` handles plain-text inline-completion lines, and `parserHelpers.ts` provides shared accumulation utilities.
 
 ## Log File Discovery
 
