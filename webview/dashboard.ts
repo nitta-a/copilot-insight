@@ -312,18 +312,8 @@ function renderChatIntentCommandDonutCharts(payload: DashboardPayload): void {
       </div>
     </div>`;
 
-  intentDonutChart = buildDonutChart(
-    "db-intent-donut",
-    payload.chatIntentBreakdown,
-    "intents",
-    intentDonutChart,
-  );
-  commandDonutChart = buildDonutChart(
-    "db-command-donut",
-    payload.commandUsageBreakdown,
-    "commands",
-    commandDonutChart,
-  );
+  intentDonutChart = buildDonutChart("db-intent-donut", payload.chatIntentBreakdown, "intents", intentDonutChart);
+  commandDonutChart = buildDonutChart("db-command-donut", payload.commandUsageBreakdown, "commands", commandDonutChart);
 }
 
 // ---------------------------------------------------------------------------
@@ -637,8 +627,8 @@ function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
       Bars show session volume per turn-count bucket. The line shows the resolution rate
       (% of sessions where code was copied or applied).
     </p>
-    <div class="chart-container" style="max-height:320px">
-      <canvas id="db-turn-churn-chart" style="max-height:320px"></canvas>
+    <div class="chart-container" style="min-height:300px;max-height:320px">
+      <canvas id="db-turn-churn-chart"></canvas>
     </div>`;
 
   const canvas = document.getElementById("db-turn-churn-chart") as HTMLCanvasElement | null;
