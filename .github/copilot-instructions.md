@@ -172,6 +172,14 @@ Output goes to `dist/extension.js` (CJS, `vscode` external) and `dist/webview/` 
 
 ## Post-Implementation Checks
 
+
+## Release Preparation Checklist
+
+Before creating a release or publishing a new version, always:
+
+- Update the **README.md** to reflect any new features, changes, or usage instructions.
+- Ensure all documentation is up to date and accurate.
+
 After making any code changes, always run the following commands in order and fix any errors before finishing:
 
 ```bash
