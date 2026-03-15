@@ -105,6 +105,48 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
 
   // Planning & Execution: check event name for plan/execution signals.
   trackPlanningStats(eventLower, ctx, timestamp, event);
+
+  // ── Chat Session Turn Tracking ────────────────────────────────────────────
+  // Only track sessions that carry an explicit session identifier in the log
+  // data. Sessions without an ID are silently skipped to avoid polluting stats
+  // with synthetic session buckets. Falls back to ctx.currentSessionId only
+  // when the data fields are absent but the context has a non-empty value.
+  const rawSessionId = data.sessionId ?? data.chatSessionId ?? data.conversationId ?? ctx.currentSessionId;
+  if (typeof rawSessionId === "string" && rawSessionId) {
+    const isChatTurn =
+      eventLower.includes("chat/request") ||
+      eventLower.includes("chat.request") ||
+      eventLower.includes("chatrequest") ||
+      eventLower.includes("message.sent") ||
+      eventLower.includes("conversation.request");
+    // Detect code-acceptance actions: codeblock copy, editor apply/insert,
+    // and apply_patch. Using suffixed patterns to avoid false positives on
+    // event names that merely contain these words in other contexts.
+    const isCodeAction =
+      eventLower.includes("code.copy") ||
+      eventLower.includes("codeblock.copy") ||
+      eventLower.includes(".copy") ||
+      eventLower.includes("code.apply") ||
+      eventLower.includes("apply_patch") ||
+      eventLower.includes("workspace/editfile") ||
+      eventLower.includes("code.insert") ||
+      eventLower.includes(".insert");
+
+    if (isChatTurn || isCodeAction) {
+      const existing = ctx.chatSessionStates.get(rawSessionId) ?? {
+        sessionId: rawSessionId,
+        turnCount: 0,
+        isAccepted: false,
+      };
+      if (isChatTurn) {
+        existing.turnCount++;
+      }
+      if (isCodeAction) {
+        existing.isAccepted = true;
+      }
+      ctx.chatSessionStates.set(rawSessionId, existing);
+    }
+  }
 }
 
 export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean {

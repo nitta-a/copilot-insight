@@ -106,6 +106,7 @@ let timelineChart: Chart | null = null;
 let intentDonutChart: Chart | null = null;
 let commandDonutChart: Chart | null = null;
 let promptLengthScatterChart: Chart | null = null;
+let turnChurnChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
@@ -311,18 +312,8 @@ function renderChatIntentCommandDonutCharts(payload: DashboardPayload): void {
       </div>
     </div>`;
 
-  intentDonutChart = buildDonutChart(
-    "db-intent-donut",
-    payload.chatIntentBreakdown,
-    "intents",
-    intentDonutChart,
-  );
-  commandDonutChart = buildDonutChart(
-    "db-command-donut",
-    payload.commandUsageBreakdown,
-    "commands",
-    commandDonutChart,
-  );
+  intentDonutChart = buildDonutChart("db-intent-donut", payload.chatIntentBreakdown, "intents", intentDonutChart);
+  commandDonutChart = buildDonutChart("db-command-donut", payload.commandUsageBreakdown, "commands", commandDonutChart);
 }
 
 // ---------------------------------------------------------------------------
@@ -610,6 +601,124 @@ function renderPromptLengthScatterChart(scatterData: DashboardPayload["promptLen
 }
 
 // ---------------------------------------------------------------------------
+// Turn Churn Mixed Chart (chat session turn-count distribution)
+// ---------------------------------------------------------------------------
+
+function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
+  const container = document.getElementById("db-turn-churn-container");
+  if (!container) {
+    return;
+  }
+
+  const hasData = turnStats.some((b) => b.sessionCount > 0);
+  if (!hasData) {
+    container.innerHTML = "";
+    if (turnChurnChart) {
+      turnChurnChart.destroy();
+      turnChurnChart = null;
+    }
+    return;
+  }
+
+  container.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🔄 Chat Session Turn Count & Resolution Rate</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
+      Bars show session volume per turn-count bucket. The line shows the resolution rate
+      (% of sessions where code was copied or applied).
+    </p>
+    <div class="chart-container" style="min-height:300px;max-height:320px">
+      <canvas id="db-turn-churn-chart"></canvas>
+    </div>`;
+
+  const canvas = document.getElementById("db-turn-churn-chart") as HTMLCanvasElement | null;
+  if (!canvas) {
+    return;
+  }
+
+  if (turnChurnChart) {
+    turnChurnChart.destroy();
+  }
+
+  const c = getColors();
+  const labels = turnStats.map((b) => b.bucket);
+  const sessionCounts = turnStats.map((b) => b.sessionCount);
+  const resolutionRates = turnStats.map((b) =>
+    // Round to one decimal place: (acceptedCount / sessionCount) * 100
+    b.sessionCount > 0 ? Math.round((b.acceptedCount / b.sessionCount) * 1000) / 10 : 0,
+  );
+
+  turnChurnChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Sessions",
+          data: sessionCounts,
+          backgroundColor: `${c.blue}99`,
+          borderColor: c.blue,
+          borderWidth: 1,
+          yAxisID: "yLeft",
+        },
+        {
+          type: "line",
+          label: "Resolution Rate (%)",
+          data: resolutionRates,
+          borderColor: c.green,
+          backgroundColor: `${c.green}33`,
+          borderWidth: 2,
+          pointRadius: 4,
+          tension: 0.3,
+          yAxisID: "yRight",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: c.foreground } },
+        tooltip: {
+          callbacks: {
+            label: (item: TooltipItem<"bar" | "line">) => {
+              if (item.datasetIndex === 1) {
+                return `Resolution Rate: ${item.formattedValue}%`;
+              }
+              return `Sessions: ${item.formattedValue}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+        },
+        yLeft: {
+          type: "linear",
+          position: "left",
+          title: { display: true, text: "Session Count", color: c.foreground },
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+          beginAtZero: true,
+        },
+        yRight: {
+          type: "linear",
+          position: "right",
+          title: { display: true, text: "Resolution Rate (%)", color: c.foreground },
+          ticks: { color: c.foreground, callback: (v) => `${v}%` },
+          grid: { drawOnChartArea: false },
+          beginAtZero: true,
+          max: 100,
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Model Autonomy Leverage Map
 // ---------------------------------------------------------------------------
 
@@ -744,6 +853,7 @@ function switchTab(tabId: string): void {
     intentDonutChart?.resize();
     commandDonutChart?.resize();
     promptLengthScatterChart?.resize();
+    turnChurnChart?.resize();
   }
 }
 
@@ -926,6 +1036,7 @@ function render(payload: DashboardPayload): void {
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
   renderPromptLengthScatterChart(payload.promptLengthScatterData);
+  renderTurnChurnChart(payload.turnStats);
   for (const session of payload.sessionSummaries) {
     if (!allSessionDetails.has(session.sessionId)) {
       sessionLoadQueue.push(session.sessionId);

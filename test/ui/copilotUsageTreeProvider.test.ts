@@ -66,6 +66,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     cliTotalInteractions: 0,
     commandUsage: new Map(),
     promptEffectiveness: {},
+    chatSessionStates: new Map(),
     ...overrides,
   };
 }

@@ -9,19 +9,19 @@ import {
   classifyIntent,
   extractLineContext,
   extractTimestampFromText,
+  INTENT_DISPLAY_NAMES,
   incrementCount,
   incrementStatCount,
   isSubagentIntent,
-  INTENT_DISPLAY_NAMES,
   KNOWN_CHAT_INTENTS,
   LineContext,
   maybeRecordFeatureSignals,
   normalizeModelName,
   pushSessionSignal,
+  recordCommandExecutionSignal,
   trackPlanningStats,
   trackSessionActivity,
   trackSessionError,
-  recordCommandExecutionSignal,
 } from "./parserHelpers";
 
 // --- Sub-parsers for parseTextLogLine ---
@@ -277,8 +277,32 @@ function parseCcreqLine(
     recordInlineShown(ctx, dateKey, hourKey, model, latency, timestamp, line);
   } else if (isNesAccepted) {
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
+    // An inline-completion acceptance is the strongest acceptance signal in
+    // plain-text Copilot logs — mark the current session as accepted so that
+    // the Turn Churn chart can compute per-bucket resolution rates.
+    if (ctx.currentSessionId) {
+      const existing = ctx.chatSessionStates.get(ctx.currentSessionId) ?? {
+        sessionId: ctx.currentSessionId,
+        turnCount: 0,
+        isAccepted: false,
+      };
+      existing.isAccepted = true;
+      ctx.chatSessionStates.set(ctx.currentSessionId, existing);
+    }
   } else {
     recordChatRequest(ctx, dateKey, hourKey, model, latency);
+    // Track each chat request as a turn so that the Turn Churn chart can
+    // bucket sessions by turn count. This is the primary population path
+    // because real Copilot Chat logs are plain-text ccreq lines, not JSON.
+    if (ctx.currentSessionId) {
+      const existing = ctx.chatSessionStates.get(ctx.currentSessionId) ?? {
+        sessionId: ctx.currentSessionId,
+        turnCount: 0,
+        isAccepted: false,
+      };
+      existing.turnCount++;
+      ctx.chatSessionStates.set(ctx.currentSessionId, existing);
+    }
     const classification = classifyIntent(rawIntent);
     pushSessionSignal(ctx, {
       timestamp,

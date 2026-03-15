@@ -223,6 +223,16 @@ export interface AgentIntelligenceOverview {
   }>;
 }
 
+/** A single bucket in the chat-session turn-count distribution. */
+export interface TurnBucket {
+  /** Human-readable bucket label (e.g. "1 turn", "2-3 turns"). */
+  bucket: string;
+  /** Total number of chat sessions that fall into this bucket. */
+  sessionCount: number;
+  /** Number of sessions in this bucket where code was copied or applied. */
+  acceptedCount: number;
+}
+
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline (equals timeline.length). */
@@ -262,6 +272,11 @@ export interface DashboardPayload {
    * sorted by frequency descending (up to 20 entries).
    */
   topKeywords: { word: string; count: number }[];
+  /**
+   * Turn-count distribution for chat sessions, bucketed into four ranges.
+   * Used to render the Turn Churn mixed chart in the Prompt Insights tab.
+   */
+  turnStats: TurnBucket[];
 }
 
 // ---------------------------------------------------------------------------

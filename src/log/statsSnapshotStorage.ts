@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { SessionSignalEvent } from "../events/eventSchema";
 import type {
   AgenticDepthStat,
+  ChatSessionState,
   ChatSessionTitleRecord,
   CliDateStat,
   CopilotUsageStats,
@@ -73,6 +74,7 @@ interface SerializedCopilotUsageStats {
   cliTotalInteractions: number;
   commandUsage: Array<[string, number]>;
   promptEffectiveness?: Record<string, { shown: number; accepted: number }>;
+  chatSessionStates?: Array<[string, ChatSessionState]>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -140,6 +142,7 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     cliTotalInteractions: stats.cliTotalInteractions,
     commandUsage: mapEntries(stats.commandUsage),
     promptEffectiveness: { ...stats.promptEffectiveness },
+    chatSessionStates: mapEntries(stats.chatSessionStates),
   };
 }
 
@@ -200,6 +203,7 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     cliTotalInteractions: stats.cliTotalInteractions ?? 0,
     commandUsage: toMap(stats.commandUsage),
     promptEffectiveness: stats.promptEffectiveness ?? {},
+    chatSessionStates: toMap(stats.chatSessionStates),
   };
 }
 

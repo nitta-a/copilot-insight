@@ -468,6 +468,7 @@ export function getHtmlContent(
         <div id="db-intent-command-donut-container"></div>
         <div id="db-prompt-length-scatter-container"></div>
       </div>
+      <div id="db-turn-churn-container"></div>
     </div>
 
     <div id="db-tab-sessions" class="db-tab-pane" role="tabpanel">

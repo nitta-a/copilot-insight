@@ -88,6 +88,7 @@ function makeEmptyStats(): ParsingContext {
     commandUsage: new Map(),
     promptEffectiveness: {},
     activePlanPending: false,
+    chatSessionStates: new Map(),
   };
 }
 
@@ -470,6 +471,53 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalChat, 3);
       assert.strictEqual(stats.byChatModel.get("gpt-4o"), 2);
       assert.strictEqual(stats.byChatModel.get("claude-3.5-sonnet"), 1);
+    });
+  });
+
+  suite("parseTextLogLine – ccreq chat session state tracking", () => {
+    test("chat request increments chatSessionStates turnCount", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "sess-abc";
+      parseTextLogLine("2024-06-01 ccreq:abc123 | success | gpt-4o | 800ms | [vscodePrompt]", stats);
+      const state = stats.chatSessionStates.get("sess-abc");
+      assert.ok(state, "chatSessionStates entry should exist");
+      assert.strictEqual(state.turnCount, 1);
+      assert.strictEqual(state.isAccepted, false);
+    });
+
+    test("multiple chat requests accumulate turnCount in same session", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "sess-multi";
+      parseTextLogLine("2024-06-01 ccreq:a | success | gpt-4o | 700ms | [vscodePrompt]", stats);
+      parseTextLogLine("2024-06-01 ccreq:b | success | gpt-4o | 800ms | [panel/editAgent]", stats);
+      parseTextLogLine("2024-06-01 ccreq:c | success | gpt-4o | 900ms | [vscodePrompt]", stats);
+      const state = stats.chatSessionStates.get("sess-multi");
+      assert.ok(state);
+      assert.strictEqual(state.turnCount, 3);
+    });
+
+    test("NES accepted line sets isAccepted true on session", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "sess-nes";
+      parseTextLogLine("2024-06-01 ccreq:x | success | copilot-suggestions | 750ms | [nes.nextCursorPosition]", stats);
+      const state = stats.chatSessionStates.get("sess-nes");
+      assert.ok(state, "chatSessionStates entry should exist for NES accepted");
+      assert.strictEqual(state.isAccepted, true);
+      assert.strictEqual(state.turnCount, 0);
+    });
+
+    test("XtabProvider shown does not update chatSessionStates", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "sess-xtab";
+      parseTextLogLine("2024-06-01 ccreq:y | success | gpt-4o | 120ms | [XtabProvider]", stats);
+      assert.strictEqual(stats.chatSessionStates.size, 0);
+    });
+
+    test("empty currentSessionId does not create chatSessionStates entry", () => {
+      const stats = makeEmptyStats();
+      stats.currentSessionId = "";
+      parseTextLogLine("2024-06-01 ccreq:z | success | gpt-4o | 800ms | [vscodePrompt]", stats);
+      assert.strictEqual(stats.chatSessionStates.size, 0);
     });
   });
 

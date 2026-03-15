@@ -30,6 +30,7 @@ import type {
   RoiBreakdown,
   SummaryData,
   TimelineEntry,
+  TurnBucket,
   VelocityPoint,
   WeeklyTrendData,
 } from "./dashboardMessages";
@@ -464,7 +465,43 @@ export function buildDashboardPayload(
     commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
+    turnStats: buildTurnStats(stats),
   };
+}
+
+/**
+ * Aggregate `chatSessionStates` into four turn-count buckets for the Turn Churn
+ * mixed chart in the Prompt Insights tab.
+ *
+ * Buckets: "1 turn" | "2-3 turns" | "4-5 turns" | "6+ turns"
+ */
+function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
+  const buckets: TurnBucket[] = [
+    { bucket: "1 turn", sessionCount: 0, acceptedCount: 0 },
+    { bucket: "2-3 turns", sessionCount: 0, acceptedCount: 0 },
+    { bucket: "4-5 turns", sessionCount: 0, acceptedCount: 0 },
+    { bucket: "6+ turns", sessionCount: 0, acceptedCount: 0 },
+  ];
+
+  for (const state of stats.chatSessionStates.values()) {
+    if (state.turnCount <= 0) {
+      continue;
+    }
+    const b =
+      state.turnCount === 1
+        ? buckets[0]!
+        : state.turnCount <= 3
+          ? buckets[1]!
+          : state.turnCount <= 5
+            ? buckets[2]!
+            : buckets[3]!;
+    b.sessionCount++;
+    if (state.isAccepted) {
+      b.acceptedCount++;
+    }
+  }
+
+  return buckets;
 }
 
 function getLatestSession(stats: CopilotUsageStats): SessionStat | null {

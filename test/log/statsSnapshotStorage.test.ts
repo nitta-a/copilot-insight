@@ -110,6 +110,7 @@ function makeStats(): CopilotUsageStats {
     cliTotalInteractions: 0,
     commandUsage: new Map([["@workspace", 3]]),
     promptEffectiveness: {},
+    chatSessionStates: new Map([["session-1", { sessionId: "session-1", turnCount: 2, isAccepted: true }]]),
   };
 }
 
