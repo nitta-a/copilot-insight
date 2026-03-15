@@ -280,6 +280,8 @@ export interface ChatSessionState {
   sessionId: string;
   turnCount: number;
   isAccepted: boolean;
+  /** Number of context references (files, workspace, etc.) attached to the most recent request. */
+  referenceCount?: number;
 }
 
 export interface CopilotUsageStats {

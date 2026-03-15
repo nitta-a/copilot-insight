@@ -23,6 +23,7 @@ import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
+  ContextBucket,
   ContextFreshness,
   CountBreakdownEntry,
   DashboardPayload,
@@ -466,6 +467,7 @@ export function buildDashboardPayload(
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
     turnStats: buildTurnStats(stats),
+    contextStats: buildContextStats(stats),
   };
 }
 
@@ -495,6 +497,52 @@ function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
           : state.turnCount <= 5
             ? buckets[2]!
             : buckets[3]!;
+    b.sessionCount++;
+    if (state.isAccepted) {
+      b.acceptedCount++;
+    }
+  }
+
+  return buckets;
+}
+
+/**
+ * Aggregate `chatSessionStates` into five reference-count buckets for the
+ * Context Leverage mixed chart in the Prompt Insights tab.
+ *
+ * Buckets: "0 files" | "1 file" | "2 files" | "3 files" | "4+ files"
+ */
+function buildContextStats(stats: CopilotUsageStats): ContextBucket[] {
+  const buckets: ContextBucket[] = [
+    { referenceCount: "0 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "1 file", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "2 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "3 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "4+ files", sessionCount: 0, acceptedCount: 0 },
+  ];
+
+  for (const state of stats.chatSessionStates.values()) {
+    if (state.turnCount <= 0) {
+      continue;
+    }
+    // Skip sessions where referenceCount is undefined — these were parsed before
+    // this feature was implemented (e.g. old log files or legacy snapshots) and
+    // their actual reference count is unknown. Excluding them avoids skewing the
+    // "0 files" bucket with historically-untracked sessions.
+    if (state.referenceCount === undefined) {
+      continue;
+    }
+    const refCount = state.referenceCount;
+    const b =
+      refCount === 0
+        ? buckets[0]!
+        : refCount === 1
+          ? buckets[1]!
+          : refCount === 2
+            ? buckets[2]!
+            : refCount === 3
+              ? buckets[3]!
+              : buckets[4]!;
     b.sessionCount++;
     if (state.isAccepted) {
       b.acceptedCount++;
