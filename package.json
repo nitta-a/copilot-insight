@@ -2,7 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {

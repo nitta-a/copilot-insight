@@ -4,6 +4,15 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.19] - 2026-03-17
+
+### Added
+- 📊 **Context Leverage analysis** — new mixed chart in the Prompt Insights tab shows how the number of context references (files, workspace symbols, embeddings, etc.) attached to a chat request correlates with code-acceptance rate; sessions are bucketed into five ranges (0, 1, 2–3, 4–5, 6+ files) so you can immediately see whether providing more context leads to better results
+- 🔄 **Turn Count & Resolution Rate analysis** — new Turn Churn chart in the Prompt Insights tab plots the distribution of multi-turn chat sessions alongside their resolution rate; tracks per-session turn count and code-acceptance state in `chatSessionStates`; `statsSnapshotStorage` now serialises/deserialises the new map so the data survives VS Code restarts
+
+### Fixed
+- 🪟 **WSL session title discovery** — `chatSessionTitleReader` now enumerates mounted Windows drives under `/mnt/` and reads VS Code (and VS Code Insiders) workspace-storage roots from the Windows-side AppData path; chat session titles are correctly resolved when VS Code Remote/WSL is used and the renderer writes JSONL to the Windows file system
+
 ## [1.0.18] - 2026-03-15
 
 ### Added
