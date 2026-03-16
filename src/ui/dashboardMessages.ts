@@ -233,6 +233,16 @@ export interface TurnBucket {
   acceptedCount: number;
 }
 
+/** A single bucket in the Context Leverage analysis (context reference count distribution). */
+export interface ContextBucket {
+  /** Human-readable label for the reference-count bucket (e.g. "0 files", "1 file", "4+ files"). */
+  referenceCount: string;
+  /** Total number of chat sessions in this bucket. */
+  sessionCount: number;
+  /** Number of sessions in this bucket where code was accepted. */
+  acceptedCount: number;
+}
+
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline (equals timeline.length). */
@@ -277,6 +287,11 @@ export interface DashboardPayload {
    * Used to render the Turn Churn mixed chart in the Prompt Insights tab.
    */
   turnStats: TurnBucket[];
+  /**
+   * Context reference-count distribution for chat sessions, bucketed into five ranges.
+   * Used to render the Context Leverage mixed chart in the Prompt Insights tab.
+   */
+  contextStats: ContextBucket[];
 }
 
 // ---------------------------------------------------------------------------

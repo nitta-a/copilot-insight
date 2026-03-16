@@ -140,6 +140,12 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       };
       if (isChatTurn) {
         existing.turnCount++;
+        // Record reference count from usedReferences (or similar fields) when present.
+        // `usedReferences` is the canonical field in recent Copilot log versions;
+        // `references` and `contextReferences` are observed in older log formats;
+        // `attachedFiles` appears in some CLI/agent session logs.
+        const usedRefs = data.usedReferences ?? data.references ?? data.contextReferences ?? data.attachedFiles;
+        existing.referenceCount = Array.isArray(usedRefs) ? usedRefs.length : 0;
       }
       if (isCodeAction) {
         existing.isAccepted = true;

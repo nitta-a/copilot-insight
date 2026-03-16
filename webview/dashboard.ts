@@ -107,6 +107,7 @@ let intentDonutChart: Chart | null = null;
 let commandDonutChart: Chart | null = null;
 let promptLengthScatterChart: Chart | null = null;
 let turnChurnChart: Chart | null = null;
+let contextLeverageChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
@@ -719,6 +720,123 @@ function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Context Leverage Mixed Chart (context reference-count distribution)
+// ---------------------------------------------------------------------------
+
+function renderContextLeverageChart(contextStats: DashboardPayload["contextStats"]): void {
+  const container = document.getElementById("db-context-leverage-container");
+  if (!container) {
+    return;
+  }
+
+  const hasData = contextStats.some((b) => b.sessionCount > 0);
+  if (!hasData) {
+    container.innerHTML = "";
+    if (contextLeverageChart) {
+      contextLeverageChart.destroy();
+      contextLeverageChart = null;
+    }
+    return;
+  }
+
+  container.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>📎 Context Leverage — Reference Count vs Acceptance Rate</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
+      Bars show session volume per reference-count bucket. The line shows the acceptance rate
+      (% of sessions where code was accepted) for each bucket.
+    </p>
+    <div class="chart-container" style="min-height:300px;max-height:320px">
+      <canvas id="db-context-leverage-chart"></canvas>
+    </div>`;
+
+  const canvas = document.getElementById("db-context-leverage-chart") as HTMLCanvasElement | null;
+  if (!canvas) {
+    return;
+  }
+
+  if (contextLeverageChart) {
+    contextLeverageChart.destroy();
+  }
+
+  const c = getColors();
+  const labels = contextStats.map((b) => b.referenceCount);
+  const sessionCounts = contextStats.map((b) => b.sessionCount);
+  const acceptanceRates = contextStats.map((b) =>
+    b.sessionCount > 0 ? Math.round((b.acceptedCount / b.sessionCount) * 1000) / 10 : 0,
+  );
+
+  contextLeverageChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Sessions",
+          data: sessionCounts,
+          backgroundColor: `${c.blue}99`,
+          borderColor: c.blue,
+          borderWidth: 1,
+          yAxisID: "yLeft",
+        },
+        {
+          type: "line",
+          label: "Acceptance Rate (%)",
+          data: acceptanceRates,
+          borderColor: c.green,
+          backgroundColor: `${c.green}33`,
+          borderWidth: 2,
+          pointRadius: 4,
+          tension: 0.3,
+          yAxisID: "yRight",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: c.foreground } },
+        tooltip: {
+          callbacks: {
+            label: (item: TooltipItem<"bar" | "line">) => {
+              if (item.datasetIndex === 1) {
+                return `Acceptance Rate: ${item.formattedValue}%`;
+              }
+              return `Sessions: ${item.formattedValue}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+        },
+        yLeft: {
+          type: "linear",
+          position: "left",
+          title: { display: true, text: "Session Count", color: c.foreground },
+          ticks: { color: c.foreground },
+          grid: { color: c.grid },
+          beginAtZero: true,
+        },
+        yRight: {
+          type: "linear",
+          position: "right",
+          title: { display: true, text: "Acceptance Rate (%)", color: c.foreground },
+          ticks: { color: c.foreground, callback: (v) => `${v}%` },
+          grid: { drawOnChartArea: false },
+          beginAtZero: true,
+          max: 100,
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Model Autonomy Leverage Map
 // ---------------------------------------------------------------------------
 
@@ -854,6 +972,7 @@ function switchTab(tabId: string): void {
     commandDonutChart?.resize();
     promptLengthScatterChart?.resize();
     turnChurnChart?.resize();
+    contextLeverageChart?.resize();
   }
 }
 
@@ -1037,6 +1156,7 @@ function render(payload: DashboardPayload): void {
   renderModelAutonomyLeverageMap(payload.agenticStats);
   renderPromptLengthScatterChart(payload.promptLengthScatterData);
   renderTurnChurnChart(payload.turnStats);
+  renderContextLeverageChart(payload.contextStats);
   for (const session of payload.sessionSummaries) {
     if (!allSessionDetails.has(session.sessionId)) {
       sessionLoadQueue.push(session.sessionId);

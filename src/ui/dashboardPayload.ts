@@ -23,6 +23,7 @@ import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
+  ContextBucket,
   ContextFreshness,
   CountBreakdownEntry,
   DashboardPayload,
@@ -67,13 +68,14 @@ function toSortedBreakdown(source: Map<string, number>): CountBreakdownEntry[] {
 function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary[] {
   return Array.from(stats.bySession.values())
     .map((session) => {
-      const trueRate = session.shown > 0 ? (session.accepted / session.shown) * 100 : 0;
-      const totalActions = session.shown + session.accepted + session.chat + session.errors;
-      const dateMatch = session.sessionId.match(/(\d{4})(\d{2})(\d{2})/);
-      const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : session.sessionId;
+      const { sessionId, accepted, shown, chat, errors } = session;
+      const trueRate = shown > 0 ? (accepted / shown) * 100 : 0;
+      const totalActions = shown + accepted + chat + errors;
+      const dateMatch = sessionId.match(/(\d{4})(\d{2})(\d{2})/);
+      const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : sessionId;
       return {
-        sessionId: session.sessionId,
-        title: date !== session.sessionId ? date : session.sessionId,
+        sessionId,
+        title: date !== sessionId ? date : sessionId,
         date,
         totalActions,
         trueRate,
@@ -282,15 +284,13 @@ export function buildDashboardPayload(
 
   // 1. Weekly rate trend
   if (trendResult.thisWeek.shown > 0 && trendResult.lastWeek.shown > 0) {
-    const diff = trendResult.rateDiff;
-    if (diff > 0) {
-      insights.push(
-        `📈 This week's acceptance rate is +${diff.toFixed(1)}% higher than last week (${trendResult.thisWeek.rate.toFixed(1)}% vs ${trendResult.lastWeek.rate.toFixed(1)}%).`,
-      );
-    } else if (diff < 0) {
-      insights.push(
-        `📉 This week's acceptance rate is ${diff.toFixed(1)}% lower than last week (${trendResult.thisWeek.rate.toFixed(1)}% vs ${trendResult.lastWeek.rate.toFixed(1)}%).`,
-      );
+    const { rateDiff, thisWeek, lastWeek } = trendResult;
+    if (rateDiff !== 0) {
+      const thisWeekRate = thisWeek.rate.toFixed(1);
+      const lastWeekRate = lastWeek.rate.toFixed(1);
+      const diff = rateDiff.toFixed(1);
+      const rate = rateDiff > 0 ? `rate is +${diff}% higher` : `rate is ${diff}% lower`;
+      insights.push(`📈 This week's acceptance ${rate} than last week (${thisWeekRate}% vs ${lastWeekRate}%).`);
     }
   }
 
@@ -466,6 +466,7 @@ export function buildDashboardPayload(
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
     turnStats: buildTurnStats(stats),
+    contextStats: buildContextStats(stats),
   };
 }
 
@@ -487,14 +488,53 @@ function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
     if (state.turnCount <= 0) {
       continue;
     }
-    const b =
-      state.turnCount === 1
-        ? buckets[0]!
-        : state.turnCount <= 3
-          ? buckets[1]!
-          : state.turnCount <= 5
-            ? buckets[2]!
-            : buckets[3]!;
+    const b = (() => {
+      if (state.turnCount === 1) {
+        return buckets[0];
+      } else if (state.turnCount <= 3) {
+        return buckets[1];
+      } else if (state.turnCount <= 5) {
+        return buckets[2];
+      }
+      return buckets[3];
+    })();
+    b.sessionCount++;
+    if (state.isAccepted) {
+      b.acceptedCount++;
+    }
+  }
+
+  return buckets;
+}
+
+/**
+ * Aggregate `chatSessionStates` into five reference-count buckets for the
+ * Context Leverage mixed chart in the Prompt Insights tab.
+ *
+ * Buckets: "0 files" | "1 file" | "2 files" | "3 files" | "4+ files"
+ */
+function buildContextStats(stats: CopilotUsageStats): ContextBucket[] {
+  const buckets: ContextBucket[] = [
+    { referenceCount: "0 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "1 file", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "2 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "3 files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "4+ files", sessionCount: 0, acceptedCount: 0 },
+  ];
+
+  for (const state of stats.chatSessionStates.values()) {
+    if (state.turnCount <= 0) {
+      continue;
+    }
+    // Skip sessions where referenceCount is undefined — these were parsed before
+    // this feature was implemented (e.g. old log files or legacy snapshots) and
+    // their actual reference count is unknown. Excluding them avoids skewing the
+    // "0 files" bucket with historically-untracked sessions.
+    const refCount = state.referenceCount;
+    if (refCount === undefined) {
+      continue;
+    }
+    const b = refCount < 4 ? buckets[refCount] : buckets[4];
     b.sessionCount++;
     if (state.isAccepted) {
       b.acceptedCount++;
@@ -588,11 +628,9 @@ function calculateContextFreshness(
 }
 
 function countCompletedActions(stat: AgenticDepthStat): number {
-  const completedLoops =
-    stat.loopDistribution.bucket1 +
-    stat.loopDistribution.bucket2 +
-    stat.loopDistribution.bucket3to5 +
-    stat.loopDistribution.bucket6to10 +
-    stat.loopDistribution.bucket11plus;
+  const { bucket1, bucket2, bucket3to5, bucket6to10, bucket11plus } = stat.loopDistribution;
+
+  const completedLoops = bucket1 + bucket2 + bucket3to5 + bucket6to10 + bucket11plus;
+
   return completedLoops * stat.avgLoopActions;
 }
