@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
-import type { CopilotUsageStats, ParsingContext } from "../types";
+import type { ChatSessionRecord, ChatSessionTitleRecord, CopilotUsageStats, ParsingContext } from "../types";
 import { resolveLogSearchPaths } from "../utils/logPaths";
 import {
+  discoverWindowsWorkspaceStorageRoots,
   readChatSessionRecords,
   readChatSessionTitleRecords,
   resolveWorkspaceStorageRoot,
@@ -173,9 +174,41 @@ export async function parseCopilotLogs(
       `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
     );
 
-    const workspaceStorageRoot = resolveWorkspaceStorageRoot(logBaseDir);
-    ctx.chatSessionTitles = await readChatSessionTitleRecords(workspaceStorageRoot);
-    ctx.chatSessions = await readChatSessionRecords(workspaceStorageRoot);
+    const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);
+    const winRoots = await discoverWindowsWorkspaceStorageRoots();
+    const allRoots = [wslRoot, ...winRoots];
+    if (winRoots.length > 0) {
+      channel.appendLine(`Discovered ${winRoots.length} Windows workspaceStorage root(s) via /mnt/`);
+    }
+
+    // Merge title records from all roots, dedup by chatSessionId
+    const titleMap = new Map<string, ChatSessionTitleRecord>();
+    for (const root of allRoots) {
+      for (const rec of await readChatSessionTitleRecords(root)) {
+        const existing = titleMap.get(rec.chatSessionId);
+        if (!existing) {
+          titleMap.set(rec.chatSessionId, rec);
+        }
+      }
+    }
+    ctx.chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    // Merge session records from all roots, dedup by chatSessionId (keep most-recent lastMessageAt)
+    const sessionMap = new Map<string, ChatSessionRecord>();
+    for (const root of allRoots) {
+      for (const rec of await readChatSessionRecords(root)) {
+        const existing = sessionMap.get(rec.chatSessionId);
+        if (!existing) {
+          sessionMap.set(rec.chatSessionId, rec);
+          continue;
+        }
+        const existingLast = existing.lastMessageAt ? Date.parse(existing.lastMessageAt) : 0;
+        const candidateLast = rec.lastMessageAt ? Date.parse(rec.lastMessageAt) : 0;
+        sessionMap.set(rec.chatSessionId, candidateLast >= existingLast ? rec : existing);
+      }
+    }
+    ctx.chatSessions = [...sessionMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
     channel.appendLine(`Recovered ${ctx.chatSessionTitles.length} workspace chat titles`);
     channel.appendLine(`Recovered ${ctx.chatSessions.length} workspace chat sessions`);
   } catch (e) {
