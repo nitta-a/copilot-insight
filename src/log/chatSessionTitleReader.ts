@@ -612,6 +612,67 @@ export function resolveWorkspaceStorageRoot(logBaseDir: string): string {
   return path.join(path.dirname(logBaseDir), "User", "workspaceStorage");
 }
 
+/**
+ * Discovers Windows-side VS Code workspaceStorage roots when running under WSL.
+ *
+ * VS Code Remote/WSL runs the extension host in WSL while the renderer (UI / chat panel)
+ * runs on Windows and writes chatSessions JSONL to the Windows AppData path.
+ * This function enumerates mounted Windows drives under /mnt/ and returns every
+ * `{drive}/Users/{user}/AppData/Roaming/{Code|Code - Insiders}/User/workspaceStorage`
+ * path that exists on disk.
+ *
+ * Returns an empty array on non-Linux platforms or when /mnt/ is not accessible.
+ */
+export async function discoverWindowsWorkspaceStorageRoots(): Promise<string[]> {
+  if (process.platform !== "linux") {
+    return [];
+  }
+  const roots: string[] = [];
+  let driveEntries: Dirent[] = [];
+  try {
+    driveEntries = await fs.readdir("/mnt", { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  for (const driveEntry of driveEntries) {
+    // Accept only single-letter drive names (c, d, …) to skip /mnt/wsl, /mnt/wslg, etc.
+    if (!driveEntry.isDirectory() || !/^[a-z]$/.test(driveEntry.name)) {
+      continue;
+    }
+    const usersPath = path.join("/mnt", driveEntry.name, "Users");
+    let userEntries: Dirent[] = [];
+    try {
+      userEntries = await fs.readdir(usersPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const skipNames = new Set(["Public", "Default", "All Users", "Default User"]);
+    for (const userEntry of userEntries) {
+      if (!userEntry.isDirectory() || skipNames.has(userEntry.name)) {
+        continue;
+      }
+      for (const variant of ["Code", "Code - Insiders"]) {
+        const candidate = path.join(
+          usersPath,
+          userEntry.name,
+          "AppData",
+          "Roaming",
+          variant,
+          "User",
+          "workspaceStorage",
+        );
+        try {
+          await fs.access(candidate);
+          roots.push(candidate);
+        } catch {
+          // Path does not exist — skip
+        }
+      }
+    }
+  }
+  return roots;
+}
+
 export async function readChatSessionTitleRecords(workspaceStorageRoot: string): Promise<ChatSessionTitleRecord[]> {
   const merged = new Map<string, ChatSessionTitleRecord>();
   let workspaceEntries: Dirent[] = [];
