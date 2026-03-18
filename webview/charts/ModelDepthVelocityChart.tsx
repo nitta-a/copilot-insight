@@ -33,7 +33,9 @@ const MAX_LABEL_LENGTH = 16;
 const LABEL_TRUNCATE_AT = 14;
 
 function getCssVar(name: string): string {
-  return getComputedStyle(document.body).getPropertyValue(name).trim() || "#ffffff";
+  return (
+    getComputedStyle(document.body).getPropertyValue(name).trim() || "#ffffff"
+  );
 }
 
 interface CustomTooltipPayloadItem {
@@ -43,13 +45,21 @@ interface CustomTooltipPayloadItem {
   unit?: string;
 }
 
-function CustomTooltip({ active, payload, label }: TooltipContentProps<number, string>) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: TooltipContentProps<number, string>) {
   if (!active || !payload?.length) {
     return null;
   }
   const fg = getCssVar("--vscode-editor-foreground");
-  const bg = getCssVar("--vscode-editorWidget-background") || getCssVar("--vscode-editor-background");
-  const border = getCssVar("--vscode-widget-border") || getCssVar("--vscode-editorWidget-border");
+  const bg =
+    getCssVar("--vscode-editorWidget-background") ||
+    getCssVar("--vscode-editor-background");
+  const border =
+    getCssVar("--vscode-widget-border") ||
+    getCssVar("--vscode-editorWidget-border");
   return (
     <div
       style={{
@@ -64,7 +74,10 @@ function CustomTooltip({ active, payload, label }: TooltipContentProps<number, s
       <p style={{ margin: "0 0 4px", fontWeight: "bold" }}>{label}</p>
       {(payload as CustomTooltipPayloadItem[]).map((entry) => (
         <p key={entry.name} style={{ margin: "2px 0", color: entry.color }}>
-          {entry.name}: {typeof entry.value === "number" ? entry.value.toFixed(2) : entry.value}
+          {entry.name}:{" "}
+          {typeof entry.value === "number"
+            ? entry.value.toFixed(2)
+            : entry.value}
           {entry.unit ?? ""}
         </p>
       ))}
@@ -73,17 +86,27 @@ function CustomTooltip({ active, payload, label }: TooltipContentProps<number, s
 }
 
 export function ModelDepthVelocityChart({ data }: Props) {
-  if (data.length === 0) {
+  // Exclude entries with no agentic depth data (e.g. Copilot CLI which has no loop metrics).
+  const agenticData = data.filter(
+    (d) => d.avgLoopActions > 0 || d.velocitySecondsPerAction > 0,
+  );
+  if (agenticData.length === 0) {
     return null;
   }
 
   const fg = getCssVar("--vscode-editor-foreground");
-  const grid = getCssVar("--vscode-editorWidget-border") || getCssVar("--vscode-panel-border") || "#444";
+  const grid =
+    getCssVar("--vscode-editorWidget-border") ||
+    getCssVar("--vscode-panel-border") ||
+    "#444";
   const barColor = getCssVar("--vscode-charts-blue") || "#007acc";
   const lineColor = getCssVar("--vscode-charts-orange") || "#e8a838";
 
-  const chartData = data.map((d) => ({
-    model: d.model.length > MAX_LABEL_LENGTH ? `${d.model.slice(0, LABEL_TRUNCATE_AT)}…` : d.model,
+  const chartData = agenticData.map((d) => ({
+    model:
+      d.model.length > MAX_LABEL_LENGTH
+        ? `${d.model.slice(0, LABEL_TRUNCATE_AT)}…`
+        : d.model,
     fullModel: d.model,
     avgLoopActions: Number(d.avgLoopActions.toFixed(2)),
     velocitySecondsPerAction: Number(d.velocitySecondsPerAction.toFixed(2)),
@@ -91,11 +114,21 @@ export function ModelDepthVelocityChart({ data }: Props) {
 
   return (
     <div style={{ width: "100%" }}>
-      <h3 style={{ fontSize: "0.9em", margin: "0 0 8px", color: fg, opacity: 0.85 }}>
+      <h3
+        style={{
+          fontSize: "0.9em",
+          margin: "0 0 8px",
+          color: fg,
+          opacity: 0.85,
+        }}
+      >
         Thinking Depth vs Speed by Model
       </h3>
       <ResponsiveContainer width="100%" height={260}>
-        <ComposedChart data={chartData} margin={{ top: 8, right: 48, left: 0, bottom: 32 }}>
+        <ComposedChart
+          data={chartData}
+          margin={{ top: 8, right: 48, left: 0, bottom: 32 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke={grid} opacity={0.4} />
           <XAxis
             dataKey="model"
