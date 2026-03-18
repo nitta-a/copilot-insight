@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ParsingContext } from "../types";
-import { parseLogContent } from "./logContentParser";
+import { parseLogFile } from "./logContentParser";
 
 function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 10);
@@ -19,23 +19,20 @@ async function findExthostDirs(rootDir: string, maxDepth = 3): Promise<string[]>
     if (depth > maxDepth) {
       return;
     }
-    let entries: string[];
-    try {
-      entries = await fs.readdir(dir);
-    } catch {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (!entries) {
       return;
     }
 
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry);
-      if (!(await isDirectory(fullPath))) {
+      if (!entry.isDirectory()) {
         continue;
       }
-      if (/^exthost\d*$/i.test(entry)) {
-        results.push(fullPath);
+      if (/^exthost\d*$/i.test(entry.name)) {
+        results.push(path.join(dir, entry.name));
         continue;
       }
-      await search(fullPath, depth + 1);
+      await search(path.join(dir, entry.name), depth + 1);
     }
   }
 
@@ -61,17 +58,14 @@ export async function getSortedSessionDirs(
   options?: SessionDirOptions,
 ): Promise<string[]> {
   try {
-    const entries = await fs.readdir(logBaseDir);
-    const fullPaths = entries.map((entry) => path.join(logBaseDir, entry));
-    const dirs: string[] = [];
-    for (const dirPath of fullPaths) {
-      if (await isDirectory(dirPath)) {
-        dirs.push(dirPath);
-      }
-    }
-    const sortedDirs = dirs.sort().reverse();
+    const entries = await fs.readdir(logBaseDir, { withFileTypes: true });
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(logBaseDir, e.name))
+      .sort()
+      .reverse();
     const limit = options?.limit ?? getMaxSessionDirs();
-    return limit > 0 ? sortedDirs.slice(0, limit) : sortedDirs;
+    return limit > 0 ? dirs.slice(0, limit) : dirs;
   } catch {
     return [fallback];
   }
@@ -93,20 +87,19 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
     if (depth > maxDepth) {
       return;
     }
-    try {
-      const entries = await fs.readdir(dir);
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry);
-        if (await isDirectory(fullPath)) {
-          if (entry.toLowerCase().includes("github.copilot")) {
-            results.push(fullPath);
-          } else {
-            await search(fullPath, depth + 1);
-          }
-        }
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (!entries) {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
       }
-    } catch {
-      // Skip unreadable directories
+      if (entry.name.toLowerCase().includes("github.copilot")) {
+        results.push(path.join(dir, entry.name));
+      } else {
+        await search(path.join(dir, entry.name), depth + 1);
+      }
     }
   }
   await search(rootDir, 0);
@@ -115,18 +108,10 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
 
 export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Promise<void> {
   try {
-    const entries = await fs.readdir(logDir);
-    const files = entries.filter((f) => f.endsWith(".log"));
-    for (const file of files) {
-      const filePath = path.join(logDir, file);
-      try {
-        const content = await fs.readFile(filePath, "utf-8");
-        parseLogContent(content, ctx);
-        ctx.logFilesFound++;
-      } catch {
-        // Skip unreadable files
-      }
-    }
+    const entries = await fs.readdir(logDir, { withFileTypes: true });
+    const logFiles = entries.filter((e) => !e.isDirectory() && e.name.endsWith(".log"));
+    const results = await Promise.all(logFiles.map((e) => parseLogFile(path.join(logDir, e.name), ctx)));
+    ctx.logFilesFound += results.filter(Boolean).length;
   } catch {
     // Skip if directory is not readable
   }
@@ -147,42 +132,28 @@ export async function parseRemoteExthostLog(
   sessionDir: string,
   ctx: ParsingContext,
 ): Promise<{ matchedDirs: number; parsedFiles: number }> {
-  let parsedFiles = 0;
   const exthostDirs = await findExthostDirs(sessionDir);
-  for (const exthostDir of exthostDirs) {
-    let logFiles: string[];
-    try {
-      logFiles = await fs.readdir(exthostDir);
-    } catch {
-      continue;
-    }
-    for (const logFile of logFiles) {
-      if (!logFile.endsWith(".log")) {
-        continue;
+  const countsByDir = await Promise.all(
+    exthostDirs.map(async (exthostDir) => {
+      const entries = await fs.readdir(exthostDir, { withFileTypes: true }).catch(() => null);
+      if (!entries) {
+        return 0;
       }
-      const filePath = path.join(exthostDir, logFile);
-      try {
-        const content = await fs.readFile(filePath, "utf-8");
-        parseLogContent(content, ctx);
-        ctx.logFilesFound++;
-        parsedFiles++;
-      } catch {
-        // Skip unreadable file
-      }
-    }
-  }
+      const logFiles = entries.filter((e) => !e.isDirectory() && e.name.endsWith(".log"));
+      const results = await Promise.all(logFiles.map((e) => parseLogFile(path.join(exthostDir, e.name), ctx)));
+      return results.filter(Boolean).length;
+    }),
+  );
+  const parsedFiles = countsByDir.reduce((sum, n) => sum + n, 0);
+  ctx.logFilesFound += parsedFiles;
   return { matchedDirs: exthostDirs.length, parsedFiles };
 }
 
 export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {
   const terminalLogPath = path.join(sessionDir, "terminal.log");
-  try {
-    const content = await fs.readFile(terminalLogPath, "utf-8");
-    parseLogContent(content, ctx);
+  const success = await parseLogFile(terminalLogPath, ctx);
+  if (success) {
     ctx.logFilesFound++;
-    return true;
-  } catch {
-    // Skip missing or unreadable terminal logs
-    return false;
   }
+  return success;
 }
