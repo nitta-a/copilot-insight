@@ -137,39 +137,45 @@ export async function parseCopilotLogs(
       ? await getAllSessionDirs(logBaseDir, fallbackSessionDir)
       : await getSortedSessionDirs(logBaseDir, fallbackSessionDir);
 
-    for (const sessDir of sessionDirs) {
-      try {
-        ctx.currentSessionId = path.basename(sessDir);
-        channel.appendLine(`Scanning session: ${sessDir}`);
+    // Process all session directories in parallel. Note: ctx.currentSessionId is
+    // shared state set per-session below; when sessions run concurrently it acts
+    // as a best-effort fallback — most log lines embed their own session ID in
+    // the JSON payload and do not rely on this field.
+    await Promise.all(
+      sessionDirs.map(async (sessDir) => {
+        try {
+          ctx.currentSessionId = path.basename(sessDir);
+          channel.appendLine(`Scanning session: ${sessDir}`);
 
-        const copilotDirs = await findCopilotDirs(sessDir);
-        channel.appendLine(`  Copilot log dirs detected: ${copilotDirs.length}`);
-        if (copilotDirs.length === 0) {
-          channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
+          const copilotDirs = await findCopilotDirs(sessDir);
+          channel.appendLine(`  Copilot log dirs detected: ${copilotDirs.length}`);
+          if (copilotDirs.length === 0) {
+            channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
+          }
+          for (const copilotLogDir of copilotDirs) {
+            channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
+            const beforeFiles = ctx.logFilesFound;
+            await parseLogDirectory(copilotLogDir, ctx);
+            channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
+          }
+
+          const terminalLogParsed = await parseSessionTerminalLog(sessDir, ctx);
+          channel.appendLine(
+            `  Terminal log ${terminalLogParsed ? "parsed" : "missing/unreadable"}: ${path.join(sessDir, "terminal.log")}`,
+          );
+
+          // Also parse all .log files inside exthost<N>/ subdirectories — present in
+          // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
+          const exthostResult = await parseRemoteExthostLog(sessDir, ctx);
+          channel.appendLine(
+            `  Remote exthost dirs detected: ${exthostResult.matchedDirs}, parsed files: ${exthostResult.parsedFiles}`,
+          );
+        } catch {
+          // Skip unreadable session directories
+          channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
         }
-        for (const copilotLogDir of copilotDirs) {
-          channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
-          const beforeFiles = ctx.logFilesFound;
-          await parseLogDirectory(copilotLogDir, ctx);
-          channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
-        }
-
-        const terminalLogParsed = await parseSessionTerminalLog(sessDir, ctx);
-        channel.appendLine(
-          `  Terminal log ${terminalLogParsed ? "parsed" : "missing/unreadable"}: ${path.join(sessDir, "terminal.log")}`,
-        );
-
-        // Also parse all .log files inside exthost<N>/ subdirectories — present in
-        // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
-        const exthostResult = await parseRemoteExthostLog(sessDir, ctx);
-        channel.appendLine(
-          `  Remote exthost dirs detected: ${exthostResult.matchedDirs}, parsed files: ${exthostResult.parsedFiles}`,
-        );
-      } catch {
-        // Skip unreadable session directories
-        channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
-      }
-    }
+      }),
+    );
     channel.appendLine(
       `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
     );
@@ -181,22 +187,23 @@ export async function parseCopilotLogs(
       channel.appendLine(`Discovered ${winRoots.length} Windows workspaceStorage root(s) via /mnt/`);
     }
 
-    // Merge title records from all roots, dedup by chatSessionId
+    // Merge title records from all roots in parallel, then dedup by chatSessionId
+    const allTitleRecords = await Promise.all(allRoots.map((root) => readChatSessionTitleRecords(root)));
     const titleMap = new Map<string, ChatSessionTitleRecord>();
-    for (const root of allRoots) {
-      for (const rec of await readChatSessionTitleRecords(root)) {
-        const existing = titleMap.get(rec.chatSessionId);
-        if (!existing) {
+    for (const records of allTitleRecords) {
+      for (const rec of records) {
+        if (!titleMap.has(rec.chatSessionId)) {
           titleMap.set(rec.chatSessionId, rec);
         }
       }
     }
     ctx.chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-    // Merge session records from all roots, dedup by chatSessionId (keep most-recent lastMessageAt)
+    // Merge session records from all roots in parallel, dedup by chatSessionId (keep most-recent lastMessageAt)
+    const allSessionRecords = await Promise.all(allRoots.map((root) => readChatSessionRecords(root)));
     const sessionMap = new Map<string, ChatSessionRecord>();
-    for (const root of allRoots) {
-      for (const rec of await readChatSessionRecords(root)) {
+    for (const records of allSessionRecords) {
+      for (const rec of records) {
         const existing = sessionMap.get(rec.chatSessionId);
         if (!existing) {
           sessionMap.set(rec.chatSessionId, rec);
