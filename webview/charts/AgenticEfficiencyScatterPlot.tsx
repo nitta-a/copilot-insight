@@ -40,7 +40,9 @@ const ABSOLUTE_MAX_BUBBLE_SIZE = 800;
 const DURATION_SCALE_FACTOR = 10;
 
 function getCssVar(name: string): string {
-  return getComputedStyle(document.body).getPropertyValue(name).trim() || "#ffffff";
+  return (
+    getComputedStyle(document.body).getPropertyValue(name).trim() || "#ffffff"
+  );
 }
 
 interface ScatterPoint {
@@ -50,7 +52,10 @@ interface ScatterPoint {
   model: string;
 }
 
-function CustomTooltip({ active, payload }: TooltipContentProps<number, string>) {
+function CustomTooltip({
+  active,
+  payload,
+}: TooltipContentProps<number, string>) {
   if (!active || !payload?.length) {
     return null;
   }
@@ -59,8 +64,12 @@ function CustomTooltip({ active, payload }: TooltipContentProps<number, string>)
     return null;
   }
   const fg = getCssVar("--vscode-editor-foreground");
-  const bg = getCssVar("--vscode-editorWidget-background") || getCssVar("--vscode-editor-background");
-  const border = getCssVar("--vscode-widget-border") || getCssVar("--vscode-editorWidget-border");
+  const bg =
+    getCssVar("--vscode-editorWidget-background") ||
+    getCssVar("--vscode-editor-background");
+  const border =
+    getCssVar("--vscode-widget-border") ||
+    getCssVar("--vscode-editorWidget-border");
   const durationSec = Math.round(point.z / 1000);
   const durationStr =
     durationSec < 60
@@ -86,15 +95,22 @@ function CustomTooltip({ active, payload }: TooltipContentProps<number, string>)
 }
 
 export function AgenticEfficiencyScatterPlot({ data }: Props) {
-  if (data.length === 0) {
+  // Exclude entries with no agentic depth data (e.g. Copilot CLI which has no loop metrics).
+  const agenticData = data.filter(
+    (d) => d.avgLoopActions > 0 || d.completionRate > 0,
+  );
+  if (agenticData.length === 0) {
     return null;
   }
 
   const fg = getCssVar("--vscode-editor-foreground");
-  const grid = getCssVar("--vscode-editorWidget-border") || getCssVar("--vscode-panel-border") || "#444";
+  const grid =
+    getCssVar("--vscode-editorWidget-border") ||
+    getCssVar("--vscode-panel-border") ||
+    "#444";
   const bubbleColor = getCssVar("--vscode-charts-purple") || "#a371f7";
 
-  const chartData: ScatterPoint[] = data.map((d) => ({
+  const chartData: ScatterPoint[] = agenticData.map((d) => ({
     x: d.avgLoopActions,
     y: d.completionRate,
     z: d.autonomousDurationMs,
@@ -103,15 +119,36 @@ export function AgenticEfficiencyScatterPlot({ data }: Props) {
 
   // Z range: map autonomousDurationMs to a bubble area range (min 40, max 400 px²)
   const maxDuration = Math.max(...chartData.map((p) => p.z), 1);
-  const zRange: [number, number] = [MIN_BUBBLE_SIZE, Math.max(DEFAULT_MAX_BUBBLE_SIZE, Math.min(ABSOLUTE_MAX_BUBBLE_SIZE, maxDuration / DURATION_SCALE_FACTOR))];
+  const zRange: [number, number] = [
+    MIN_BUBBLE_SIZE,
+    Math.max(
+      DEFAULT_MAX_BUBBLE_SIZE,
+      Math.min(ABSOLUTE_MAX_BUBBLE_SIZE, maxDuration / DURATION_SCALE_FACTOR),
+    ),
+  ];
 
   return (
     <div style={{ width: "100%" }}>
-      <h3 style={{ fontSize: "0.9em", margin: "16px 0 8px", color: fg, opacity: 0.85 }}>
+      <h3
+        style={{
+          fontSize: "0.9em",
+          margin: "16px 0 8px",
+          color: fg,
+          opacity: 0.85,
+        }}
+      >
         Agentic Efficiency — Depth vs Completion Rate
       </h3>
-      <p style={{ fontSize: "0.78em", margin: "0 0 8px", color: fg, opacity: 0.6 }}>
-        Bubble size = Autonomous Duration. Top-right = deep thinking + high success.
+      <p
+        style={{
+          fontSize: "0.78em",
+          margin: "0 0 8px",
+          color: fg,
+          opacity: 0.6,
+        }}
+      >
+        Bubble size = Autonomous Duration. Top-right = deep thinking + high
+        success.
       </p>
       <ResponsiveContainer width="100%" height={280}>
         <ScatterChart margin={{ top: 8, right: 32, left: 0, bottom: 24 }}>
@@ -142,9 +179,17 @@ export function AgenticEfficiencyScatterPlot({ data }: Props) {
               offset: 8,
             }}
           />
-          <ZAxis type="number" dataKey="z" range={zRange} name="Autonomous Duration" />
+          <ZAxis
+            type="number"
+            dataKey="z"
+            range={zRange}
+            name="Autonomous Duration"
+          />
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          <Tooltip content={(props: any) => <CustomTooltip {...props} />} cursor={{ strokeDasharray: "3 3" }} />
+          <Tooltip
+            content={(props: any) => <CustomTooltip {...props} />}
+            cursor={{ strokeDasharray: "3 3" }}
+          />
           <Scatter
             data={chartData}
             fill={bubbleColor}
