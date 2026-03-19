@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["src/**/*.ts", "test/**/*.ts", "webview/**/*.ts", "esbuild.js"]
+    "includes": ["src/**/*.ts", "test/**/*.ts", "webview/**/*.ts", "esbuild.js", "*.json"]
   },
   "linter": {
     "enabled": true,
