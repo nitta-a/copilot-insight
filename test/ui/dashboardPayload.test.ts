@@ -2,7 +2,7 @@ import * as assert from "assert";
 import type { SessionSignalEvent } from "../../src/events/eventSchema";
 import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
-import { buildDashboardPayload } from "../../src/ui/dashboardPayload";
+import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "../../src/ui/dashboardPayload";
 
 function fmt(date: Date): string {
   const yyyy = date.getFullYear();
@@ -384,12 +384,12 @@ suite("buildDashboardPayload", () => {
           efficiencyScore: 63.2,
         },
       ];
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], summaries);
+      const payload = buildSessionsPayload(makeStats(), summaries);
       assert.deepStrictEqual(payload.sessionSummaries, summaries);
     });
 
     test("fallback session summaries are shown with date as title when no explicit sessions are available", () => {
-      const payload = buildDashboardPayload(makeStats());
+      const payload = buildSessionsPayload(makeStats());
       assert.strictEqual(payload.sessionSummaries.length, 1);
       assert.strictEqual(payload.sessionSummaries[0]?.sessionId, "s1");
       assert.ok(payload.sessionSummaries[0]?.title, "fallback session should have a non-empty title");
@@ -1104,12 +1104,12 @@ suite("buildDashboardPayload — CLI integration", () => {
 
 suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown", () => {
   test("chatIntentBreakdown is empty when byChatIntent is empty", () => {
-    const payload = buildDashboardPayload(makeStats({ byChatIntent: new Map() }));
+    const payload = buildPromptInsightsPayload(makeStats({ byChatIntent: new Map() }));
     assert.deepStrictEqual(payload.chatIntentBreakdown, []);
   });
 
   test("chatIntentBreakdown reflects byChatIntent sorted by count desc", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         byChatIntent: new Map([
           ["Ask", 5],
@@ -1126,12 +1126,12 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 
   test("commandUsageBreakdown is empty when commandUsage is empty", () => {
-    const payload = buildDashboardPayload(makeStats({ commandUsage: new Map() }));
+    const payload = buildPromptInsightsPayload(makeStats({ commandUsage: new Map() }));
     assert.deepStrictEqual(payload.commandUsageBreakdown, []);
   });
 
   test("commandUsageBreakdown reflects commandUsage sorted by count desc", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         commandUsage: new Map([
           ["/fix", 4],
@@ -1150,12 +1150,12 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   // ── promptLengthScatterData ───────────────────────────────────────────────
 
   test("promptLengthScatterData is empty when promptEffectiveness is empty", () => {
-    const payload = buildDashboardPayload(makeStats({ promptEffectiveness: {} }));
+    const payload = buildPromptInsightsPayload(makeStats({ promptEffectiveness: {} }));
     assert.deepStrictEqual(payload.promptLengthScatterData, []);
   });
 
   test("promptLengthScatterData omits buckets with zero shown count", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         promptEffectiveness: {
           "0-50": { shown: 0, accepted: 0 },
@@ -1166,7 +1166,7 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 
   test("promptLengthScatterData computes acceptance rate as y", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         promptEffectiveness: {
           "51-100": { shown: 10, accepted: 7 },
@@ -1181,7 +1181,7 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 
   test("promptLengthScatterData uses bucket midpoints as x values", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         promptEffectiveness: {
           "0-50": { shown: 5, accepted: 5 },
@@ -1195,7 +1195,7 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 
   test("promptLengthScatterData prevents zero division when shown is zero", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         promptEffectiveness: {
           "101-200": { shown: 0, accepted: 5 },
@@ -1206,7 +1206,7 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 
   test("promptLengthScatterData radius is proportional to shown count", () => {
-    const payload = buildDashboardPayload(
+    const payload = buildPromptInsightsPayload(
       makeStats({
         promptEffectiveness: {
           "0-50": { shown: 1, accepted: 1 },

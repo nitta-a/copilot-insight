@@ -6,7 +6,7 @@ import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { WebviewToHostMessage } from "./dashboardMessages";
-import { buildDashboardPayload } from "./dashboardPayload";
+import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
 
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
@@ -125,6 +125,16 @@ export class CopilotUsagePanel {
           .catch(() => {
             void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
           });
+        break;
+      }
+      case "requestTabData": {
+        if (msg.tab === "promptInsights") {
+          const payload = buildPromptInsightsPayload(this._stats);
+          void this._panel.webview.postMessage({ type: "tabData", tab: "promptInsights", payload });
+        } else if (msg.tab === "sessions") {
+          const payload = buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
+          void this._panel.webview.postMessage({ type: "tabData", tab: "sessions", payload });
+        }
         break;
       }
     }

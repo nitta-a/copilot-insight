@@ -233,6 +233,39 @@ export function getHtmlContent(
       font-size: 0.85em;
     }
     .db-export-btn:hover { opacity: 0.85; }
+    .db-lazy-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+      gap: 16px;
+      opacity: 0.8;
+    }
+    .db-lazy-placeholder p { margin: 0; font-size: 0.95em; opacity: 0.7; }
+    .db-load-btn {
+      background: var(--vscode-button-background, #0078d4);
+      color: var(--vscode-button-foreground, #fff);
+      border: none;
+      border-radius: 4px;
+      padding: 8px 20px;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    .db-load-btn:hover { opacity: 0.85; }
+    .db-load-btn:disabled { opacity: 0.5; cursor: default; }
+    .db-loading-spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--vscode-button-foreground, #fff);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: db-spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes db-spin { to { transform: rotate(360deg); } }
     .db-rate-cell { display: flex; align-items: center; gap: 6px; }
     .db-rate-bar { height: 8px; background: var(--vscode-charts-green); border-radius: 2px; min-width: 2px; }
     .db-vol-bar { height: 8px; background: var(--vscode-charts-blue); border-radius: 2px; min-width: 2px; opacity: 0.7; }
@@ -463,26 +496,38 @@ export function getHtmlContent(
     </div>
 
     <div id="db-tab-prompt-insights" class="db-tab-pane" role="tabpanel">
-      <div id="db-tag-cloud-container"></div>
-      <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
-        <div id="db-intent-command-donut-container"></div>
-        <div id="db-prompt-length-scatter-container"></div>
+      <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
+        <p>Click to load Prompt Insights data.</p>
+        <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
       </div>
-      <div id="db-turn-churn-container"></div>
-      <div id="db-context-leverage-container"></div>
+      <div id="db-prompt-insights-content" style="display:none">
+        <div id="db-tag-cloud-container"></div>
+        <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
+          <div id="db-intent-command-donut-container"></div>
+          <div id="db-prompt-length-scatter-container"></div>
+        </div>
+        <div id="db-turn-churn-container"></div>
+        <div id="db-context-leverage-container"></div>
+      </div>
     </div>
 
     <div id="db-tab-sessions" class="db-tab-pane" role="tabpanel">
-      <div class="db-session-layout">
-        <section class="db-session-list">
-          <div id="db-session-list" class="db-session-list-body"></div>
-        </section>
-        <section class="db-session-detail">
-          <div class="db-session-detail-header">
-            <h2 style="margin:0">Threads</h2>
-          </div>
-          <div id="db-session-detail" class="db-session-detail-body"></div>
-        </section>
+      <div id="db-sessions-lazy" class="db-lazy-placeholder">
+        <p>Click to load Sessions data.</p>
+        <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
+      </div>
+      <div id="db-sessions-content" style="display:none">
+        <div class="db-session-layout">
+          <section class="db-session-list">
+            <div id="db-session-list" class="db-session-list-body"></div>
+          </section>
+          <section class="db-session-detail">
+            <div class="db-session-detail-header">
+              <h2 style="margin:0">Threads</h2>
+            </div>
+            <div id="db-session-detail" class="db-session-detail-body"></div>
+          </section>
+        </div>
       </div>
     </div>
   </section>
