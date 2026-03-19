@@ -4,6 +4,13 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.20] - 2026-03-19
+
+### Fixed
+- 🏆 **Top Plan Model KPI now correctly reflects agentic activity** — `topPlanModel` now counts both legacy `plan-proposal` signals and modern `panel/editAgent` chat-request signals, ensuring the KPI card surfaces the model actually driving agentic coding sessions in current Copilot versions
+- 🏷️ **Plan signals carry model name** — `trackPlanningStats` now accepts an optional `modelName` parameter; JSON log lines pass the extracted model, and ccreq-style text log lines extract the model from the `| success | <model> | <ms> |` pattern before recording the signal, so plan-proposal entries are correctly attributed to the generating model
+- 🔤 **KPI card label updated** — the Top Plan Model card subtitle now reads `N plan & agent calls` (was `N model-tagged proposals`) to accurately describe the combined signal set
+
 ## [1.0.19] - 2026-03-17
 
 ### Added
