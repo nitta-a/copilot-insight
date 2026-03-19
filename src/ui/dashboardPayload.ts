@@ -131,8 +131,10 @@ function buildModelCountFromSessionSignals(
  * consumed by the dashboard WebView.
  *
  * Note: `sessionSummaries` is intentionally preserved in the signature for
- * backwards compatibility with existing call sites, but session data is now
- * lazy-loaded via `buildSessionsPayload` — use that function instead.
+ * backwards compatibility with existing call sites.  Session data has been
+ * removed from `DashboardPayload` and is now lazy-loaded on demand via
+ * `buildSessionsPayload` / the Sessions tab request flow.  This parameter
+ * is ignored by this function.
  */
 export function buildDashboardPayload(
   stats: CopilotUsageStats,
@@ -140,7 +142,7 @@ export function buildDashboardPayload(
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
   refreshAnalysis: RefreshAnalysis[] = [],
-  sessionSummaries: SessionSummary[] = [], // retained for call-site compatibility; data is lazy-loaded
+  _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
   cliRoiMinutesPerInteraction = 30,
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────

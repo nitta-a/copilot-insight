@@ -179,45 +179,9 @@ export async function parseCopilotLogs(
     channel.appendLine(
       `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
     );
-
-    const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);
-    const winRoots = await discoverWindowsWorkspaceStorageRoots();
-    const allRoots = [wslRoot, ...winRoots];
-    if (winRoots.length > 0) {
-      channel.appendLine(`Discovered ${winRoots.length} Windows workspaceStorage root(s) via /mnt/`);
-    }
-
-    // Merge title records from all roots in parallel, then dedup by chatSessionId
-    const allTitleRecords = await Promise.all(allRoots.map((root) => readChatSessionTitleRecords(root)));
-    const titleMap = new Map<string, ChatSessionTitleRecord>();
-    for (const records of allTitleRecords) {
-      for (const rec of records) {
-        if (!titleMap.has(rec.chatSessionId)) {
-          titleMap.set(rec.chatSessionId, rec);
-        }
-      }
-    }
-    ctx.chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    // Merge session records from all roots in parallel, dedup by chatSessionId (keep most-recent lastMessageAt)
-    const allSessionRecords = await Promise.all(allRoots.map((root) => readChatSessionRecords(root)));
-    const sessionMap = new Map<string, ChatSessionRecord>();
-    for (const records of allSessionRecords) {
-      for (const rec of records) {
-        const existing = sessionMap.get(rec.chatSessionId);
-        if (!existing) {
-          sessionMap.set(rec.chatSessionId, rec);
-          continue;
-        }
-        const existingLast = existing.lastMessageAt ? Date.parse(existing.lastMessageAt) : 0;
-        const candidateLast = rec.lastMessageAt ? Date.parse(rec.lastMessageAt) : 0;
-        sessionMap.set(rec.chatSessionId, candidateLast >= existingLast ? rec : existing);
-      }
-    }
-    ctx.chatSessions = [...sessionMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    channel.appendLine(`Recovered ${ctx.chatSessionTitles.length} workspace chat titles`);
-    channel.appendLine(`Recovered ${ctx.chatSessions.length} workspace chat sessions`);
+    // NOTE: SQLite workspace chat-session reads are intentionally deferred.
+    // Call readWorkspaceChatSessions(logBaseDir) on demand (e.g. when the
+    // Sessions tab is first opened) to avoid blocking the initial parse.
   } catch (e) {
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }
@@ -345,4 +309,53 @@ export async function parseCopilotLogs(
 function percentile(sorted: number[], p: number): number {
   const idx = Math.ceil(p * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
+}
+
+/**
+ * Read chat session title records and full session records from all
+ * workspaceStorage roots derived from `logBaseDir` (plus any Windows /mnt/ roots).
+ *
+ * This is intentionally **not** called during the initial `parseCopilotLogs` scan
+ * to keep the initial dashboard render fast.  Call this on demand — e.g. when the
+ * Sessions tab is first opened — and feed the results to the DB worker before
+ * calling `getSessionList()`.
+ */
+export async function readWorkspaceChatSessions(logBaseDir: string): Promise<{
+  chatSessionTitles: ChatSessionTitleRecord[];
+  chatSessions: ChatSessionRecord[];
+}> {
+  const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);
+  const winRoots = await discoverWindowsWorkspaceStorageRoots();
+  const allRoots = [wslRoot, ...winRoots];
+
+  // Merge title records from all roots, dedup by chatSessionId.
+  const allTitleRecords = await Promise.all(allRoots.map((root) => readChatSessionTitleRecords(root)));
+  const titleMap = new Map<string, ChatSessionTitleRecord>();
+  for (const records of allTitleRecords) {
+    for (const rec of records) {
+      if (!titleMap.has(rec.chatSessionId)) {
+        titleMap.set(rec.chatSessionId, rec);
+      }
+    }
+  }
+  const chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  // Merge session records, dedup by chatSessionId (keep most-recent lastMessageAt).
+  const allSessionRecords = await Promise.all(allRoots.map((root) => readChatSessionRecords(root)));
+  const sessionMap = new Map<string, ChatSessionRecord>();
+  for (const records of allSessionRecords) {
+    for (const rec of records) {
+      const existing = sessionMap.get(rec.chatSessionId);
+      if (!existing) {
+        sessionMap.set(rec.chatSessionId, rec);
+        continue;
+      }
+      const existingLast = existing.lastMessageAt ? Date.parse(existing.lastMessageAt) : 0;
+      const candidateLast = rec.lastMessageAt ? Date.parse(rec.lastMessageAt) : 0;
+      sessionMap.set(rec.chatSessionId, candidateLast >= existingLast ? rec : existing);
+    }
+  }
+  const chatSessions = [...sessionMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  return { chatSessionTitles, chatSessions };
 }

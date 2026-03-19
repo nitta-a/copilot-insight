@@ -123,6 +123,8 @@ let modelAutonomyMapRoot: Root | null = null;
 let autonomyEvolutionRoot: Root | null = null;
 let promptInsightsLoaded = false;
 let sessionsLoaded = false;
+/** Set of tab names for which a `requestTabData` is currently in-flight. */
+const pendingTabRequests = new Set<string>();
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -1208,22 +1210,26 @@ function requestTabData(tab: "promptInsights" | "sessions"): void {
   vscode.postMessage({ type: "requestTabData", tab } satisfies WebviewToHostMessage);
 }
 
-function setupLazyLoadButtons(): void {
-  document.getElementById("db-btn-load-prompt-insights")?.addEventListener("click", () => {
-    if (promptInsightsLoaded) {
+/**
+ * Attach a click handler to a lazy-load button that:
+ * 1. Guards against duplicate in-flight requests.
+ * 2. Shows a loading spinner while the request is pending.
+ * 3. Posts the requestTabData message to the host.
+ */
+function attachLazyLoadButton(btnId: string, tab: "promptInsights" | "sessions", isLoaded: () => boolean): void {
+  document.getElementById(btnId)?.addEventListener("click", () => {
+    if (isLoaded() || pendingTabRequests.has(tab)) {
       return;
     }
-    setLoadButtonState("db-btn-load-prompt-insights", true);
-    requestTabData("promptInsights");
+    pendingTabRequests.add(tab);
+    setLoadButtonState(btnId, true);
+    requestTabData(tab);
   });
+}
 
-  document.getElementById("db-btn-load-sessions")?.addEventListener("click", () => {
-    if (sessionsLoaded) {
-      return;
-    }
-    setLoadButtonState("db-btn-load-sessions", true);
-    requestTabData("sessions");
-  });
+function setupLazyLoadButtons(): void {
+  attachLazyLoadButton("db-btn-load-prompt-insights", "promptInsights", () => promptInsightsLoaded);
+  attachLazyLoadButton("db-btn-load-sessions", "sessions", () => sessionsLoaded);
 }
 
 // ---------------------------------------------------------------------------
@@ -1245,6 +1251,7 @@ function render(payload: DashboardPayload): void {
   // Prompt Insights and Sessions tabs are lazy-loaded on demand.
   promptInsightsLoaded = false;
   sessionsLoaded = false;
+  pendingTabRequests.clear();
   allSessionDetails.clear();
   sessionLoadQueue.length = 0;
   isBackgroundLoading = false;
@@ -1268,8 +1275,10 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
     loadNextFromQueue();
   } else if (msg.type === "tabData") {
     if (msg.tab === "promptInsights") {
+      pendingTabRequests.delete("promptInsights");
       renderPromptInsightsData(msg.payload as PromptInsightsData);
     } else if (msg.tab === "sessions") {
+      pendingTabRequests.delete("sessions");
       renderSessionsData(msg.payload as SessionsData);
     }
   } else if (msg.type === "exportComplete") {
