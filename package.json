@@ -183,6 +183,7 @@
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
     "vsce:publish": "vsce publish",
     "inext": "code --install-extension ",
+    "build:wasm": "cd wasm-parser && wasm-pack build --target nodejs --out-dir pkg",
     "p": "npm run package && npm run vsce:package"
   },
   "devDependencies": {
@@ -192,6 +193,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/vscode": "1.105.0",
+    "@types/webassembly-js-api": "^0.0.3",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
