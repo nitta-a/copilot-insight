@@ -8,12 +8,26 @@
  * working.
  */
 
-/** Shape returned to callers after converting the Rust JSON output. */
+/**
+ * Shape returned to callers after converting the Rust JSON output.
+ * Field names use camelCase; the mapping from Rust snake_case is done inside
+ * `parseLogChunkWasm`.
+ */
 export interface WasmParseResult {
-  /** Total number of non-empty lines in the input. */
-  totalLines: number;
-  /** Number of lines that were successfully parsed as JSON. */
-  jsonLines: number;
+  /** Number of inline-completion suggestions shown to the user. */
+  totalShown: number;
+  /** Number of inline-completion suggestions accepted by the user. */
+  totalAccepted: number;
+  /** Number of chat requests detected. */
+  totalChat: number;
+  /** Number of subagent-initiated requests detected. */
+  subagentRequests: number;
+  /** Number of agent plan-proposal events detected. */
+  planCount: number;
+  /** Per-model count of shown inline completions (model name → count). */
+  byModelShown: Record<string, number>;
+  /** Per-model count of accepted inline completions (model name → count). */
+  byModelAccepted: Record<string, number>;
 }
 
 /**
@@ -22,9 +36,19 @@ export interface WasmParseResult {
  */
 interface RawWasmResult {
   // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
-  total_lines: number;
+  total_shown: number;
   // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
-  json_lines: number;
+  total_accepted: number;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  total_chat: number;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  subagent_requests: number;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  plan_count: number;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  by_model_shown: Record<string, number>;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  by_model_accepted: Record<string, number>;
 }
 
 /**
@@ -85,8 +109,13 @@ export async function parseLogChunkWasm(input: string): Promise<WasmParseResult 
     const json = mod.parse_log_chunk(input);
     const raw = JSON.parse(json) as RawWasmResult;
     return {
-      totalLines: raw.total_lines,
-      jsonLines: raw.json_lines,
+      totalShown: raw.total_shown,
+      totalAccepted: raw.total_accepted,
+      totalChat: raw.total_chat,
+      subagentRequests: raw.subagent_requests,
+      planCount: raw.plan_count,
+      byModelShown: raw.by_model_shown,
+      byModelAccepted: raw.by_model_accepted,
     };
   } catch {
     return null;

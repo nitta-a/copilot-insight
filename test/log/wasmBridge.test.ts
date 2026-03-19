@@ -16,8 +16,21 @@ suite("wasmBridge", () => {
 
   test("WasmParseResult interface matches expected shape", () => {
     // Verify the interface can be used as a type guard at compile time.
-    const sample: WasmParseResult = { totalLines: 10, jsonLines: 3 };
-    assert.strictEqual(sample.totalLines, 10);
-    assert.strictEqual(sample.jsonLines, 3);
+    const sample: WasmParseResult = {
+      totalShown: 10,
+      totalAccepted: 3,
+      totalChat: 5,
+      subagentRequests: 2,
+      planCount: 1,
+      byModelShown: { "gpt-4o": 7, "claude-3.5-sonnet": 3 },
+      byModelAccepted: { "gpt-4o": 3 },
+    };
+    assert.strictEqual(sample.totalShown, 10);
+    assert.strictEqual(sample.totalAccepted, 3);
+    assert.strictEqual(sample.totalChat, 5);
+    assert.strictEqual(sample.subagentRequests, 2);
+    assert.strictEqual(sample.planCount, 1);
+    assert.strictEqual(sample.byModelShown["gpt-4o"], 7);
+    assert.strictEqual(sample.byModelAccepted["gpt-4o"], 3);
   });
 });
