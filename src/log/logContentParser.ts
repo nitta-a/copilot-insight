@@ -47,8 +47,16 @@ export { parseTextLogLine } from "./parsers/textLogParser";
  *
  * This is an **additive** merge: the wasm counts for the current chunk are
  * added on top of any counts already accumulated from previously processed
- * files/chunks.  Fields not tracked by the Wasm parser (per-date, per-hour,
- * latencies, session signals, etc.) are left untouched.
+ * files/chunks.
+ *
+ * The following fields are merged:
+ * - Core counters: `totalShown`, `totalAccepted`, `totalChat`,
+ *   `subagentRequests`, `planCount`.
+ * - Per-model maps: `byModel` (shown + accepted counts).
+ * - Per-date map: `byDate` (shown + accepted counts per date key).
+ * - Per-hour map: `byHour` (event counts per hour key).
+ * - Latency array: `latencies` (raw millisecond values appended).
+ * - Context-source map: `byContextSource` (occurrence counts per source).
  */
 function mergeWasmResults(wasm: WasmParseResult, ctx: ParsingContext): void {
   ctx.totalShown += wasm.totalShown;
@@ -68,24 +76,39 @@ function mergeWasmResults(wasm: WasmParseResult, ctx: ParsingContext): void {
     existing.accepted += count;
     ctx.byModel.set(model, existing);
   }
+
+  for (const [date, stat] of Object.entries(wasm.byDate)) {
+    const existing = ctx.byDate.get(date) ?? { shown: 0, accepted: 0 };
+    existing.shown += stat.shown;
+    existing.accepted += stat.accepted;
+    ctx.byDate.set(date, existing);
+  }
+
+  for (const [hour, count] of Object.entries(wasm.byHour)) {
+    ctx.byHour.set(hour, (ctx.byHour.get(hour) ?? 0) + count);
+  }
+
+  if (wasm.latencies.length > 0) {
+    for (const lat of wasm.latencies) {
+      ctx.latencies.push(lat);
+    }
+  }
+
+  for (const [src, count] of Object.entries(wasm.byContextSource)) {
+    ctx.byContextSource.set(src, (ctx.byContextSource.get(src) ?? 0) + count);
+  }
 }
 
 /**
  * Parse log content from an in-memory string.
  *
- * Attempts Wasm bulk parsing first for the core counters (`totalShown`,
- * `totalAccepted`, `totalChat`, `subagentRequests`, `planCount`, `byModel`).
+ * Attempts Wasm bulk parsing first for both the core counters (`totalShown`,
+ * `totalAccepted`, `totalChat`, `subagentRequests`, `planCount`, `byModel`)
+ * and the detailed metrics (`byDate`, `byHour`, `latencies`,
+ * `byContextSource`).
  * When the Wasm module is unavailable or parsing fails, falls back to the
- * existing JS line-by-line parsers which also populate per-date, per-hour,
- * latency, and session-signal fields.
- *
- * **Trade-off when Wasm is active**: the fast path returns early after
- * populating only the core counters listed above.  Per-date breakdowns,
- * per-hour heat-maps, latency percentiles, context-source tracking, and
- * session signals are **not** populated via this path.  Consumers that require
- * those details should either ensure the Wasm module is absent (forcing the JS
- * fallback) or complement the Wasm pass with a targeted JS pass over the same
- * content.
+ * existing JS line-by-line parsers which populate all of the above fields
+ * plus session-signal fields not tracked by the Wasm path.
  */
 export async function parseLogContent(content: string, ctx: ParsingContext): Promise<void> {
   // Fast path: try the Wasm bulk parser for core counters.
