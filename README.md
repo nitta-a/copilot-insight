@@ -68,6 +68,34 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
    code --install-extension copilot-insight-<version>.vsix
    ```
 
+### Wasm Log Parser (experimental)
+
+An experimental Rust / WebAssembly log parser is included under `wasm-parser/`.
+Building it is **optional** — the extension works without it.  When the Wasm module is available the TypeScript bridge (`src/log/wasmBridge.ts`) can offload CPU-heavy JSON counting to the native module.
+
+#### Prerequisites
+
+| Tool | Install guide |
+|---|---|
+| **Rust toolchain** (rustup, cargo) | <https://rustup.rs/> |
+| **wasm-pack** | `cargo install wasm-pack` |
+
+#### Build & verify
+
+```bash
+# 1. Build the Wasm package (outputs to wasm-parser/pkg/)
+npm run build:wasm
+
+# 2. Run the Rust unit tests
+cd wasm-parser && cargo test
+
+# 3. Quick smoke test from Node.js
+node -e "const m = require('./wasm-parser/pkg/wasm_parser'); console.log(m.parse_log_chunk('{\"event\":\"test\"}'))"
+# → {"total_lines":1,"json_lines":1}
+```
+
+After `npm run build:wasm` succeeds, restart the VS Code extension host (or run **Developer: Reload Window**) to let the bridge pick up the Wasm module.
+
 ---
 
 <a name="japanese"></a>
@@ -133,3 +161,31 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
    ```bash
    code --install-extension copilot-insight-<version>.vsix
    ```
+
+### Wasm ログパーサー (実験的)
+
+`wasm-parser/` ディレクトリに実験的な Rust / WebAssembly ログパーサーが含まれています。
+ビルドは**任意**です — Wasm モジュールがなくても拡張機能は通常どおり動作します。Wasm モジュールが利用可能な場合、TypeScript ブリッジ (`src/log/wasmBridge.ts`) が CPU 負荷の高い JSON カウント処理をネイティブモジュールにオフロードできます。
+
+#### 前提条件
+
+| ツール | インストール方法 |
+|---|---|
+| **Rust ツールチェーン** (rustup, cargo) | <https://rustup.rs/> |
+| **wasm-pack** | `cargo install wasm-pack` |
+
+#### ビルドと動作確認
+
+```bash
+# 1. Wasm パッケージをビルド (wasm-parser/pkg/ に出力)
+npm run build:wasm
+
+# 2. Rust ユニットテストを実行
+cd wasm-parser && cargo test
+
+# 3. Node.js で簡易動作確認
+node -e "const m = require('./wasm-parser/pkg/wasm_parser'); console.log(m.parse_log_chunk('{\"event\":\"test\"}'))"
+# → {"total_lines":1,"json_lines":1}
+```
+
+`npm run build:wasm` が成功したら、VS Code の拡張機能ホストを再起動 (**Developer: Reload Window** を実行) すると、ブリッジが Wasm モジュールを読み込みます。
