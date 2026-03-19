@@ -42,17 +42,15 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Extract and record normalized model name from JSON telemetry.
-  const rawModel = data.model ?? data.modelId ?? data.engineId ?? data.engineName ?? data.engine;
-  if (typeof rawModel === "string") {
-    const model = normalizeModelName(rawModel);
-    if (model) {
-      if (isShown) {
-        incrementStatCount(ctx.byModel, model, "shown");
-      } else if (isAccepted) {
-        incrementStatCount(ctx.byModel, model, "accepted");
-      } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
-        incrementCount(ctx.byChatModel, model);
-      }
+  const rawModelValue = data.model ?? data.modelId ?? data.engineId ?? data.engineName ?? data.engine;
+  const jsonModel = typeof rawModelValue === "string" ? normalizeModelName(rawModelValue) : "";
+  if (jsonModel) {
+    if (isShown) {
+      incrementStatCount(ctx.byModel, jsonModel, "shown");
+    } else if (isAccepted) {
+      incrementStatCount(ctx.byModel, jsonModel, "accepted");
+    } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
+      incrementCount(ctx.byChatModel, jsonModel);
     }
   }
 
@@ -104,7 +102,9 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Planning & Execution: check event name for plan/execution signals.
-  trackPlanningStats(eventLower, ctx, timestamp, event);
+  // Pass the extracted model name so that plan-proposal signals are tagged
+  // with the model that generated them (enables topPlanModel KPI).
+  trackPlanningStats(eventLower, ctx, timestamp, event, jsonModel);
 
   // ── Chat Session Turn Tracking ────────────────────────────────────────────
   // Only track sessions that carry an explicit session identifier in the log

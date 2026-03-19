@@ -54,8 +54,8 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
   const topPlanModelStr = summary.topPlanModel ?? "—";
   const topPlanModelDetail =
     summary.topPlanModel && summary.topPlanModelCount > 0
-      ? `${summary.topPlanModelCount} model-tagged proposals`
-      : "no model-tagged plan data";
+      ? `${summary.topPlanModelCount} plan & agent calls`
+      : "no plan or agent data";
 
   return `
     <div class="stat-card db-highlight">
@@ -462,23 +462,22 @@ export function buildTagCloudHtml(topKeywords: DashboardPayload["topKeywords"]):
   const maxCount = Math.max(...counts);
   const range = maxCount - minCount || 1;
 
-  const MIN_EM = 0.85;
-  const MAX_EM = 2.2;
-  const MIN_OPACITY = 0.55;
-  const MAX_OPACITY = 1.0;
+  const MinEm = 0.85;
+  const MaxEm = 2.2;
+  const MinOpacity = 0.55;
+  const MaxOpacity = 1.0;
 
   const tags = topKeywords
     .map(({ word, count }) => {
       const ratio = (count - minCount) / range;
-      const size = (MIN_EM + ratio * (MAX_EM - MIN_EM)).toFixed(2);
-      const opacity = (MIN_OPACITY + ratio * (MAX_OPACITY - MIN_OPACITY)).toFixed(2);
+      const size = (MinEm + ratio * (MaxEm - MinEm)).toFixed(2);
+      const opacity = (MinOpacity + ratio * (MaxOpacity - MinOpacity)).toFixed(2);
       return `<span class="tag-cloud-item" style="font-size:${size}em;opacity:${opacity}" title="${escHtml(word)} (${count})">${escHtml(word)}</span>`;
     })
     .join("\n");
 
   return `<h2>🔍 Top Keywords</h2>\n<div class="tag-cloud">${tags}</div>`;
 }
-
 
 /** Render the step timeline for a selected thread. Returns an HTML string. */
 export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedThreadId: string): string {
