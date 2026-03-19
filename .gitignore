@@ -129,6 +129,12 @@ dist
 wasm-parser/target/
 wasm-parser/pkg/
 
+# Native addon build artifacts
+native-parser/target/
+native-parser/*.node
+native-parser/index.js
+native-parser/index.d.ts
+
 # VSIX packages built locally
 *.vsix
 
