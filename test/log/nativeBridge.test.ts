@@ -1,22 +1,38 @@
 import * as assert from "assert";
-import { type WasmParseResult, parseLogChunkWasm, resetWasmModule } from "../../src/log/wasmBridge";
+import {
+  type NativeParseResult,
+  loadNativeModule,
+  parseLogChunkNative,
+  parseLogFileNative,
+  resetNativeModule,
+} from "../../src/log/nativeBridge";
 
-suite("wasmBridge", () => {
+suite("nativeBridge", () => {
   setup(() => {
-    // Reset the cached Wasm module before each test so we get a fresh state.
-    resetWasmModule();
+    // Reset the cached native module before each test so we get a fresh state.
+    resetNativeModule();
   });
 
-  test("parseLogChunkWasm returns null when Wasm module is not built", async () => {
-    const result = await parseLogChunkWasm("some log text");
-    // The Wasm artefact is not compiled during the normal test run so we
+  test("loadNativeModule returns null when native addon is not built", () => {
+    const result = loadNativeModule();
+    // The native addon is not compiled during the normal test run so we
     // expect the bridge to gracefully return null.
     assert.strictEqual(result, null);
   });
 
-  test("WasmParseResult interface matches expected shape", () => {
+  test("parseLogChunkNative returns null when native addon is not built", () => {
+    const result = parseLogChunkNative("some log text");
+    assert.strictEqual(result, null);
+  });
+
+  test("parseLogFileNative returns null when native addon is not built", () => {
+    const result = parseLogFileNative("/nonexistent/path.log");
+    assert.strictEqual(result, null);
+  });
+
+  test("NativeParseResult interface matches expected shape", () => {
     // Verify the interface can be used as a type guard at compile time.
-    const sample: WasmParseResult = {
+    const sample: NativeParseResult = {
       totalShown: 10,
       totalAccepted: 3,
       totalChat: 5,
@@ -41,5 +57,14 @@ suite("wasmBridge", () => {
     assert.strictEqual(sample.byHour["14"], 3);
     assert.deepStrictEqual(sample.latencies, [120, 290, 450]);
     assert.strictEqual(sample.byContextSource["vscodePrompt"], 4);
+  });
+
+  test("resetNativeModule allows reloading the module cache", () => {
+    // Load once to populate the cache.
+    loadNativeModule();
+    // Reset and verify a fresh load attempt works without throwing.
+    resetNativeModule();
+    const result = loadNativeModule();
+    assert.strictEqual(result, null);
   });
 });

@@ -10,11 +10,10 @@
     "url": "https://github.com/nitta-a/copilot-insight"
   },
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.105.0",
+    "node": ">=22.22.0"
   },
-  "categories": [
-    "Other"
-  ],
+  "categories": ["Other"],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
@@ -120,11 +119,7 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [
-            7,
-            14,
-            30
-          ],
+          "enum": [7, 14, 30],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.enableAdvancedAnalysis": {
@@ -154,11 +149,7 @@
     "mcpServers": {
       "copilot-insight": {
         "command": "node",
-        "args": [
-          "${extensionPath}/bin/mcp-server.js",
-          "--storage",
-          "${globalStoragePath}"
-        ]
+        "args": ["${extensionPath}/bin/mcp-server.js", "--storage", "${globalStoragePath}"]
       }
     }
   },
@@ -168,7 +159,7 @@
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "package": "npm run build:native && npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
@@ -182,9 +173,10 @@
     "vsce:package": "vsce package",
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
     "vsce:publish": "vsce publish",
-    "inext": "code --install-extension ",
+    "in": "code --install-extension ",
     "build:wasm": "cd wasm-parser && wasm-pack build --target nodejs --out-dir pkg",
-    "p": "npm run package && npm run vsce:package"
+    "p": "npm run package && npm run vsce:package",
+    "build:native": "cd native-parser && napi build --platform --release --js index.js --dts index.d.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
@@ -199,7 +191,8 @@
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.27.4",
     "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@napi-rs/cli": "^3.0.0-alpha.62"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
