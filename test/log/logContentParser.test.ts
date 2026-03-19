@@ -363,38 +363,38 @@ suite("logContentParser", () => {
   });
 
   suite("parseLogContent", () => {
-    test("skips empty lines", () => {
+    test("skips empty lines", async () => {
       const stats = makeEmptyStats();
-      parseLogContent("\n\n\n", stats);
+      await parseLogContent("\n\n\n", stats);
       assert.strictEqual(stats.totalShown, 0);
     });
 
-    test("parses multiple lines", () => {
+    test("parses multiple lines", async () => {
       const stats = makeEmptyStats();
       const content = [
         `${JSON.stringify({ event: "suggestion_shown", language: "typescript", timestamp: "2024-01-15T10:00:00Z" })}`,
         `${JSON.stringify({ event: "suggestion_accepted", language: "typescript", timestamp: "2024-01-15T10:01:00Z" })}`,
         "[AsyncCompletionManager] AbortError: operation cancelled",
       ].join("\n");
-      parseLogContent(content, stats);
+      await parseLogContent(content, stats);
       assert.strictEqual(stats.totalShown, 1);
       assert.strictEqual(stats.totalAccepted, 1);
       assert.strictEqual(stats.totalRejected, 1);
     });
 
-    test("parses JSON lines preferentially over text parsing", () => {
+    test("parses JSON lines preferentially over text parsing", async () => {
       const stats = makeEmptyStats();
       // A line that contains JSON and also text that could be matched as text
       const line = `suggestion shown ${JSON.stringify({ event: "suggestion_accepted" })}`;
-      parseLogContent(line, stats);
+      await parseLogContent(line, stats);
       // Should be parsed as JSON (accepted), not text (shown)
       assert.strictEqual(stats.totalAccepted, 1);
       assert.strictEqual(stats.totalShown, 0);
     });
 
-    test("increments totalRejected via JSON rejected event", () => {
+    test("increments totalRejected via JSON rejected event", async () => {
       const stats = makeEmptyStats();
-      parseLogContent(JSON.stringify({ event: "suggestion_rejected", timestamp: "2024-01-15T10:00:00Z" }), stats);
+      await parseLogContent(JSON.stringify({ event: "suggestion_rejected", timestamp: "2024-01-15T10:00:00Z" }), stats);
       assert.strictEqual(stats.totalRejected, 1);
       assert.strictEqual(stats.totalShown, 0);
       assert.strictEqual(stats.totalAccepted, 0);
@@ -981,13 +981,13 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.subagentByModel.size, 0);
     });
 
-    test("parseLogContent processes subagent lines across content", () => {
+    test("parseLogContent processes subagent lines across content", async () => {
       const stats = makeEmptyStats();
       const content = [
         "2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]",
         "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
       ].join("\n");
-      parseLogContent(content, stats);
+      await parseLogContent(content, stats);
       assert.strictEqual(stats.subagentRequests, 1);
       assert.strictEqual(stats.subagentLoops, 1);
       assert.strictEqual(stats.subagentByModel.get("gpt-4o"), 1);
