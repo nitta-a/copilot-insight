@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.22] - 2026-03-19
+
+### Added
+- 🦀 **Wasm log-parser production upgrade** — the Rust/Wasm aggregation engine graduates from PoC to production; `WasmStats` now tracks `total_shown`, `total_accepted`, `total_chat`, `subagent_requests`, `plan_count`, and per-model shown/accepted maps (`by_model_shown`, `by_model_accepted`); JSON-embedded log lines are deserialized via a typed `LogEntry` struct; model identity is resolved through a six-field priority chain (`model_name` → `modelId` → `model` → `engineId` → `engineName` → `engine`)
+- ⚡ **Transparent JS fallback** — `parseLogContent` / `parseLogFile` are now `async`; the Wasm fast path is tried first and `mergeWasmResults()` additively folds the results into `ParsingContext`; when the Wasm module is absent the existing JS line-by-line parsers handle all lines without any behaviour change
+- 🔤 **Plain-text detection in Wasm** — the Rust engine now also recognises `[fetchCompletions]` and `ccreq:` markers in plain-text log lines, covering inline-completion events that lack a JSON envelope
+- 🧪 **10 Rust unit tests** — new test suite inside `wasm-parser/src/lib.rs` covers all event types (`shown`, `accepted`, `chat-request`, `subagent-request`, `plan-proposed`), model-priority resolution, embedded-JSON extraction, and plain-text pattern matching
+
+### Changed
+- **`WasmParseResult` / `RawWasmResult`** — both TypeScript types updated in `src/log/wasmBridge.ts` to expose all 7 aggregation fields with camelCase ↔ snake_case mapping
+
 ## [1.0.21] - 2026-03-19
 
 ### Added
