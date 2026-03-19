@@ -1869,6 +1869,39 @@ suite("planning tracking from ccreq intents", () => {
       ["plan-proposal", "chat-request", "memory-boundary"],
     );
     assert.strictEqual(ctx.sessionSignals[1]?.phase, "execution");
+    // Bare "agent/plan" text lines have no model info — modelName remains empty.
+    assert.strictEqual(ctx.sessionSignals[0]?.modelName, "");
+  });
+
+  test("plan-proposal signal from JSON agent/plan event carries model name", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-json-plan";
+    processJsonEntry({ event: "agent/plan", model: "claude-3.7-sonnet", timestamp: "2026-03-06T10:00:00.000Z" }, ctx);
+    const planSignals = ctx.sessionSignals.filter((s) => s.signalType === "plan-proposal");
+    assert.strictEqual(planSignals.length, 1);
+    assert.strictEqual(planSignals[0]?.modelName, "claude-3.7-sonnet");
+  });
+
+  test("plan-proposal signal from JSON strategy/propose event carries model name", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-json-strategy";
+    processJsonEntry({ event: "strategy/propose", modelId: "o3-mini", timestamp: "2026-03-06T10:01:00.000Z" }, ctx);
+    const planSignals = ctx.sessionSignals.filter((s) => s.signalType === "plan-proposal");
+    assert.strictEqual(planSignals.length, 1);
+    assert.strictEqual(planSignals[0]?.modelName, "o3-mini");
+  });
+
+  test("plan-proposal signal from text ccreq line containing agent/plan carries model name", () => {
+    const ctx = makeEmptyStats();
+    ctx.currentSessionId = "session-ccreq-plan";
+    // A ccreq line where the intent text includes "agent/plan"
+    parseTextLogLine(
+      "2026-03-06 10:05:00.000 [info] ccreq:plan01.copilotmd | success | gpt-4o | 3000ms | [agent/plan]",
+      ctx,
+    );
+    const planSignals = ctx.sessionSignals.filter((s) => s.signalType === "plan-proposal");
+    assert.strictEqual(planSignals.length, 1);
+    assert.strictEqual(planSignals[0]?.modelName, "gpt-4o");
   });
 
   test("search subagent intent is classified as research in sessionSignals", () => {

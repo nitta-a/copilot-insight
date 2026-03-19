@@ -496,10 +496,18 @@ function parseRunInTerminalCommandLine(line: string, timestamp: string, ctx: Par
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
+  // Attempt to extract the model name from ccreq-style lines before calling
+  // trackPlanningStats, so that plan-proposal signals created for lines
+  // containing "agent/plan" or "strategy/propose" carry the model name.
+  // For bare text lines (e.g. "agent/plan" with no ccreq context) this
+  // will be "", which is acceptable — no model information is available.
+  const ccreqModelMatch = line.match(/\| success \| ([\w./\- >]+?) \| \d+ms \|/);
+  const planLineModel = ccreqModelMatch ? normalizeModelName(ccreqModelMatch[1]) : "";
+
   // Planning & Execution stats are checked first so that workspace/editFile
   // and apply_patch lines are not shadowed by the context provider parser
   // (which would consume any line containing the word "workspace").
-  trackPlanningStats(lineCtx.lower, ctx, lineCtx.timestamp, line);
+  trackPlanningStats(lineCtx.lower, ctx, lineCtx.timestamp, line, planLineModel);
 
   maybeRecordFeatureSignals(line, ctx, lineCtx.timestamp);
 

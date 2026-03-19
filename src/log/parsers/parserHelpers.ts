@@ -5,7 +5,7 @@
  */
 
 import type { SessionActor, SessionPhase, SessionSignalEvent } from "../../events/eventSchema";
-import type { UsageStatCount, ParsingContext } from "../../types";
+import type { ParsingContext, UsageStatCount } from "../../types";
 
 /** Intent tag → human-readable display name for known chat intents. */
 export const INTENT_DISPLAY_NAMES: Record<string, string> = {
@@ -675,7 +675,13 @@ function isChoiceSelectedLine(lower: string): boolean {
 /**
  * Update plan tracking state for a single log line (plain-text or JSON-derived).
  */
-export function trackPlanningStats(lower: string, ctx: ParsingContext, timestamp = "", rawText = ""): void {
+export function trackPlanningStats(
+  lower: string,
+  ctx: ParsingContext,
+  timestamp = "",
+  rawText = "",
+  modelName = "",
+): void {
   if (isPlanProposalLine(lower)) {
     ctx.planCount++;
     ctx.activePlanPending = true;
@@ -686,7 +692,7 @@ export function trackPlanningStats(lower: string, ctx: ParsingContext, timestamp
       phase: "planning",
       intent: lower.includes("strategy/propose") ? "strategy/propose" : "agent/plan",
       rawText,
-      modelName: "",
+      modelName,
       latencyMs: 0,
       success: true,
     });
@@ -703,7 +709,7 @@ export function trackPlanningStats(lower: string, ctx: ParsingContext, timestamp
       phase: "execution",
       intent: lower.includes("apply_patch") ? "apply_patch" : "workspace/editfile",
       rawText,
-      modelName: "",
+      modelName,
       latencyMs: 0,
       success: true,
     });
@@ -717,7 +723,7 @@ export function trackPlanningStats(lower: string, ctx: ParsingContext, timestamp
       phase: "human",
       intent: "choice_selected",
       rawText,
-      modelName: "",
+      modelName,
       latencyMs: 0,
       success: true,
     });

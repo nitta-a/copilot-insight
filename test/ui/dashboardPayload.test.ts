@@ -318,7 +318,7 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.summary.topAskModelCount, 0);
     });
 
-    test("topPlanModel uses only model-tagged plan proposals", () => {
+    test("topPlanModel counts plan-proposal and panel/editAgent signals", () => {
       const stats = makeStats({
         sessionSignals: [
           makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
@@ -329,6 +329,34 @@ suite("buildDashboardPayload", () => {
       });
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.summary.topPlanModel, "o3");
+      assert.strictEqual(payload.summary.topPlanModelCount, 2);
+    });
+
+    test("topPlanModel counts modern panel/editAgent chat-request signals", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "o3", intent: "panel/editAgent" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "o3", intent: "vscodePrompt" }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topPlanModel, "claude-sonnet-4.6");
+      assert.strictEqual(payload.summary.topPlanModelCount, 3);
+    });
+
+    test("topPlanModel mixes legacy plan-proposal and modern panel/editAgent", () => {
+      const stats = makeStats({
+        sessionSignals: [
+          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
+          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
+        ],
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.summary.topPlanModel, "claude-sonnet-4.6");
       assert.strictEqual(payload.summary.topPlanModelCount, 2);
     });
 

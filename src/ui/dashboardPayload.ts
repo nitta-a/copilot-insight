@@ -158,7 +158,14 @@ export function buildDashboardPayload(
     stats,
     (signal) => signal.signalType === "chat-request" && isAskIntent(signal.intent),
   );
-  const planModelCounts = buildModelCountFromSessionSignals(stats, (signal) => signal.signalType === "plan-proposal");
+  // Count both legacy plan-proposal signals (panel/unknown, agent/plan) and modern
+  // panel/editAgent requests, which represent the agentic phase in current Copilot logs.
+  const planModelCounts = buildModelCountFromSessionSignals(
+    stats,
+    (signal) =>
+      signal.signalType === "plan-proposal" ||
+      (signal.signalType === "chat-request" && signal.intent === "panel/editAgent"),
+  );
   const topChatModel = findTopCountModel(normalizedChatModelForSummary);
   const topAskModel = findTopCountModel(askModelCounts);
   const topPlanModel = findTopCountModel(planModelCounts);
