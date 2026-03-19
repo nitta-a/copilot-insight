@@ -40,6 +40,8 @@ import type {
   CountBreakdownEntry,
   DashboardPayload,
   HostToWebviewMessage,
+  PromptInsightsData,
+  SessionsData,
   TimelineEntry,
   WebviewToHostMessage,
   WeeklyTrendData,
@@ -119,6 +121,10 @@ let depthVelocityChartRoot: Root | null = null;
 let scatterPlotRoot: Root | null = null;
 let modelAutonomyMapRoot: Root | null = null;
 let autonomyEvolutionRoot: Root | null = null;
+let promptInsightsLoaded = false;
+let sessionsLoaded = false;
+/** Set of tab names for which a `requestTabData` is currently in-flight. */
+const pendingTabRequests = new Set<string>();
 
 /** Unmount a React root and return null, for concise cleanup. */
 function unmountRoot(root: Root | null): null {
@@ -284,13 +290,13 @@ function buildDonutChart(
   });
 }
 
-function renderChatIntentCommandDonutCharts(payload: DashboardPayload): void {
+function renderChatIntentCommandDonutCharts(data: Pick<PromptInsightsData, "chatIntentBreakdown" | "commandUsageBreakdown">): void {
   const container = document.getElementById("db-intent-command-donut-container");
   if (!container) {
     return;
   }
-  const hasIntent = payload.chatIntentBreakdown.length > 0;
-  const hasCommand = payload.commandUsageBreakdown.length > 0;
+  const hasIntent = data.chatIntentBreakdown.length > 0;
+  const hasCommand = data.commandUsageBreakdown.length > 0;
 
   if (!hasIntent && !hasCommand) {
     container.innerHTML = "";
@@ -313,8 +319,8 @@ function renderChatIntentCommandDonutCharts(payload: DashboardPayload): void {
       </div>
     </div>`;
 
-  intentDonutChart = buildDonutChart("db-intent-donut", payload.chatIntentBreakdown, "intents", intentDonutChart);
-  commandDonutChart = buildDonutChart("db-command-donut", payload.commandUsageBreakdown, "commands", commandDonutChart);
+  intentDonutChart = buildDonutChart("db-intent-donut", data.chatIntentBreakdown, "intents", intentDonutChart);
+  commandDonutChart = buildDonutChart("db-command-donut", data.commandUsageBreakdown, "commands", commandDonutChart);
 }
 
 // ---------------------------------------------------------------------------
@@ -967,7 +973,7 @@ function switchTab(tabId: string): void {
   if (tabId === "health" && timelineChart) {
     timelineChart.resize();
   }
-  if (tabId === "prompt-insights") {
+  if (tabId === "prompt-insights" && promptInsightsLoaded) {
     intentDonutChart?.resize();
     commandDonutChart?.resize();
     promptLengthScatterChart?.resize();
@@ -1137,6 +1143,96 @@ function renderThreadDetail(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Lazy-loaded tab rendering
+// ---------------------------------------------------------------------------
+
+const LOAD_BTN_LABELS: Record<string, string> = {
+  "db-btn-load-prompt-insights": "📊 Load Prompt Insights",
+  "db-btn-load-sessions": "📂 Load Sessions",
+};
+
+function setLoadButtonState(btnId: string, loading: boolean): void {
+  const btn = document.getElementById(btnId) as HTMLButtonElement | null;
+  if (!btn) {
+    return;
+  }
+  btn.disabled = loading;
+  if (loading) {
+    btn.innerHTML = '<span class="db-loading-spinner"></span>Loading…';
+  } else {
+    btn.textContent = LOAD_BTN_LABELS[btnId] ?? btn.textContent;
+  }
+}
+
+function showLazyContent(placeholderId: string, contentId: string): void {
+  const placeholder = document.getElementById(placeholderId);
+  const content = document.getElementById(contentId);
+  if (placeholder) {
+    placeholder.style.display = "none";
+  }
+  if (content) {
+    content.style.display = "";
+  }
+}
+
+function renderPromptInsightsData(data: PromptInsightsData): void {
+  promptInsightsLoaded = true;
+  showLazyContent("db-prompt-insights-lazy", "db-prompt-insights-content");
+  renderTagCloud(data.topKeywords);
+  renderChatIntentCommandDonutCharts(data);
+  renderPromptLengthScatterChart(data.promptLengthScatterData);
+  renderTurnChurnChart(data.turnStats);
+  renderContextLeverageChart(data.contextStats);
+  // Trigger resize so charts render correctly after becoming visible.
+  if (currentTab === "prompt-insights") {
+    intentDonutChart?.resize();
+    commandDonutChart?.resize();
+    promptLengthScatterChart?.resize();
+    turnChurnChart?.resize();
+    contextLeverageChart?.resize();
+  }
+}
+
+function renderSessionsData(data: SessionsData): void {
+  sessionsLoaded = true;
+  showLazyContent("db-sessions-lazy", "db-sessions-content");
+  for (const session of data.sessionSummaries) {
+    if (!allSessionDetails.has(session.sessionId)) {
+      sessionLoadQueue.push(session.sessionId);
+    }
+  }
+  loadNextFromQueue();
+  renderAllThreads();
+  renderThreadDetail();
+}
+
+function requestTabData(tab: "promptInsights" | "sessions"): void {
+  vscode.postMessage({ type: "requestTabData", tab } satisfies WebviewToHostMessage);
+}
+
+/**
+ * Attach a click handler to a lazy-load button that:
+ * 1. Guards against duplicate in-flight requests.
+ * 2. Shows a loading spinner while the request is pending.
+ * 3. Posts the requestTabData message to the host.
+ */
+function attachLazyLoadButton(btnId: string, tab: "promptInsights" | "sessions", isLoaded: () => boolean): void {
+  document.getElementById(btnId)?.addEventListener("click", () => {
+    if (isLoaded() || pendingTabRequests.has(tab)) {
+      return;
+    }
+    pendingTabRequests.add(tab);
+    setLoadButtonState(btnId, true);
+    requestTabData(tab);
+  });
+}
+
+function setupLazyLoadButtons(): void {
+  attachLazyLoadButton("db-btn-load-prompt-insights", "promptInsights", () => promptInsightsLoaded);
+  attachLazyLoadButton("db-btn-load-sessions", "sessions", () => sessionsLoaded);
+}
+
+// ---------------------------------------------------------------------------
 // Full render
 // ---------------------------------------------------------------------------
 
@@ -1147,24 +1243,18 @@ function render(payload: DashboardPayload): void {
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
-  renderTagCloud(payload.topKeywords);
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
   renderAutonomyEvolution(payload.evolutionData);
-  renderChatIntentCommandDonutCharts(payload);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
-  renderPromptLengthScatterChart(payload.promptLengthScatterData);
-  renderTurnChurnChart(payload.turnStats);
-  renderContextLeverageChart(payload.contextStats);
-  for (const session of payload.sessionSummaries) {
-    if (!allSessionDetails.has(session.sessionId)) {
-      sessionLoadQueue.push(session.sessionId);
-    }
-  }
-  loadNextFromQueue();
-  renderAllThreads();
-  renderThreadDetail();
+  // Prompt Insights and Sessions tabs are lazy-loaded on demand.
+  promptInsightsLoaded = false;
+  sessionsLoaded = false;
+  pendingTabRequests.clear();
+  allSessionDetails.clear();
+  sessionLoadQueue.length = 0;
+  isBackgroundLoading = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -1183,6 +1273,14 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
     renderAllThreads();
     renderThreadDetail();
     loadNextFromQueue();
+  } else if (msg.type === "tabData") {
+    if (msg.tab === "promptInsights") {
+      pendingTabRequests.delete("promptInsights");
+      renderPromptInsightsData(msg.payload as PromptInsightsData);
+    } else if (msg.tab === "sessions") {
+      pendingTabRequests.delete("sessions");
+      renderSessionsData(msg.payload as SessionsData);
+    }
   } else if (msg.type === "exportComplete") {
     // Only markdown and timeline PNG exports are currently supported.
     const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";
@@ -1197,6 +1295,7 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
 document.addEventListener("DOMContentLoaded", () => {
   setupExportButtons();
   setupTabs();
+  setupLazyLoadButtons();
 
   if (window.__dashboardData) {
     render(window.__dashboardData);

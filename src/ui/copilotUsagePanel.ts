@@ -5,8 +5,9 @@ import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../type
 import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
-import type { WebviewToHostMessage } from "./dashboardMessages";
-import { buildDashboardPayload } from "./dashboardPayload";
+import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
+import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
+import { readWorkspaceChatSessions } from "../log/copilotLogParser";
 
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
@@ -20,6 +21,12 @@ export interface AdvancedMetrics {
   modelPerformance?: ModelPerformanceResult;
   refreshAnalysis?: RefreshAnalysis[];
   sessionSummaries?: SessionSummary[];
+  /**
+   * VS Code log base directory (parent of session directories), used to
+   * perform deferred workspace storage SQLite reads when the Sessions tab
+   * is first opened.  Derived via `resolveLogSearchPaths(context.logUri.fsPath).logBaseDir`.
+   */
+  logBaseDir?: string;
 }
 
 export class CopilotUsagePanel {
@@ -127,7 +134,49 @@ export class CopilotUsagePanel {
           });
         break;
       }
+      case "requestTabData": {
+        if (msg.tab === "promptInsights") {
+          const payload = buildPromptInsightsPayload(this._stats);
+          void this._panel.webview.postMessage({ type: "tabData", tab: "promptInsights", payload });
+        } else if (msg.tab === "sessions") {
+          void this._handleSessionsTabRequest();
+        }
+        break;
+      }
     }
+  }
+
+  /**
+   * Perform the deferred workspace storage SQLite reads, populate the DB worker,
+   * and post the Sessions tab payload back to the WebView.
+   *
+   * Separated into its own async method so the synchronous `_handleWebviewMessage`
+   * switch can fire-and-forget with `void`.
+   */
+  private async _handleSessionsTabRequest(): Promise<void> {
+    let payload: SessionsData;
+    try {
+      payload = await this._buildSessionsPayloadAsync();
+    } catch (err) {
+      // Log to the output channel so the user can diagnose workspace storage issues.
+      vscode.window.showWarningMessage(
+        `Copilot Insight: could not load Sessions data — ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+      payload = buildSessionsPayload(this._stats, []);
+    }
+    void this._panel.webview.postMessage({ type: "tabData", tab: "sessions", payload });
+  }
+
+  private async _buildSessionsPayloadAsync(): Promise<SessionsData> {
+    if (this._advanced.logBaseDir && this._dbWorker) {
+      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir);
+      await this._dbWorker.setChatSessionTitles(chatSessionTitles);
+      await this._dbWorker.setChatSessions(chatSessions);
+      const sessionSummaries = await this._dbWorker.getSessionList();
+      return buildSessionsPayload(this._stats, sessionSummaries);
+    }
+    // No logBaseDir or no dbWorker — fall back to in-memory stats
+    return buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
   }
 
   private _savePng(dataUri: string, chartId: "timeline" | "velocity" | "overview"): void {

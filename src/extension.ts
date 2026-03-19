@@ -18,6 +18,7 @@ import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";
 import { buildDashboardPayload } from "./ui/dashboardPayload";
 import { StatusBarIndicator } from "./ui/statusBarIndicator";
 import { todayDateString } from "./utils";
+import { resolveLogSearchPaths } from "./utils/logPaths";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
 
@@ -127,10 +128,11 @@ export function activate(context: vscode.ExtensionContext) {
 
   /** Compute advanced metrics (best-effort) from tracked events. */
   async function getAdvancedMetrics(stats: CopilotUsageStats) {
+    const logBaseDir = resolveLogSearchPaths(context.logUri.fsPath).logBaseDir;
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
     if (allEvents.length === 0) {
-      return {};
+      return { logBaseDir };
     }
     if (dbWorker) {
       try {
@@ -138,21 +140,21 @@ export function activate(context: vscode.ExtensionContext) {
         if (stats.sessionSignals.length > 0) {
           await dbWorker.ingest(stats.sessionSignals);
         }
-        await dbWorker.setChatSessionTitles(stats.chatSessionTitles ?? []);
-        await dbWorker.setChatSessions(stats.chatSessions ?? []);
-        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis, sessionSummaries] = await Promise.all([
+        // NOTE: setChatSessionTitles / setChatSessions / getSessionList are
+        // intentionally omitted here — chat session data is loaded lazily when
+        // the Sessions tab is first opened (see CopilotUsagePanel._buildSessionsPayloadAsync).
+        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
           dbWorker.modelPerformance(),
           dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
-          dbWorker.getSessionList(),
         ]);
         return {
           trueAcceptance,
           velocity,
           modelPerformance,
           refreshAnalysis,
-          sessionSummaries,
+          logBaseDir,
         };
       } catch {
         // Fall back to in-process computation when the worker is unavailable.
@@ -163,6 +165,7 @@ export function activate(context: vscode.ExtensionContext) {
       velocity: computeVelocityAnalysis(allEvents),
       modelPerformance: computeModelPerformance(allEvents),
       refreshAnalysis: computeRefreshAnalysis(allEvents, stats.memoryManagementEvents),
+      logBaseDir,
     };
   }
 

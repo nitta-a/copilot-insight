@@ -28,7 +28,9 @@ import type {
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
+  PromptInsightsData,
   RoiBreakdown,
+  SessionsData,
   SummaryData,
   TimelineEntry,
   TurnBucket,
@@ -127,6 +129,12 @@ function buildModelCountFromSessionSignals(
 /**
  * Convert raw Copilot stats + optional advanced-metrics into the data shape
  * consumed by the dashboard WebView.
+ *
+ * Note: `sessionSummaries` is intentionally preserved in the signature for
+ * backwards compatibility with existing call sites.  Session data has been
+ * removed from `DashboardPayload` and is now lazy-loaded on demand via
+ * `buildSessionsPayload` / the Sessions tab request flow.  This parameter
+ * is ignored by this function.
  */
 export function buildDashboardPayload(
   stats: CopilotUsageStats,
@@ -134,15 +142,9 @@ export function buildDashboardPayload(
   velocity?: VelocityAnalysisResult,
   modelPerformance?: ModelPerformanceResult,
   refreshAnalysis: RefreshAnalysis[] = [],
-  sessionSummaries: SessionSummary[] = [],
+  _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
   cliRoiMinutesPerInteraction = 30,
 ): DashboardPayload {
-  const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
-  const effectiveSessionSummaries =
-    sessionSummaries.length > 0
-      ? titledSessionSummaries
-      : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
-
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
   // Agentic contribution: AGENTIC_COGNITIVE_WEIGHT of autonomous duration represents developer time freed up.
@@ -430,31 +432,6 @@ export function buildDashboardPayload(
 
   const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
 
-  // ── Keyword extraction ────────────────────────────────────────────────────
-  const keywordTexts: string[] = [];
-  for (const record of stats.chatSessionTitles ?? []) {
-    if (record.title) {
-      keywordTexts.push(record.title);
-    }
-    if (record.firstRequestText) {
-      keywordTexts.push(record.firstRequestText);
-    }
-  }
-  for (const session of stats.chatSessions ?? []) {
-    if (session.title) {
-      keywordTexts.push(session.title);
-    }
-    if (session.firstRequestText) {
-      keywordTexts.push(session.firstRequestText);
-    }
-    for (const req of session.requests) {
-      if (req.messageText) {
-        keywordTexts.push(req.messageText);
-      }
-    }
-  }
-  const topKeywords = extractTopKeywords(keywordTexts, 20);
-
   return {
     days: timeline.length,
     availableRange,
@@ -467,13 +444,6 @@ export function buildDashboardPayload(
     agenticStats,
     refreshAnalysis,
     freshness,
-    sessionSummaries: effectiveSessionSummaries,
-    chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
-    commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
-    promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
-    topKeywords,
-    turnStats: buildTurnStats(stats),
-    contextStats: buildContextStats(stats),
   };
 }
 
@@ -640,4 +610,57 @@ function countCompletedActions(stat: AgenticDepthStat): number {
   const completedLoops = bucket1 + bucket2 + bucket3to5 + bucket6to10 + bucket11plus;
 
   return completedLoops * stat.avgLoopActions;
+}
+
+/**
+ * Build the lazy-loaded Prompt Insights payload.
+ * Called on demand when the WebView requests "promptInsights" tab data.
+ */
+export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsightsData {
+  const keywordTexts: string[] = [];
+  for (const record of stats.chatSessionTitles ?? []) {
+    if (record.title) {
+      keywordTexts.push(record.title);
+    }
+    if (record.firstRequestText) {
+      keywordTexts.push(record.firstRequestText);
+    }
+  }
+  for (const session of stats.chatSessions ?? []) {
+    if (session.title) {
+      keywordTexts.push(session.title);
+    }
+    if (session.firstRequestText) {
+      keywordTexts.push(session.firstRequestText);
+    }
+    for (const req of session.requests) {
+      if (req.messageText) {
+        keywordTexts.push(req.messageText);
+      }
+    }
+  }
+  const topKeywords = extractTopKeywords(keywordTexts, 20);
+
+  return {
+    chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
+    commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
+    promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
+    topKeywords,
+    turnStats: buildTurnStats(stats),
+    contextStats: buildContextStats(stats),
+  };
+}
+
+/**
+ * Build the lazy-loaded Sessions payload.
+ * Called on demand when the WebView requests "sessions" tab data.
+ */
+export function buildSessionsPayload(stats: CopilotUsageStats, sessionSummaries: SessionSummary[] = []): SessionsData {
+  const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
+  const effectiveSessionSummaries =
+    sessionSummaries.length > 0
+      ? titledSessionSummaries
+      : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
+
+  return { sessionSummaries: effectiveSessionSummaries };
 }

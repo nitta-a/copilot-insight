@@ -243,29 +243,11 @@ export interface ContextBucket {
   acceptedCount: number;
 }
 
-/** Complete payload sent from the extension host to the WebView. */
-export interface DashboardPayload {
-  /** Number of days shown in the timeline (equals timeline.length). */
-  days: number;
-  /** The full available date range present in the data. */
-  availableRange: { minDate: string; maxDate: string };
-  summary: SummaryData;
-  timeline: TimelineEntry[];
-  velocityPoints: VelocityPoint[];
-  /** Daily agentic autonomy evolution series for the overview chart. */
-  evolutionData: EvolutionPoint[];
-  /** Auto-generated insight strings (plain text, safe to render as text content). */
-  insights: string[];
-  /** Weekly trend comparison data (null when insufficient data). */
-  weeklyTrend: WeeklyTrendData | null;
-  /** Agentic (subagent) activity statistics. */
-  agenticStats: AgenticStats;
-  /** Refresh ROI analysis around /compact or truncation boundaries. */
-  refreshAnalysis: RefreshAnalysis[];
-  /** Current-session context freshness, or null when unsupported by logs. */
-  freshness: ContextFreshness | null;
-  /** Precomputed session summaries for the Sessions master list. */
-  sessionSummaries: SessionSummary[];
+/**
+ * Lazy-loaded payload for the Prompt Insights tab.
+ * Requested on demand when the user clicks "Load Data" on the Prompt Insights tab.
+ */
+export interface PromptInsightsData {
   /** Chat intent breakdown (Agent/Ask/Plan/…) sorted by count desc — for donut chart. */
   chatIntentBreakdown: CountBreakdownEntry[];
   /** Slash-command / @participant usage breakdown sorted by count desc — for donut chart. */
@@ -292,6 +274,38 @@ export interface DashboardPayload {
    * Used to render the Context Leverage mixed chart in the Prompt Insights tab.
    */
   contextStats: ContextBucket[];
+}
+
+/**
+ * Lazy-loaded payload for the Sessions tab.
+ * Requested on demand when the user clicks "Load Data" on the Sessions tab.
+ */
+export interface SessionsData {
+  /** Precomputed session summaries for the Sessions master list. */
+  sessionSummaries: SessionSummary[];
+}
+
+/** Complete payload sent from the extension host to the WebView. */
+export interface DashboardPayload {
+  /** Number of days shown in the timeline (equals timeline.length). */
+  days: number;
+  /** The full available date range present in the data. */
+  availableRange: { minDate: string; maxDate: string };
+  summary: SummaryData;
+  timeline: TimelineEntry[];
+  velocityPoints: VelocityPoint[];
+  /** Daily agentic autonomy evolution series for the overview chart. */
+  evolutionData: EvolutionPoint[];
+  /** Auto-generated insight strings (plain text, safe to render as text content). */
+  insights: string[];
+  /** Weekly trend comparison data (null when insufficient data). */
+  weeklyTrend: WeeklyTrendData | null;
+  /** Agentic (subagent) activity statistics. */
+  agenticStats: AgenticStats;
+  /** Refresh ROI analysis around /compact or truncation boundaries. */
+  refreshAnalysis: RefreshAnalysis[];
+  /** Current-session context freshness, or null when unsupported by logs. */
+  freshness: ContextFreshness | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +335,18 @@ export interface SessionDetailDataMessage {
   payload: SessionDetailData | null;
 }
 
-export type HostToWebviewMessage = DashboardDataMessage | ExportCompleteMessage | SessionDetailDataMessage;
+/** Send lazy-loaded tab data in response to a requestTabData message. */
+export interface TabDataMessage {
+  type: "tabData";
+  tab: "promptInsights" | "sessions";
+  payload: PromptInsightsData | SessionsData;
+}
+
+export type HostToWebviewMessage =
+  | DashboardDataMessage
+  | ExportCompleteMessage
+  | SessionDetailDataMessage
+  | TabDataMessage;
 
 // ---------------------------------------------------------------------------
 // Message types — WebView → Extension Host
@@ -356,4 +381,14 @@ export interface RequestSessionDetailMessage {
   };
 }
 
-export type WebviewToHostMessage = ExportMarkdownMessage | ExportPngMessage | RequestSessionDetailMessage;
+/** WebView requests lazy tab data to be computed and returned by the host. */
+export interface RequestTabDataMessage {
+  type: "requestTabData";
+  tab: "promptInsights" | "sessions";
+}
+
+export type WebviewToHostMessage =
+  | ExportMarkdownMessage
+  | ExportPngMessage
+  | RequestSessionDetailMessage
+  | RequestTabDataMessage;
