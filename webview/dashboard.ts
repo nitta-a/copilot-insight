@@ -1144,6 +1144,11 @@ function renderThreadDetail(): void {
 // Lazy-loaded tab rendering
 // ---------------------------------------------------------------------------
 
+const LOAD_BTN_LABELS: Record<string, string> = {
+  "db-btn-load-prompt-insights": "📊 Load Prompt Insights",
+  "db-btn-load-sessions": "📂 Load Sessions",
+};
+
 function setLoadButtonState(btnId: string, loading: boolean): void {
   const btn = document.getElementById(btnId) as HTMLButtonElement | null;
   if (!btn) {
@@ -1152,6 +1157,8 @@ function setLoadButtonState(btnId: string, loading: boolean): void {
   btn.disabled = loading;
   if (loading) {
     btn.innerHTML = '<span class="db-loading-spinner"></span>Loading…';
+  } else {
+    btn.textContent = LOAD_BTN_LABELS[btnId] ?? btn.textContent;
   }
 }
 
