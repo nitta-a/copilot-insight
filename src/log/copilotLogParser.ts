@@ -22,6 +22,12 @@ export type { CopilotUsageStats, DateStat } from "../types";
 
 export interface ParseCopilotLogsOptions {
   scanAllSessions?: boolean;
+  /**
+   * Maximum number of sessions to parse.  When set, only the most recent
+   * `limitSessions` session directories are processed, enabling fast initial
+   * dashboard loads.  Ignored when `scanAllSessions` is true.
+   */
+  limitSessions?: number;
 }
 
 /** Lazy output channel for diagnostic logging. */
@@ -135,7 +141,7 @@ export async function parseCopilotLogs(
 
     const sessionDirs = options?.scanAllSessions
       ? await getAllSessionDirs(logBaseDir, fallbackSessionDir)
-      : await getSortedSessionDirs(logBaseDir, fallbackSessionDir);
+      : await getSortedSessionDirs(logBaseDir, fallbackSessionDir, { limit: options?.limitSessions });
 
     // Process all session directories in parallel. Note: ctx.currentSessionId is
     // shared state set per-session below; when sessions run concurrently it acts
@@ -309,6 +315,19 @@ export async function parseCopilotLogs(
 function percentile(sorted: number[], p: number): number {
   const idx = Math.ceil(p * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
+}
+
+/**
+ * Load all remaining (historical) Copilot log sessions and return a fresh
+ * `CopilotUsageStats` that covers **all** available session directories.
+ *
+ * Intended to be called after an initial limited parse when the user
+ * explicitly requests older data ("Load Historical Data").  Because this
+ * performs a full re-parse, the returned stats supersede the earlier
+ * partial result — callers should replace, not merge, their existing stats.
+ */
+export async function loadMoreCopilotLogs(logUri: vscode.Uri): Promise<CopilotUsageStats> {
+  return parseCopilotLogs(logUri, { scanAllSessions: true });
 }
 
 /**

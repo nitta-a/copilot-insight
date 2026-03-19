@@ -123,6 +123,7 @@ let modelAutonomyMapRoot: Root | null = null;
 let autonomyEvolutionRoot: Root | null = null;
 let promptInsightsLoaded = false;
 let sessionsLoaded = false;
+let historicalDataPending = false;
 /** Set of tab names for which a `requestTabData` is currently in-flight. */
 const pendingTabRequests = new Set<string>();
 
@@ -1149,6 +1150,7 @@ function renderThreadDetail(): void {
 const LOAD_BTN_LABELS: Record<string, string> = {
   "db-btn-load-prompt-insights": "📊 Load Prompt Insights",
   "db-btn-load-sessions": "📂 Load Sessions",
+  "db-btn-load-historical": "🕐 Load Historical Data",
 };
 
 function setLoadButtonState(btnId: string, loading: boolean): void {
@@ -1230,6 +1232,15 @@ function attachLazyLoadButton(btnId: string, tab: "promptInsights" | "sessions",
 function setupLazyLoadButtons(): void {
   attachLazyLoadButton("db-btn-load-prompt-insights", "promptInsights", () => promptInsightsLoaded);
   attachLazyLoadButton("db-btn-load-sessions", "sessions", () => sessionsLoaded);
+
+  document.getElementById("db-btn-load-historical")?.addEventListener("click", () => {
+    if (historicalDataPending) {
+      return;
+    }
+    historicalDataPending = true;
+    setLoadButtonState("db-btn-load-historical", true);
+    vscode.postMessage({ type: "loadMoreData" } satisfies WebviewToHostMessage);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,6 +1259,17 @@ function render(payload: DashboardPayload): void {
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
+
+  // Show or hide the "Load Historical Data" section.
+  const loadHistoricalContainer = document.getElementById("db-load-historical-container");
+  if (loadHistoricalContainer) {
+    loadHistoricalContainer.style.display = payload.hasMoreData ? "" : "none";
+  }
+  // Always reset the pending flag and button label whenever a fresh payload arrives,
+  // so the button is re-enabled whether the request succeeded or failed.
+  historicalDataPending = false;
+  setLoadButtonState("db-btn-load-historical", false);
+
   // Prompt Insights and Sessions tabs are lazy-loaded on demand.
   promptInsightsLoaded = false;
   sessionsLoaded = false;

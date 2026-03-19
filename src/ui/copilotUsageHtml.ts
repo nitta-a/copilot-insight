@@ -478,6 +478,10 @@ export function getHtmlContent(
         <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
       </div>
       <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+      <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
+        <button id="db-btn-load-historical" class="db-load-btn">🕐 Load Historical Data</button>
+        <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
+      </div>
       ${dateSection}
       ${modelSection}
       ${chatModelSection}
