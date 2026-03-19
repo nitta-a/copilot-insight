@@ -125,6 +125,10 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# Wasm build artifacts
+wasm-parser/target/
+wasm-parser/pkg/
+
 # VSIX packages built locally
 *.vsix
 

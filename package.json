@@ -183,6 +183,7 @@
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
     "vsce:publish": "vsce publish",
     "inext": "code --install-extension ",
+    "build:wasm": "cd wasm-parser && wasm-pack build --target nodejs --out-dir pkg",
     "p": "npm run package && npm run vsce:package"
   },
   "devDependencies": {
