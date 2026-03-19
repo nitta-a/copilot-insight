@@ -28,6 +28,14 @@ export interface WasmParseResult {
   byModelShown: Record<string, number>;
   /** Per-model count of accepted inline completions (model name → count). */
   byModelAccepted: Record<string, number>;
+  /** Per-date shown/accepted counts (date key "YYYY-MM-DD" → {shown, accepted}). */
+  byDate: Record<string, { shown: number; accepted: number }>;
+  /** Per-hour event counts (hour key "HH" → count). */
+  byHour: Record<string, number>;
+  /** Raw inline-completion latency values in milliseconds. */
+  latencies: number[];
+  /** Per context-source occurrence counts. */
+  byContextSource: Record<string, number>;
 }
 
 /**
@@ -49,6 +57,13 @@ interface RawWasmResult {
   by_model_shown: Record<string, number>;
   // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
   by_model_accepted: Record<string, number>;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  by_date: Record<string, { shown: number; accepted: number }>;
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  by_hour: Record<string, number>;
+  latencies: number[];
+  // biome-ignore lint/style/useNamingConvention: mirrors Rust serde output
+  by_context_source: Record<string, number>;
 }
 
 /**
@@ -116,6 +131,10 @@ export async function parseLogChunkWasm(input: string): Promise<WasmParseResult 
       planCount: raw.plan_count,
       byModelShown: raw.by_model_shown,
       byModelAccepted: raw.by_model_accepted,
+      byDate: raw.by_date,
+      byHour: raw.by_hour,
+      latencies: raw.latencies,
+      byContextSource: raw.by_context_source,
     };
   } catch {
     return null;
