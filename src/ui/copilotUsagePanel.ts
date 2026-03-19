@@ -7,7 +7,7 @@ import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
-import { readWorkspaceChatSessions } from "../log/copilotLogParser";
+import { loadMoreCopilotLogs, readWorkspaceChatSessions } from "../log/copilotLogParser";
 
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
@@ -27,6 +27,16 @@ export interface AdvancedMetrics {
    * is first opened.  Derived via `resolveLogSearchPaths(context.logUri.fsPath).logBaseDir`.
    */
   logBaseDir?: string;
+  /**
+   * The VS Code log URI passed to the extension context, used to perform a
+   * full re-parse when the user requests historical data.
+   */
+  logUri?: vscode.Uri;
+  /**
+   * True when the initial parse was limited to a subset of recent sessions
+   * and older sessions are still available to load.
+   */
+  hasMoreData?: boolean;
 }
 
 export class CopilotUsagePanel {
@@ -143,6 +153,10 @@ export class CopilotUsagePanel {
         }
         break;
       }
+      case "loadMoreData": {
+        void this._handleLoadMoreData();
+        break;
+      }
     }
   }
 
@@ -208,6 +222,28 @@ export class CopilotUsagePanel {
       });
   }
 
+  /**
+   * Perform a full re-parse of all available log sessions and update the
+   * dashboard with the complete historical data.
+   *
+   * Called when the user presses "Load Historical Data" in the WebView.
+   */
+  private async _handleLoadMoreData(): Promise<void> {
+    if (!this._advanced.logUri) {
+      return;
+    }
+    try {
+      const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
+      this._stats = fullStats;
+      this._advanced = { ...this._advanced, hasMoreData: false };
+      this._update();
+    } catch (err) {
+      vscode.window.showWarningMessage(
+        `Copilot Insight: could not load historical data — ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+    }
+  }
+
   private _update(): void {
     const nonce = getNonce();
     const scriptUri = this._panel.webview.asWebviewUri(
@@ -221,6 +257,7 @@ export class CopilotUsagePanel {
       this._advanced.refreshAnalysis,
       this._advanced.sessionSummaries,
       vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30,
+      this._advanced.hasMoreData ?? false,
     );
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 

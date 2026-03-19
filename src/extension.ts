@@ -5,6 +5,7 @@ import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
 import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
+import { getSortedSessionDirs } from "./log/logFileReader";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
 import {
   computeModelPerformance,
@@ -21,6 +22,9 @@ import { todayDateString } from "./utils";
 import { resolveLogSearchPaths } from "./utils/logPaths";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
+
+/** Number of most-recent session directories parsed on initial dashboard load. */
+const INITIAL_SESSION_LIMIT = 5;
 
 let cachedStats: CopilotUsageStats | undefined;
 
@@ -113,6 +117,26 @@ export function activate(context: vscode.ExtensionContext) {
     return stats;
   }
 
+  /**
+   * Perform a fast initial parse limited to the most recent sessions.
+   * Returns the partial stats and a flag indicating whether older sessions
+   * are available for deferred loading.
+   *
+   * Uses a single directory listing request: fetch one more than the limit so
+   * we can detect whether more sessions exist without a full directory scan.
+   */
+  async function getInitialStats(): Promise<{ stats: CopilotUsageStats; hasMoreData: boolean }> {
+    const { logBaseDir, fallbackSessionDir } = resolveLogSearchPaths(context.logUri.fsPath);
+    // Fetch at most INITIAL_SESSION_LIMIT + 1 entries to determine whether more exist.
+    const probe = await getSortedSessionDirs(logBaseDir, fallbackSessionDir, { limit: INITIAL_SESSION_LIMIT + 1 });
+    const hasMoreData = probe.length > INITIAL_SESSION_LIMIT;
+    const stats = await parseCopilotLogs(context.logUri, { limitSessions: INITIAL_SESSION_LIMIT });
+    cachedStats = stats;
+    treeProvider.updateStats(stats);
+    await statsSnapshotStorage.write(stats);
+    return { stats, hasMoreData };
+  }
+
   async function ensureStatsLoaded(): Promise<CopilotUsageStats> {
     if (cachedStats) {
       return cachedStats;
@@ -182,8 +206,14 @@ export function activate(context: vscode.ExtensionContext) {
         title: "Parsing GitHub Copilot logs...",
       },
       async () => {
-        const stats = await refreshStats();
-        CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
+        const { stats, hasMoreData } = await getInitialStats();
+        const advanced = await getAdvancedMetrics(stats);
+        CopilotUsagePanel.createOrShow(
+          context.extensionUri,
+          stats,
+          { ...advanced, logUri: context.logUri, hasMoreData },
+          dbWorker,
+        );
       },
     );
   });
@@ -197,7 +227,13 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
-          CopilotUsagePanel.createOrShow(context.extensionUri, stats, await getAdvancedMetrics(stats), dbWorker);
+          const advanced = await getAdvancedMetrics(stats);
+          CopilotUsagePanel.createOrShow(
+            context.extensionUri,
+            stats,
+            { ...advanced, logUri: context.logUri, hasMoreData: false },
+            dbWorker,
+          );
         }
       },
     );

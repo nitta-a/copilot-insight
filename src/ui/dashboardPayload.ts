@@ -144,6 +144,7 @@ export function buildDashboardPayload(
   refreshAnalysis: RefreshAnalysis[] = [],
   _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
   cliRoiMinutesPerInteraction = 30,
+  hasMoreData = false,
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
@@ -444,6 +445,7 @@ export function buildDashboardPayload(
     agenticStats,
     refreshAnalysis,
     freshness,
+    hasMoreData,
   };
 }
 

@@ -306,6 +306,12 @@ export interface DashboardPayload {
   refreshAnalysis: RefreshAnalysis[];
   /** Current-session context freshness, or null when unsupported by logs. */
   freshness: ContextFreshness | null;
+  /**
+   * True when only a limited number of recent sessions were parsed during the
+   * initial load.  The WebView should show a "Load Historical Data" button that
+   * sends a `loadMoreData` message to trigger a full re-parse.
+   */
+  hasMoreData: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,8 +393,14 @@ export interface RequestTabDataMessage {
   tab: "promptInsights" | "sessions";
 }
 
+/** WebView requests that the remaining (historical) log sessions be loaded. */
+export interface LoadMoreDataMessage {
+  type: "loadMoreData";
+}
+
 export type WebviewToHostMessage =
   | ExportMarkdownMessage
   | ExportPngMessage
   | RequestSessionDetailMessage
-  | RequestTabDataMessage;
+  | RequestTabDataMessage
+  | LoadMoreDataMessage;
