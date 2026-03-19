@@ -46,7 +46,11 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 | Setting | Default | Description |
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `10` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
+| `copilot-insight.defaultDisplayDays` | `14` | Default number of days shown in the Daily Usage chart (7, 14, or 30) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance) |
+| `copilot-insight.cliLogPath` | `""` | Path to the GitHub Copilot CLI session-state directory (leave empty for automatic discovery at `~/.copilot/session-state`) |
+| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | Estimated minutes saved per GitHub Copilot CLI interaction (used for ROI calculation) |
+| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | Fallback model name label for CLI interactions when no model name can be detected from the log |
 
 ### Requirements
 
@@ -68,33 +72,28 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
    code --install-extension copilot-insight-<version>.vsix
    ```
 
-### Wasm Log Parser (experimental)
+### Native Log Parser (optional)
 
-An experimental Rust / WebAssembly log parser is included under `wasm-parser/`.
-Building it is **optional** — the extension works without it.  When the Wasm module is available the TypeScript bridge (`src/log/wasmBridge.ts`) can offload CPU-heavy JSON counting to the native module.
+An optional Rust native addon is included under `native-parser/`. Building it is **optional** — the extension works without it using the TypeScript fallback parsers. When the native module is available the bridge (`src/log/nativeBridge.ts`) offloads CPU-heavy log parsing to the compiled Rust code for improved performance.
 
 #### Prerequisites
 
 | Tool | Install guide |
 |---|---|
 | **Rust toolchain** (rustup, cargo) | <https://rustup.rs/> |
-| **wasm-pack** | `cargo install wasm-pack` |
+| **@napi-rs/cli** | bundled as a dev dependency (`npm install` installs it automatically) |
 
 #### Build & verify
 
 ```bash
-# 1. Build the Wasm package (outputs to wasm-parser/pkg/)
-npm run build:wasm
+# 1. Build the native addon (outputs a .node file in native-parser/)
+npm run build:native
 
 # 2. Run the Rust unit tests
-cd wasm-parser && cargo test
-
-# 3. Quick smoke test from Node.js
-node -e "const m = require('./wasm-parser/pkg/wasm_parser'); console.log(m.parse_log_chunk('{\"event\":\"test\"}'))"
-# → {"total_lines":1,"json_lines":1}
+cd native-parser && cargo test
 ```
 
-After `npm run build:wasm` succeeds, restart the VS Code extension host (or run **Developer: Reload Window**) to let the bridge pick up the Wasm module.
+After `npm run build:native` succeeds, restart the VS Code extension host (or run **Developer: Reload Window**) to let the bridge pick up the native addon.
 
 ---
 
@@ -140,7 +139,11 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 | 設定 | デフォルト | 説明 |
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `10` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
+| `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (7・14・30 から選択) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする (真の受け入れ率・速度・モデル性能)。無効にするとイベントログは継続されるが、メトリクスダッシュボードは利用不可 |
+| `copilot-insight.cliLogPath` | `""` | GitHub Copilot CLI セッション状態ディレクトリのパス (空欄の場合は `~/.copilot/session-state` を自動探索) |
+| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | GitHub Copilot CLI インタラクション 1 回あたりの推定節約時間 (分)（ROI 計算に使用） |
+| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | CLI ログからモデル名を検出できない場合のフォールバックラベル |
 
 ### 要件
 
@@ -162,30 +165,26 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
    code --install-extension copilot-insight-<version>.vsix
    ```
 
-### Wasm ログパーサー (実験的)
+### ネイティブログパーサー (任意)
 
-`wasm-parser/` ディレクトリに実験的な Rust / WebAssembly ログパーサーが含まれています。
-ビルドは**任意**です — Wasm モジュールがなくても拡張機能は通常どおり動作します。Wasm モジュールが利用可能な場合、TypeScript ブリッジ (`src/log/wasmBridge.ts`) が CPU 負荷の高い JSON カウント処理をネイティブモジュールにオフロードできます。
+`native-parser/` ディレクトリにオプションの Rust ネイティブアドオンが含まれています。
+ビルドは**任意**です — アドオンがなくても拡張機能は TypeScript フォールバックパーサーで通常どおり動作します。ネイティブモジュールが利用可能な場合、TypeScript ブリッジ (`src/log/nativeBridge.ts`) が CPU 負荷の高いログ解析処理をコンパイル済みの Rust コードにオフロードし、パフォーマンスを向上させます。
 
 #### 前提条件
 
 | ツール | インストール方法 |
 |---|---|
 | **Rust ツールチェーン** (rustup, cargo) | <https://rustup.rs/> |
-| **wasm-pack** | `cargo install wasm-pack` |
+| **@napi-rs/cli** | 開発依存関係として同梱済み (`npm install` で自動インストール) |
 
 #### ビルドと動作確認
 
 ```bash
-# 1. Wasm パッケージをビルド (wasm-parser/pkg/ に出力)
-npm run build:wasm
+# 1. ネイティブアドオンをビルド (native-parser/ に .node ファイルを出力)
+npm run build:native
 
 # 2. Rust ユニットテストを実行
-cd wasm-parser && cargo test
-
-# 3. Node.js で簡易動作確認
-node -e "const m = require('./wasm-parser/pkg/wasm_parser'); console.log(m.parse_log_chunk('{\"event\":\"test\"}'))"
-# → {"total_lines":1,"json_lines":1}
+cd native-parser && cargo test
 ```
 
-`npm run build:wasm` が成功したら、VS Code の拡張機能ホストを再起動 (**Developer: Reload Window** を実行) すると、ブリッジが Wasm モジュールを読み込みます。
+`npm run build:native` が成功したら、VS Code の拡張機能ホストを再起動 (**Developer: Reload Window** を実行) すると、ブリッジがネイティブアドオンを読み込みます。
