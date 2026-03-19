@@ -4,6 +4,18 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.23] - 2026-03-20
+
+### Added
+- 🦀 **NAPI-RS native addon** — log-parsing engine migrated from WebAssembly (wasm-bindgen) to a NAPI-RS compiled native Node.js addon (`native-parser/`); `NativeStats` tracks `total_shown`, `total_accepted`, `total_chat`, `subagent_requests`, `plan_count`, per-model shown/accepted maps (`by_model_shown`, `by_model_accepted`), per-date counts (`by_date`), per-hour counts (`by_hour`), raw latency values (`latencies`), and context-source counts (`by_context_source`)
+- ⚡ **Synchronous native fast path** — `parseLogFileNative` passes the file path directly to Rust so all file I/O is performed in the native addon without Node.js reading the file; `parseLogChunkNative` handles in-memory content; both execute synchronously for lower overhead compared to the previous async Wasm path
+- 🔌 **Transparent JS fallback** — `logContentParser.ts` tries the native addon first via the typed `nativeBridge.ts` bridge; when the addon is absent (not yet built) the existing JS readline line-by-line parsers handle all parsing without any behaviour change
+- 🧪 **18 Rust unit tests** — comprehensive test suite in `native-parser/src/lib.rs` covering all event types (`shown`, `accepted`, `chat-request`, `subagent-request`, `plan-proposed`), model-priority resolution, JSON embedded-line extraction, and plain-text `[fetchCompletions]` / `ccreq:` pattern matching
+
+### Changed
+- **`nativeBridge.ts`** — new TypeScript bridge (`src/log/nativeBridge.ts`) lazily loads the NAPI-RS `.node` module and exposes `loadNativeModule`, `parseLogChunkNative`, and `parseLogFileNative`; returns `null` gracefully when the addon is not built so the rest of the extension is unaffected
+- **Build** — `npm run build:native` compiles the Rust crate in `native-parser/` to a platform-specific `.node` file using `@napi-rs/cli`; the Wasm build (`npm run build:wasm`) and wasm-parser directory remain in the repository for reference
+
 ## [1.0.22] - 2026-03-19
 
 ### Added
