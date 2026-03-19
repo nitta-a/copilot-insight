@@ -4,6 +4,18 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.21] - 2026-03-19
+
+### Added
+- ⚡ **Lazy loading for Prompt Insights & Sessions tabs** — dashboard initial render no longer blocks on expensive SQLite workspace-storage reads; Prompt Insights and Sessions tabs render a "Load Data" button placeholder on first paint and fetch their payloads on demand when the tab is first opened, eliminating the startup delay for users with large Copilot histories
+- 🔄 **Paginated initial parse** — dashboard first load now parses only the 5 most recent log-session directories (was all available sessions); a **"🕐 Load Historical Data"** button appears in the Health tab when older data exists, triggering a full re-parse on demand; manual Refresh still performs a complete parse
+
+### Changed
+- **`ParseCopilotLogsOptions`** — new `limitSessions?: number` field; passed to `getSortedSessionDirs` to cap the initial scan without touching config defaults
+- **`DashboardPayload`** — new `hasMoreData: boolean` field drives the Load Historical Data button visibility; 7 heavy Prompt Insights / Sessions fields moved to separate `PromptInsightsData` and `SessionsData` lazy payloads
+- **`WebviewToHostMessage`** — new `LoadMoreDataMessage { type: "loadMoreData" }` and `RequestTabDataMessage` allow the WebView to pull deferred data on demand
+- **`AdvancedMetrics`** — extended with `logUri?: vscode.Uri`, `hasMoreData?: boolean`, and `logBaseDir?: string` for deferred session loading
+
 ## [1.0.20] - 2026-03-19
 
 ### Fixed
