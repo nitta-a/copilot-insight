@@ -1,15 +1,15 @@
 /**
- * CopilotTabPanel — Web Component (Custom Element) for the dashboard tab bar.
+ * DashboardTabs — Web Component (Custom Element) for the dashboard tab bar.
  *
  * Encapsulates the tab navigation UI inside a Shadow DOM, keeping global
  * styles unaffected. Tab content panels live in the light DOM as direct
  * children with a `data-tab-pane` attribute matching each tab's id.
  *
  * Usage:
- *   <copilot-tab-panel active-tab="overview">
+ *   <dashboard-tabs active-tab="overview">
  *     <div data-tab-pane="overview">…</div>
  *     <div data-tab-pane="health"   style="display:none">…</div>
- *   </copilot-tab-panel>
+ *   </dashboard-tabs>
  *
  * Observed attributes:
  *   active-tab — id of the initially (or externally) selected tab.
@@ -71,7 +71,7 @@ export interface TabChangeDetail {
 }
 
 /** Custom element that renders a styled tab bar in Shadow DOM. */
-export class CopilotTabPanel extends HTMLElement {
+export class DashboardTabs extends HTMLElement {
   static readonly observedAttributes: string[] = ["active-tab"];
 
   private readonly _shadow: ShadowRoot;
@@ -210,6 +210,6 @@ export class CopilotTabPanel extends HTMLElement {
   }
 }
 
-if (!customElements.get("copilot-tab-panel")) {
-  customElements.define("copilot-tab-panel", CopilotTabPanel);
+if (!customElements.get("dashboard-tabs")) {
+  customElements.define("dashboard-tabs", DashboardTabs);
 }

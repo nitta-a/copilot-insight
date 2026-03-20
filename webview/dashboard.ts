@@ -51,7 +51,7 @@ import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import "./components/DashboardTabs";
-import type { CopilotTabPanel, TabChangeDetail } from "./components/DashboardTabs";
+import type { DashboardTabs, TabChangeDetail } from "./components/DashboardTabs";
 import { fmtDate } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
@@ -953,7 +953,7 @@ function setupExportButtons(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Tab switching — handled by the <copilot-tab-panel> Web Component.
+// Tab switching — handled by the <dashboard-tabs> Web Component.
 // This handler runs after the component dispatches a `tab-change` event so
 // that Chart.js charts are resized and VS Code state is persisted.
 // ---------------------------------------------------------------------------
@@ -1316,7 +1316,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Restore the last active tab after rendering.
     const saved = vscode.getState();
     if (saved?.currentTab && VALID_TABS.has(saved.currentTab)) {
-      const tabPanel = document.querySelector<CopilotTabPanel>("copilot-tab-panel");
+      const tabPanel = document.querySelector<DashboardTabs>("dashboard-tabs");
       tabPanel?.switchTab(saved.currentTab);
     }
   }

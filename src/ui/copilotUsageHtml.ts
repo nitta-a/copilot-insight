@@ -273,7 +273,7 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
-    /* ── Tab bar — styles now owned by the <copilot-tab-panel> Shadow DOM ── */
+    /* ── Tab bar — styles now owned by the <dashboard-tabs> Shadow DOM ── */
     .db-freshness-card {
       background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 88%, transparent), transparent);
       border: 1px solid var(--vscode-editor-inactiveSelectionBackground);
@@ -429,7 +429,7 @@ export function getHtmlContent(
   ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
-    <copilot-tab-panel active-tab="overview">
+    <dashboard-tabs active-tab="overview">
       <div id="db-tab-overview" data-tab-pane="overview" role="tabpanel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <span></span>
@@ -507,7 +507,7 @@ export function getHtmlContent(
           </div>
         </div>
       </div>
-    </copilot-tab-panel>
+    </dashboard-tabs>
   </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
