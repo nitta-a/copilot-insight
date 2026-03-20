@@ -13,7 +13,9 @@
     "vscode": "^1.105.0",
     "node": ">=22.22.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
@@ -119,7 +121,11 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [7, 14, 30],
+          "enum": [
+            7,
+            14,
+            30
+          ],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.enableAdvancedAnalysis": {
@@ -149,7 +155,11 @@
     "mcpServers": {
       "copilot-insight": {
         "command": "node",
-        "args": ["${extensionPath}/bin/mcp-server.js", "--storage", "${globalStoragePath}"]
+        "args": [
+          "${extensionPath}/bin/mcp-server.js",
+          "--storage",
+          "${globalStoragePath}"
+        ]
       }
     }
   },
