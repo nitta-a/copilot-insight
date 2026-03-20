@@ -202,6 +202,7 @@ export function buildDashboardPayload(
     totalMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
+    avgLatencyMs: stats.avgLatencyMs,
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────

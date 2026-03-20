@@ -61,7 +61,7 @@ async function main() {
 
   // Separate bundle for the WebView frontend (browser context, IIFE format).
   const webviewCtx = await esbuild.context({
-    entryPoints: ["webview/dashboard.ts"],
+    entryPoints: ["webview/dashboard.tsx"],
     bundle: true,
     format: "iife",
     minify: production,

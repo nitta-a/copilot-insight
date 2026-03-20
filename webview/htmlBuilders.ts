@@ -10,6 +10,7 @@ import type {
   AgentIntelligenceOverview,
   ContextFreshness,
   DashboardPayload,
+  PromptInsightsData,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 import {
@@ -452,7 +453,7 @@ export function getSelectableThreadsSorted(threads: SessionDetailPayload["thread
  * Font size and opacity are scaled linearly between the min and max counts.
  * Returns an empty string when the keyword list is empty.
  */
-export function buildTagCloudHtml(topKeywords: DashboardPayload["topKeywords"]): string {
+export function buildTagCloudHtml(topKeywords: PromptInsightsData["topKeywords"]): string {
   if (topKeywords.length === 0) {
     return "";
   }

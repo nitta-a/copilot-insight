@@ -72,6 +72,8 @@ export interface SummaryData {
   estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
   totalSessions: number;
+  /** Average inline-completion latency in milliseconds. 0 when no data. */
+  avgLatencyMs: number;
 }
 
 export interface TimelineEntry {
