@@ -53,13 +53,11 @@ export function OverviewTab({ payload, postMessage }: Props) {
 
 // ── Context Freshness ──────────────────────────────────────────────────────
 
-function ContextFreshnessSection({
-  freshness,
-  refreshAnalysis,
-}: {
+interface ContextFreshnessSectionProps {
   freshness: ContextFreshness | null;
   refreshAnalysis: DashboardPayload["refreshAnalysis"];
-}) {
+}
+function ContextFreshnessSection({ freshness, refreshAnalysis }: ContextFreshnessSectionProps) {
   if (!freshness || refreshAnalysis.length === 0) return null;
 
   const score = Math.max(0, Math.min(100, freshness.score));
@@ -76,8 +74,7 @@ function ContextFreshnessSection({
       : freshness.suggestedAction === "compact"
         ? "次の大きなタスク前に /compact を挟むのが妥当です。"
         : "新しいセッションを開始した方が回復しやすい状態です。";
-  const latestRoi =
-    freshness.latestRefreshRoi !== null ? `+${(freshness.latestRefreshRoi * 100).toFixed(1)}%` : "N/A";
+  const latestRoi = freshness.latestRefreshRoi !== null ? `+${(freshness.latestRefreshRoi * 100).toFixed(1)}%` : "N/A";
   const latestRecovery =
     freshness.latestRecoveryDelta !== null ? `${freshness.latestRecoveryDelta.toFixed(1)} pt` : "N/A";
   const latestRefresh = refreshAnalysis.at(-1) ?? null;
@@ -127,7 +124,10 @@ function ContextFreshnessSection({
 
 // ── Refresh ROI Analysis ───────────────────────────────────────────────────
 
-function RefreshAnalysisSection({ refreshAnalysis }: { refreshAnalysis: DashboardPayload["refreshAnalysis"] }) {
+interface RefreshAnalysisSectionProps {
+  refreshAnalysis: DashboardPayload["refreshAnalysis"];
+}
+function RefreshAnalysisSection({ refreshAnalysis }: RefreshAnalysisSectionProps) {
   if (refreshAnalysis.length === 0) return null;
 
   const roiValues = refreshAnalysis.map((e) => e.refreshRoi).filter((v): v is number => v !== null);
@@ -156,9 +156,7 @@ function RefreshAnalysisSection({ refreshAnalysis }: { refreshAnalysis: Dashboar
           <div className="stat-detail">post.trueRate / pre.trueRate - 1</div>
         </div>
         <div className="stat-card">
-          <div className={`stat-value ${getDeltaClass(avgRecoveryDelta)}`}>
-            {formatSignedPoints(avgRecoveryDelta)}
-          </div>
+          <div className={`stat-value ${getDeltaClass(avgRecoveryDelta)}`}>{formatSignedPoints(avgRecoveryDelta)}</div>
           <div className="stat-label">Average Recovery</div>
           <div className="stat-detail">post true rate minus pre true rate</div>
         </div>
@@ -167,9 +165,7 @@ function RefreshAnalysisSection({ refreshAnalysis }: { refreshAnalysis: Dashboar
             {formatSignedPercent(bestEntry?.refreshRoi ?? null)}
           </div>
           <div className="stat-label">Best Refresh</div>
-          <div className="stat-detail">
-            {bestEntry?.event.type ?? latestEntry?.event.type ?? "memory"}
-          </div>
+          <div className="stat-detail">{bestEntry?.event.type ?? latestEntry?.event.type ?? "memory"}</div>
         </div>
       </div>
       <div className="db-refresh-note">
@@ -191,7 +187,6 @@ function RefreshAnalysisSection({ refreshAnalysis }: { refreshAnalysis: Dashboar
           {sorted.map((entry, i) => {
             const timestamp = new Date(entry.event.timestamp).toLocaleString();
             return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: stable ordered list
               <tr key={i}>
                 <td>{timestamp}</td>
                 <td>{entry.event.type}</td>
@@ -217,7 +212,6 @@ function InsightsSection({ insights }: { insights: string[] }) {
       <h2>💡 Insights</h2>
       <div className="insights-section">
         {insights.map((text, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable ordered list
           <div key={i} className={`insight-card${getInsightClass(text)}`}>
             <span className="insight-icon" />
             {text}
@@ -239,8 +233,7 @@ function WeeklyTrendSection({ weeklyTrend }: { weeklyTrend: DashboardPayload["we
   let diffEl: React.ReactNode = null;
   if (weeklyTrend.thisWeek.shown > 0 && weeklyTrend.lastWeek.shown > 0) {
     const sign = weeklyTrend.rateDiff > 0 ? "+" : "";
-    const cssClass =
-      weeklyTrend.rateDiff > 0 ? "trend-up" : weeklyTrend.rateDiff < 0 ? "trend-down" : "trend-neutral";
+    const cssClass = weeklyTrend.rateDiff > 0 ? "trend-up" : weeklyTrend.rateDiff < 0 ? "trend-down" : "trend-neutral";
     const arrow = weeklyTrend.rateDiff > 0 ? "↑" : weeklyTrend.rateDiff < 0 ? "↓" : "→";
     diffEl = (
       <div className={`trend-diff ${cssClass}`}>
@@ -307,11 +300,12 @@ function AgentIntelligenceSection({ agenticStats }: { agenticStats: DashboardPay
   const completionStr = overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
   const planSuccessStr = overview.planCount > 0 ? `${overview.planSuccessRate.toFixed(1)}%` : "—";
 
+  const { browserTools, pluginOrSkills, memoryManagement, agentDebug } = agenticStats.featureSignals;
   const featureCards = [
-    { label: "Browser Tools", total: agenticStats.featureSignals.browserTools.total, detail: agenticStats.featureSignals.browserTools.breakdown },
-    { label: "Plugins / Skills", total: agenticStats.featureSignals.pluginOrSkills.total, detail: agenticStats.featureSignals.pluginOrSkills.breakdown },
-    { label: "Session Memory / Compact", total: agenticStats.featureSignals.memoryManagement.total, detail: agenticStats.featureSignals.memoryManagement.breakdown },
-    { label: "Agent Debug", total: agenticStats.featureSignals.agentDebug.total, detail: agenticStats.featureSignals.agentDebug.breakdown },
+    { label: "Browser Tools", total: browserTools.total, detail: browserTools.breakdown },
+    { label: "Plugins / Skills", total: pluginOrSkills.total, detail: pluginOrSkills.breakdown },
+    { label: "Session Memory / Compact", total: memoryManagement.total, detail: memoryManagement.breakdown },
+    { label: "Agent Debug", total: agentDebug.total, detail: agentDebug.breakdown },
   ];
   const hasFeatureSignals = featureCards.some((c) => c.total > 0);
 

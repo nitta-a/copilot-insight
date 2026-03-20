@@ -31,9 +31,7 @@ export function KpiGrid({ summary }: Props) {
       </div>
       <div
         className={`kpi-card${isLatencyWarn ? " kpi-latency-warn" : ""}`}
-        title={
-          isLatencyWarn ? `Latency is high (>${LATENCY_WARN_MS}ms). Copilot responses may feel slow.` : undefined
-        }
+        title={isLatencyWarn ? `Latency is high (>${LATENCY_WARN_MS}ms). Copilot responses may feel slow.` : undefined}
       >
         <div className="kpi-value">
           {(summary.avgLatencyMs ?? 0) > 0 ? `${(summary.avgLatencyMs ?? 0).toFixed(0)}ms` : "—"}

@@ -44,14 +44,10 @@ export function PromptInsightsTab({ data, loading, onLoad }: Props) {
         <div>
           <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600 }}>Intent Breakdown</h3>
           <DonutChart entries={data.chatIntentBreakdown} title="intents" canvasId="db-intent-donut" />
-          {data.chatIntentBreakdown.length === 0 && (
-            <p className="no-data">No intent data available.</p>
-          )}
+          {data.chatIntentBreakdown.length === 0 && <p className="no-data">No intent data available.</p>}
         </div>
         <div>
-          <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600 }}>
-            Command &amp; Participant Usage
-          </h3>
+          <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600 }}>Command &amp; Participant Usage</h3>
           <DonutChart entries={data.commandUsageBreakdown} title="commands" canvasId="db-command-donut" />
           {data.commandUsageBreakdown.length === 0 && (
             <p className="no-data" style={{ fontSize: "12px", opacity: 0.7 }}>
@@ -61,9 +57,7 @@ export function PromptInsightsTab({ data, loading, onLoad }: Props) {
         </div>
         {data.promptLengthScatterData.length > 0 && (
           <div>
-            <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600 }}>
-              Prompt Length vs Acceptance Rate
-            </h3>
+            <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 600 }}>Prompt Length vs Acceptance Rate</h3>
             <BubbleChart
               data={data.promptLengthScatterData}
               xLabel="Prompt Length (chars)"

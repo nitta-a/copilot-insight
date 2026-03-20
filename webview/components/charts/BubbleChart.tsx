@@ -1,5 +1,6 @@
-import { BubbleController, Chart, Legend, LinearScale, PointElement, Tooltip, type TooltipItem } from "chart.js";
 import { useEffect, useRef } from "react";
+import type { TooltipItem } from "chart.js";
+import { BubbleController, Chart, Legend, LinearScale, PointElement, Tooltip } from "chart.js";
 
 Chart.register(BubbleController, LinearScale, PointElement, Legend, Tooltip);
 
@@ -29,8 +30,7 @@ export function BubbleChart({ data, xLabel, yLabel }: Props) {
     if (data.length === 0) return;
 
     const blue = getComputedStyle(document.body).getPropertyValue("--vscode-charts-blue").trim() || "#0078d4";
-    const foreground =
-      getComputedStyle(document.body).getPropertyValue("--vscode-foreground").trim() || "#cccccc";
+    const foreground = getComputedStyle(document.body).getPropertyValue("--vscode-foreground").trim() || "#cccccc";
     const grid = "rgba(128,128,128,0.15)";
 
     chartRef.current = new Chart(canvas, {

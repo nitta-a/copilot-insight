@@ -48,13 +48,7 @@ export function HealthTab({ payload, hasMoreData, historicalPending, onLoadHisto
   );
 }
 
-function AnomalyBanner({
-  anomalies,
-  latestAnomaly,
-}: {
-  anomalies: TimelineEntry[];
-  latestAnomaly: TimelineEntry;
-}) {
+function AnomalyBanner({ anomalies, latestAnomaly }: { anomalies: TimelineEntry[]; latestAnomaly: TimelineEntry }) {
   const count = anomalies.length;
   const label = count === 1 ? "anomaly" : "anomalies";
   return (

@@ -97,9 +97,7 @@ function ThreadList({
 }) {
   if (flat.length === 0) {
     return (
-      <div className="db-empty-panel">
-        {isLoading ? "Loading threads…" : "No threads with activity were detected."}
-      </div>
+      <div className="db-empty-panel">{isLoading ? "Loading threads…" : "No threads with activity were detected."}</div>
     );
   }
 
@@ -129,13 +127,7 @@ function ThreadList({
   );
 }
 
-function ThreadDetail({
-  detail,
-  selectedThreadId,
-}: {
-  detail: SessionDetailPayload | null;
-  selectedThreadId: string;
-}) {
+function ThreadDetail({ detail, selectedThreadId }: { detail: SessionDetailPayload | null; selectedThreadId: string }) {
   if (!selectedThreadId) {
     return <div className="db-empty-panel">Select a thread to inspect its timeline.</div>;
   }
@@ -146,8 +138,7 @@ function ThreadDetail({
   const sortedThreads = [...detail.threads]
     .filter((t) => t.stepCount > 0)
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-  const selectedThread =
-    sortedThreads.find((t) => t.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
+  const selectedThread = sortedThreads.find((t) => t.threadId === selectedThreadId) ?? sortedThreads[0] ?? null;
 
   if (!selectedThread) {
     return <div className="db-empty-panel">No thread detail with activity is available.</div>;
@@ -171,9 +162,7 @@ function ThreadDetail({
           {selectedThread.longestPauseMs > 0 && (
             <span className="db-thread-chip">Longest wait {formatPause(selectedThread.longestPauseMs)}</span>
           )}
-          {selectedThread.hasAutonomousRun && (
-            <span className="db-thread-chip autonomous">🤖 Autonomous</span>
-          )}
+          {selectedThread.hasAutonomousRun && <span className="db-thread-chip autonomous">🤖 Autonomous</span>}
         </div>
       </div>
       <div className="db-agent-step-timeline">

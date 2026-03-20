@@ -22,9 +22,7 @@ export function SummaryCards({ summary }: Props) {
       : "no chat model data";
   const topAskModelStr = summary.topAskModel ?? "—";
   const topAskModelDetail =
-    summary.topAskModel && summary.topAskModelCount > 0
-      ? `${summary.topAskModelCount} requests`
-      : "no ask model data";
+    summary.topAskModel && summary.topAskModelCount > 0 ? `${summary.topAskModelCount} requests` : "no ask model data";
   const topPlanModelStr = summary.topPlanModel ?? "—";
   const topPlanModelDetail =
     summary.topPlanModel && summary.topPlanModelCount > 0

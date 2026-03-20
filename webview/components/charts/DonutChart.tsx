@@ -1,5 +1,6 @@
-import { ArcElement, Chart, DoughnutController, Legend, Tooltip, type TooltipItem } from "chart.js";
 import { useEffect, useRef } from "react";
+import type { TooltipItem } from "chart.js";
+import { ArcElement, Chart, DoughnutController, Legend, Tooltip } from "chart.js";
 import type { CountBreakdownEntry } from "../../../src/ui/dashboardMessages";
 
 Chart.register(ArcElement, DoughnutController, Legend, Tooltip);
@@ -36,8 +37,7 @@ export function DonutChart({ entries, title, canvasId }: Props) {
 
     if (entries.length === 0) return;
 
-    const foreground =
-      getComputedStyle(document.body).getPropertyValue("--vscode-foreground").trim() || "#cccccc";
+    const foreground = getComputedStyle(document.body).getPropertyValue("--vscode-foreground").trim() || "#cccccc";
     const labels = entries.map((e) => e.name);
     const data = entries.map((e) => e.count);
     const colors = entries.map((_, i) => DONUT_PALETTE[i % DONUT_PALETTE.length]);

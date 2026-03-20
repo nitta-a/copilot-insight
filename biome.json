@@ -1,14 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["src/**/*.ts", "test/**/*.ts", "webview/**/*.ts", "esbuild.js", "*.json"]
+    "includes": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}", "webview/**/*.{ts,tsx}", "esbuild.js", "*.json"]
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": false,
       "style": {
-        "useBlockStatements": "warn",
+        "useBlockStatements": "off",
         "useNamingConvention": "warn",
         "useThrowOnlyError": "warn"
       },
@@ -42,7 +42,7 @@
         "organizeImports": {
           "level": "on",
           "options": {
-            "groups": ["vscode", "BLANK", ":NODE:", "BLANK", ":THIRD_PARTY:", "BLANK", ":PROJECT:"]
+            "groups": ["vscode", "BLANK", ":NODE:", "BLANK", "react", "BLANK", ":THIRD_PARTY:", "BLANK", ":PROJECT:"]
           }
         }
       }

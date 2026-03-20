@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import type { TooltipItem } from "chart.js";
 import {
   BarController,
   BarElement,
@@ -9,9 +11,7 @@ import {
   LineElement,
   PointElement,
   Tooltip,
-  type TooltipItem,
 } from "chart.js";
-import { useEffect, useRef } from "react";
 import type { ContextBucket, TurnBucket } from "../../src/ui/dashboardMessages";
 
 Chart.register(
@@ -147,8 +147,8 @@ function TurnChurnChart({ turnStats }: { turnStats: TurnBucket[] }) {
       <hr className="db-section-sep" />
       <h2>🔄 Chat Session Turn Count &amp; Resolution Rate</h2>
       <p style={{ fontSize: "12px", opacity: 0.7, margin: "0 0 12px" }}>
-        Bars show session volume per turn-count bucket. The line shows the resolution rate (% of sessions where code
-        was copied or applied).
+        Bars show session volume per turn-count bucket. The line shows the resolution rate (% of sessions where code was
+        copied or applied).
       </p>
       <div className="chart-container" style={{ minHeight: "300px", maxHeight: "320px" }}>
         <canvas ref={canvasRef} />

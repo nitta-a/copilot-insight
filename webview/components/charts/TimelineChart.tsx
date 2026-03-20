@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import type { TooltipItem } from "chart.js";
 import {
   BarController,
   BarElement,
@@ -10,9 +12,7 @@ import {
   PointElement,
   Title,
   Tooltip,
-  type TooltipItem,
 } from "chart.js";
-import { useEffect, useRef } from "react";
 import type { TimelineEntry } from "../../../src/ui/dashboardMessages";
 import { fmtDate } from "../../dashboardUtils";
 
