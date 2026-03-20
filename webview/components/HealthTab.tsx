@@ -1,6 +1,5 @@
-import { useCallback, useRef } from "react";
-import type { Chart } from "chart.js";
 import type { DashboardPayload, TimelineEntry, WebviewToHostMessage } from "../../src/ui/dashboardMessages";
+import { useChartExport } from "../hooks/useChartExport";
 import { TimelineChart } from "./charts/TimelineChart";
 
 interface Props {
@@ -13,21 +12,10 @@ interface Props {
 
 export function HealthTab({ payload, hasMoreData, historicalPending, onLoadHistorical, postMessage }: Props) {
   const { timeline } = payload;
-  const chartRef = useRef<Chart | null>(null);
+  const { handleChartReady, handleExportPng } = useChartExport(postMessage);
 
   const anomalies = timeline.filter((e) => e.isAnomaly);
   const latestAnomaly = anomalies.at(-1);
-
-  const handleChartReady = useCallback((chart: Chart) => {
-    chartRef.current = chart;
-  }, []);
-
-  function handleExportPng() {
-    const canvas = chartRef.current?.canvas;
-    if (!canvas) return;
-    const imageData = canvas.toDataURL("image/png");
-    postMessage({ type: "exportPng", payload: { imageData, chartId: "timeline" } });
-  }
 
   return (
     <div id="db-tab-health" className="db-tab-pane active" role="tabpanel">

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { AgentStep, SessionDetailPayload, SessionThreadSummary } from "../../src/types";
 import type { SessionsData } from "../../src/ui/dashboardMessages";
 import {
@@ -10,6 +9,7 @@ import {
   formatPhaseLabel,
   formatStepDetail,
 } from "../dashboardUtils";
+import { useSessionSelection } from "../hooks/useSessionSelection";
 
 interface Props {
   data: SessionsData | null;
@@ -20,20 +20,11 @@ interface Props {
 }
 
 export function SessionsTab({ data, loading, allSessionDetails, onLoad, onRequestSessionDetail }: Props) {
-  const [selectedThreadId, setSelectedThreadId] = useState("");
-  const [selectedSessionId, setSelectedSessionId] = useState("");
-
-  // Request session details one at a time as they become available.
-  // Using useEffect prevents duplicate requests across renders.
-  useEffect(() => {
-    if (!data) return;
-    for (const session of data.sessionSummaries) {
-      if (!allSessionDetails.has(session.sessionId)) {
-        onRequestSessionDetail(session.sessionId);
-        break; // Load one at a time; next fires when this one resolves
-      }
-    }
-  }, [data, allSessionDetails, onRequestSessionDetail]);
+  const { selectedThreadId, selectedSessionId, selectThread, selectedDetail } = useSessionSelection({
+    data,
+    allSessionDetails,
+    onRequestSessionDetail,
+  });
 
   if (!data) {
     return (
@@ -65,13 +56,6 @@ export function SessionsTab({ data, loading, allSessionDetails, onLoad, onReques
   flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
 
   const isLoading = data.sessionSummaries.some((s) => !allSessionDetails.has(s.sessionId));
-
-  function selectThread(threadId: string, sessionId: string) {
-    setSelectedThreadId(threadId);
-    setSelectedSessionId(sessionId);
-  }
-
-  const selectedDetail = selectedSessionId ? (allSessionDetails.get(selectedSessionId) ?? null) : null;
 
   return (
     <div id="db-tab-sessions" className="db-tab-pane active" role="tabpanel">
