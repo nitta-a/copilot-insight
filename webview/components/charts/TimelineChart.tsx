@@ -206,7 +206,6 @@ export function TimelineChart({ timeline, onChartReady }: Props) {
 
     return () => {
       chartRef.current?.destroy();
-      chartRef.current = null;
     };
   }, [timeline, onChartReady]);
 

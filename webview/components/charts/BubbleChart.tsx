@@ -78,7 +78,6 @@ export function BubbleChart({ data, xLabel, yLabel }: Props) {
 
     return () => {
       chartRef.current?.destroy();
-      chartRef.current = null;
     };
   }, [data, xLabel, yLabel]);
 

@@ -139,7 +139,6 @@ function TurnChurnChart({ turnStats }: { turnStats: TurnBucket[] }) {
 
     return () => {
       chartRef.current?.destroy();
-      chartRef.current = null;
     };
   }, [turnStats]);
 
@@ -250,7 +249,6 @@ function ContextLeverageChart({ contextStats }: { contextStats: ContextBucket[] 
 
     return () => {
       chartRef.current?.destroy();
-      chartRef.current = null;
     };
   }, [contextStats]);
 

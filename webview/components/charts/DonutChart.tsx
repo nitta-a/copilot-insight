@@ -93,7 +93,6 @@ export function DonutChart({ entries, title, canvasId }: Props) {
 
     return () => {
       chartRef.current?.destroy();
-      chartRef.current = null;
     };
   }, [entries, title, canvasId]);
 
