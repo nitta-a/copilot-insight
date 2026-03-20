@@ -25,7 +25,6 @@ import {
   formatSignedPoints,
   formatStepDetail,
   getDeltaClass,
-  getInsightClass,
   trunc,
 } from "./dashboardUtils";
 
@@ -58,44 +57,14 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
       : "no plan or agent data";
 
   return `
-    <div class="stat-card db-highlight">
-      <div class="stat-value db-accent">${trueRateStr}</div>
-      <div class="stat-label">True Acceptance Rate</div>
-      <div class="stat-detail">vs ${summary.acceptanceRate.toFixed(1)}% raw</div>
-    </div>
-    <div class="stat-card db-highlight" title="${escHtml(sourceDetail)}">
-      <div class="stat-value db-accent">${totalHours} hours</div>
-      <div class="stat-label">Estimated Time Saved</div>
-      <div class="stat-detail">${roiDetail}</div>
-      <div class="stat-detail" style="opacity:0.6;font-size:0.85em">${escHtml(sourceDetail)}</div>
-    </div>
-    <div class="stat-card db-highlight">
-      <div class="stat-value db-model" title="${escHtml(topChatModelStr)}">${escHtml(trunc(topChatModelStr, 18))}</div>
-      <div class="stat-label">Top Chat Model</div>
-      <div class="stat-detail">${escHtml(topChatModelDetail)}</div>
-    </div>
-    <div class="stat-card db-highlight">
-      <div class="stat-value db-model" title="${escHtml(topAskModelStr)}">${escHtml(trunc(topAskModelStr, 18))}</div>
-      <div class="stat-label">Top Ask Model</div>
-      <div class="stat-detail">${escHtml(topAskModelDetail)}</div>
-    </div>
-    <div class="stat-card db-highlight">
-      <div class="stat-value db-model" title="${escHtml(topPlanModelStr)}">${escHtml(trunc(topPlanModelStr, 18))}</div>
-      <div class="stat-label">Top Plan Model</div>
-      <div class="stat-detail">${escHtml(topPlanModelDetail)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${summary.totalShown}</div>
-      <div class="stat-label">Suggestions Shown</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${summary.totalAccepted}</div>
-      <div class="stat-label">Suggestions Accepted</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${summary.acceptanceRate.toFixed(1)}%</div>
-      <div class="stat-label">Raw Acceptance Rate</div>
-    </div>`;
+    <copilot-stat-card value="${escHtml(trueRateStr)}" label="True Acceptance Rate" highlight="blue" subtext="vs ${escHtml(summary.acceptanceRate.toFixed(1))}% raw"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(totalHours)} hours" label="Estimated Time Saved" highlight="blue" subtext="${escHtml(roiDetail)}" title="${escHtml(sourceDetail)}"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(trunc(topChatModelStr, 18))}" label="Top Chat Model" highlight="blue" subtext="${escHtml(topChatModelDetail)}" title="${escHtml(topChatModelStr)}"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(trunc(topAskModelStr, 18))}" label="Top Ask Model" highlight="blue" subtext="${escHtml(topAskModelDetail)}" title="${escHtml(topAskModelStr)}"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(trunc(topPlanModelStr, 18))}" label="Top Plan Model" highlight="blue" subtext="${escHtml(topPlanModelDetail)}" title="${escHtml(topPlanModelStr)}"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(String(summary.totalShown))}" label="Suggestions Shown"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(String(summary.totalAccepted))}" label="Suggestions Accepted"></copilot-stat-card>
+    <copilot-stat-card value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,8 +77,8 @@ export function buildInsightsHtml(insights: string[]): string {
   }
   const cards = insights
     .map((text) => {
-      const cls = getInsightClass(text);
-      return `<div class="insight-card${cls}"><span class="insight-icon"></span>${escHtml(text)}</div>`;
+      const variant = /📈/.test(text) ? "positive" : /📉/.test(text) ? "negative" : "neutral";
+      return `<copilot-insight-card variant="${variant}">${escHtml(text)}</copilot-insight-card>`;
     })
     .join("\n");
   return `<h2>💡 Insights</h2>\n<div class="insights-section">${cards}</div>`;

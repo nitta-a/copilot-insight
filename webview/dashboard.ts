@@ -50,6 +50,8 @@ import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterP
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
+import "./components/CopilotInsightCard";
+import "./components/CopilotStatCard";
 import "./components/DashboardTabs";
 import type { CopilotTabPanel, TabChangeDetail } from "./components/DashboardTabs";
 import { fmtDate } from "./dashboardUtils";
