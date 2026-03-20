@@ -50,6 +50,8 @@ import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterP
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
+import "./components/DashboardTabs";
+import type { CopilotTabPanel, TabChangeDetail } from "./components/DashboardTabs";
 import { fmtDate } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
@@ -951,24 +953,16 @@ function setupExportButtons(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Tab switching
+// Tab switching — handled by the <copilot-tab-panel> Web Component.
+// This handler runs after the component dispatches a `tab-change` event so
+// that Chart.js charts are resized and VS Code state is persisted.
 // ---------------------------------------------------------------------------
 
 const VALID_TABS = new Set(["overview", "health", "flow", "prompt-insights", "sessions"]);
 
-function switchTab(tabId: string): void {
+function onTabChange(tabId: string): void {
   currentTab = tabId;
   vscode.setState({ currentTab: tabId });
-
-  document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
-    const isActive = btn.dataset.tab === tabId;
-    btn.classList.toggle("active", isActive);
-    btn.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-
-  document.querySelectorAll<HTMLElement>(".db-tab-pane").forEach((pane) => {
-    pane.classList.toggle("active", pane.id === `db-tab-${tabId}`);
-  });
 
   // Trigger resize so Chart.js renders correctly after becoming visible.
   if (tabId === "health" && timelineChart) {
@@ -983,14 +977,12 @@ function switchTab(tabId: string): void {
   }
 }
 
-function setupTabs(): void {
-  document.querySelectorAll<HTMLButtonElement>(".db-tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tabId = btn.dataset.tab ?? "";
-      if (VALID_TABS.has(tabId)) {
-        switchTab(tabId);
-      }
-    });
+function setupTabChangeListener(): void {
+  document.addEventListener("tab-change", (e: Event) => {
+    const { tabId } = (e as CustomEvent<TabChangeDetail>).detail;
+    if (VALID_TABS.has(tabId)) {
+      onTabChange(tabId);
+    }
   });
 }
 
@@ -1316,7 +1308,7 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
 
 document.addEventListener("DOMContentLoaded", () => {
   setupExportButtons();
-  setupTabs();
+  setupTabChangeListener();
   setupLazyLoadButtons();
 
   if (window.__dashboardData) {
@@ -1324,7 +1316,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Restore the last active tab after rendering.
     const saved = vscode.getState();
     if (saved?.currentTab && VALID_TABS.has(saved.currentTab)) {
-      switchTab(saved.currentTab);
+      const tabPanel = document.querySelector<CopilotTabPanel>("copilot-tab-panel");
+      tabPanel?.switchTab(saved.currentTab);
     }
   }
 });

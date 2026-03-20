@@ -273,28 +273,7 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
-    /* ── Tab bar ──────────────────────────────────────────────────────── */
-    .db-tabs { display: flex; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-editor-inactiveSelectionBackground)); margin-bottom: 16px; }
-    .db-tab-btn {
-      background: transparent;
-      color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
-      border: none;
-      border-bottom: 2px solid transparent;
-      padding: 8px 16px;
-      cursor: pointer;
-      font-size: 0.88em;
-      font-family: var(--vscode-font-family);
-      opacity: 0.75;
-    }
-    .db-tab-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
-    .db-tab-btn.active {
-      color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
-      border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-charts-blue));
-      opacity: 1;
-      font-weight: 600;
-    }
-    .db-tab-pane { display: none; }
-    .db-tab-pane.active { display: block; }
+    /* ── Tab bar — styles now owned by the <copilot-tab-panel> Shadow DOM ── */
     .db-freshness-card {
       background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 88%, transparent), transparent);
       border: 1px solid var(--vscode-editor-inactiveSelectionBackground);
@@ -450,90 +429,85 @@ export function getHtmlContent(
   ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
-    <div class="db-tabs" role="tablist">
-      <button class="db-tab-btn active" data-tab="overview" role="tab" aria-selected="true">📊 Overview (ROI)</button>
-      <button class="db-tab-btn" data-tab="health" role="tab" aria-selected="false">🔍 Health (Diagnostics)</button>
-      <button class="db-tab-btn" data-tab="flow" role="tab" aria-selected="false">🌊 Flow (Velocity)</button>
-      <button class="db-tab-btn" data-tab="prompt-insights" role="tab" aria-selected="false">💬 Prompt Insights</button>
-      <button class="db-tab-btn" data-tab="sessions" role="tab" aria-selected="false">📂 Sessions</button>
-    </div>
-    <div id="db-tab-overview" class="db-tab-pane active" role="tabpanel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span></span>
-        <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
-      </div>
-      ${coreKpiPanel}
-      <div id="db-summary-cards" class="stats-grid"></div>
-      <div id="db-freshness-container"></div>
-      <div id="db-refresh-analysis-container"></div>
-      <div id="db-insights-container"></div>
-      <div id="db-weekly-trend-container"></div>
-      <div id="db-agent-intelligence-container"></div>
-      <div id="db-autonomy-evolution-container"></div>
-    </div>
-
-    <div id="db-tab-health" class="db-tab-pane" role="tabpanel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
-        <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
-      </div>
-      <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
-      <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
-        <button id="db-btn-load-historical" class="db-load-btn">🕐 Load Historical Data</button>
-        <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
-      </div>
-      ${dateSection}
-      ${modelSection}
-      ${chatModelSection}
-      ${intentSection}
-      ${latencyDistSection}
-      ${errorSection}
-      ${sessionSection}
-    </div>
-
-    <div id="db-tab-flow" class="db-tab-pane" role="tabpanel">
-      <div id="model-autonomy-leverage-map"></div>
-      ${hourSection}
-      ${chatHourSection}
-      ${contextInsightsSection}
-      ${contextEffectivenessSection}
-    </div>
-
-    <div id="db-tab-prompt-insights" class="db-tab-pane" role="tabpanel">
-      <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
-        <p>Click to load Prompt Insights data.</p>
-        <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
-      </div>
-      <div id="db-prompt-insights-content" style="display:none">
-        <div id="db-tag-cloud-container"></div>
-        <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
-          <div id="db-intent-command-donut-container"></div>
-          <div id="db-prompt-length-scatter-container"></div>
+    <copilot-tab-panel active-tab="overview">
+      <div id="db-tab-overview" data-tab-pane="overview" role="tabpanel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span></span>
+          <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
         </div>
-        <div id="db-turn-churn-container"></div>
-        <div id="db-context-leverage-container"></div>
+        ${coreKpiPanel}
+        <div id="db-summary-cards" class="stats-grid"></div>
+        <div id="db-freshness-container"></div>
+        <div id="db-refresh-analysis-container"></div>
+        <div id="db-insights-container"></div>
+        <div id="db-weekly-trend-container"></div>
+        <div id="db-agent-intelligence-container"></div>
+        <div id="db-autonomy-evolution-container"></div>
       </div>
-    </div>
 
-    <div id="db-tab-sessions" class="db-tab-pane" role="tabpanel">
-      <div id="db-sessions-lazy" class="db-lazy-placeholder">
-        <p>Click to load Sessions data.</p>
-        <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
+      <div id="db-tab-health" data-tab-pane="health" role="tabpanel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
+          <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
+        </div>
+        <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+        <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
+          <button id="db-btn-load-historical" class="db-load-btn">🕐 Load Historical Data</button>
+          <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
+        </div>
+        ${dateSection}
+        ${modelSection}
+        ${chatModelSection}
+        ${intentSection}
+        ${latencyDistSection}
+        ${errorSection}
+        ${sessionSection}
       </div>
-      <div id="db-sessions-content" style="display:none">
-        <div class="db-session-layout">
-          <section class="db-session-list">
-            <div id="db-session-list" class="db-session-list-body"></div>
-          </section>
-          <section class="db-session-detail">
-            <div class="db-session-detail-header">
-              <h2 style="margin:0">Threads</h2>
-            </div>
-            <div id="db-session-detail" class="db-session-detail-body"></div>
-          </section>
+
+      <div id="db-tab-flow" data-tab-pane="flow" role="tabpanel" style="display:none">
+        <div id="model-autonomy-leverage-map"></div>
+        ${hourSection}
+        ${chatHourSection}
+        ${contextInsightsSection}
+        ${contextEffectivenessSection}
+      </div>
+
+      <div id="db-tab-prompt-insights" data-tab-pane="prompt-insights" role="tabpanel" style="display:none">
+        <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
+          <p>Click to load Prompt Insights data.</p>
+          <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
+        </div>
+        <div id="db-prompt-insights-content" style="display:none">
+          <div id="db-tag-cloud-container"></div>
+          <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
+            <div id="db-intent-command-donut-container"></div>
+            <div id="db-prompt-length-scatter-container"></div>
+          </div>
+          <div id="db-turn-churn-container"></div>
+          <div id="db-context-leverage-container"></div>
         </div>
       </div>
-    </div>
+
+      <div id="db-tab-sessions" data-tab-pane="sessions" role="tabpanel" style="display:none">
+        <div id="db-sessions-lazy" class="db-lazy-placeholder">
+          <p>Click to load Sessions data.</p>
+          <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
+        </div>
+        <div id="db-sessions-content" style="display:none">
+          <div class="db-session-layout">
+            <section class="db-session-list">
+              <div id="db-session-list" class="db-session-list-body"></div>
+            </section>
+            <section class="db-session-detail">
+              <div class="db-session-detail-header">
+                <h2 style="margin:0">Threads</h2>
+              </div>
+              <div id="db-session-detail" class="db-session-detail-body"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </copilot-tab-panel>
   </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
