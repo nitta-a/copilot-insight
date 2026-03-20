@@ -95,17 +95,14 @@ export function useDashboard(): DashboardHook {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  function switchTab(tabId: string) {
+  const switchTab = useCallback((tabId: string) => {
     setCurrentTab(tabId);
     vscode.setState({ currentTab: tabId });
-  }
+  }, []);
 
-  const postMessage = useCallback(
-    (msg: WebviewToHostMessage) => {
-      vscode.postMessage(msg);
-    },
-    [vscode],
-  );
+  const postMessage = useCallback((msg: WebviewToHostMessage) => {
+    vscode.postMessage(msg);
+  }, []);
 
   function handleLoadPromptInsights() {
     if (promptInsightsPending || promptInsightsData) return;

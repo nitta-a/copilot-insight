@@ -33,29 +33,34 @@ export function App() {
     <>
       <h1>🤖 GitHub Copilot Usage Dashboard</h1>
       <TabBar currentTab={currentTab} onTabChange={switchTab} />
-      {currentTab === "overview" && <OverviewTab payload={payload} postMessage={postMessage} />}
-      {currentTab === "health" && (
-        <HealthTab
-          payload={payload}
-          hasMoreData={hasMoreData}
-          historicalPending={historicalPending}
-          onLoadHistorical={handleLoadHistorical}
-          postMessage={postMessage}
-        />
-      )}
-      {currentTab === "flow" && <FlowTab payload={payload} />}
-      {currentTab === "prompt-insights" && (
-        <PromptInsightsTab data={promptInsightsData} loading={promptInsightsPending} onLoad={handleLoadPromptInsights} />
-      )}
-      {currentTab === "sessions" && (
-        <SessionsTab
-          data={sessionsData}
-          loading={sessionsPending}
-          allSessionDetails={allSessionDetails}
-          onLoad={handleLoadSessions}
-          onRequestSessionDetail={handleRequestSessionDetail}
-        />
-      )}
+      {/* key={currentTab} forces React to fully unmount/remount the content subtree
+          on every tab change, ensuring Chart.js canvas elements start fresh and
+          are not left in a stale painting state by VS Code WebView's repaint cycle. */}
+      <div key={currentTab}>
+        {currentTab === "overview" && <OverviewTab payload={payload} postMessage={postMessage} />}
+        {currentTab === "health" && (
+          <HealthTab
+            payload={payload}
+            hasMoreData={hasMoreData}
+            historicalPending={historicalPending}
+            onLoadHistorical={handleLoadHistorical}
+            postMessage={postMessage}
+          />
+        )}
+        {currentTab === "flow" && <FlowTab payload={payload} />}
+        {currentTab === "prompt-insights" && (
+          <PromptInsightsTab data={promptInsightsData} loading={promptInsightsPending} onLoad={handleLoadPromptInsights} />
+        )}
+        {currentTab === "sessions" && (
+          <SessionsTab
+            data={sessionsData}
+            loading={sessionsPending}
+            allSessionDetails={allSessionDetails}
+            onLoad={handleLoadSessions}
+            onRequestSessionDetail={handleRequestSessionDetail}
+          />
+        )}
+      </div>
     </>
   );
 }
