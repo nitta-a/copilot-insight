@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentStep, SessionDetailPayload, SessionThreadSummary } from "../../src/types";
 import type { SessionsData } from "../../src/ui/dashboardMessages";
 import {
@@ -6,7 +6,6 @@ import {
   actorIcon,
   actorLabel,
   agentStepBadgeClass,
-  formatDuration,
   formatPause,
   formatPhaseLabel,
   formatStepDetail,
@@ -23,6 +22,18 @@ interface Props {
 export function SessionsTab({ data, loading, allSessionDetails, onLoad, onRequestSessionDetail }: Props) {
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
+
+  // Request session details one at a time as they become available.
+  // Using useEffect prevents duplicate requests across renders.
+  useEffect(() => {
+    if (!data) return;
+    for (const session of data.sessionSummaries) {
+      if (!allSessionDetails.has(session.sessionId)) {
+        onRequestSessionDetail(session.sessionId);
+        break; // Load one at a time; next fires when this one resolves
+      }
+    }
+  }, [data, allSessionDetails, onRequestSessionDetail]);
 
   if (!data) {
     return (
@@ -44,14 +55,6 @@ export function SessionsTab({ data, loading, allSessionDetails, onLoad, onReques
     );
   }
 
-  // Request details for sessions not yet loaded
-  for (const session of data.sessionSummaries) {
-    if (!allSessionDetails.has(session.sessionId)) {
-      onRequestSessionDetail(session.sessionId);
-      break; // Load one at a time
-    }
-  }
-
   // Flatten all threads from loaded session details
   const flat: Array<{ thread: SessionThreadSummary; sessionId: string }> = [];
   for (const [sessionId, detail] of allSessionDetails) {
@@ -68,7 +71,7 @@ export function SessionsTab({ data, loading, allSessionDetails, onLoad, onReques
     setSelectedSessionId(sessionId);
   }
 
-  const selectedDetail = selectedSessionId ? allSessionDetails.get(selectedSessionId) ?? null : null;
+  const selectedDetail = selectedSessionId ? (allSessionDetails.get(selectedSessionId) ?? null) : null;
 
   return (
     <div id="db-tab-sessions" className="db-tab-pane active" role="tabpanel">
@@ -87,10 +90,7 @@ export function SessionsTab({ data, loading, allSessionDetails, onLoad, onReques
             <h2 style={{ margin: 0 }}>Threads</h2>
           </div>
           <div className="db-session-detail-body">
-            <ThreadDetail
-              detail={selectedDetail}
-              selectedThreadId={selectedThreadId}
-            />
+            <ThreadDetail detail={selectedDetail} selectedThreadId={selectedThreadId} />
           </div>
         </section>
       </div>
@@ -133,9 +133,7 @@ function ThreadList({
               {thread.hasAutonomousRun ? "🤖 " : ""}
               {thread.title}
             </div>
-            <div className="db-thread-row-subtext">
-              {new Date(thread.startedAt).toLocaleString()}
-            </div>
+            <div className="db-thread-row-subtext">{new Date(thread.startedAt).toLocaleString()}</div>
             <div className="db-thread-row-meta">
               <span>{thread.stepCount} steps</span>
               <span>{thread.estimatedMinutesSaved.toFixed(1)} min saved</span>
@@ -196,7 +194,10 @@ function ThreadDetail({
       </div>
       <div className="db-agent-step-timeline">
         {steps.length > 0 ? (
-          steps.map((step, i) => <StepRow key={`${step.timestamp}-${i}`} step={step} longestPause={longestPause} />)
+          steps.map((step, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable ordered step list
+            <StepRow key={`${step.timestamp}-${i}`} step={step} longestPause={longestPause} />
+          ))
         ) : (
           <div className="db-empty-panel">No timeline signals were recorded for this thread.</div>
         )}
@@ -224,9 +225,7 @@ function StepRow({ step, longestPause }: { step: AgentStep; longestPause: number
           </span>
           <span className={`db-agent-step-badge ${agentStepBadgeClass(step.label)}`}>{step.label}</span>
           {step.durationMs !== undefined ? (
-            <span
-              className={`db-agent-step-chip db-agent-step-chip-duration${isLongest ? " longest" : ""}`}
-            >
+            <span className={`db-agent-step-chip db-agent-step-chip-duration${isLongest ? " longest" : ""}`}>
               ⏱ {formatPause(step.durationMs)}
             </span>
           ) : (
