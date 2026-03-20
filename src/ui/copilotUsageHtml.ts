@@ -74,29 +74,6 @@ export function getHtmlContent(
       margin-bottom: 20px;
     }
     @media (max-width: 700px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); } }
-    .kpi-card {
-      background: var(--vscode-editor-inactiveSelectionBackground);
-      border-radius: 8px;
-      padding: 14px 12px;
-      text-align: center;
-      border: 1px solid transparent;
-    }
-    .kpi-value {
-      font-size: 1.6em;
-      font-weight: 700;
-      line-height: 1.2;
-      margin-bottom: 4px;
-    }
-    .kpi-label { font-size: 0.78em; opacity: 0.75; }
-    .kpi-card .sub-text { display: block; font-size: 0.7em; opacity: 0.6; margin-top: 2px; }
-    .kpi-roi-blue  { border-color: var(--vscode-charts-blue);   }
-    .kpi-roi-blue  .kpi-value { color: var(--vscode-charts-blue); }
-    .kpi-roi-green { border-color: var(--vscode-charts-green);  }
-    .kpi-roi-green .kpi-value { color: var(--vscode-charts-green); }
-    .kpi-roi-gold  { border-color: var(--vscode-charts-orange); }
-    .kpi-roi-gold  .kpi-value { color: var(--vscode-charts-orange); }
-    .kpi-latency-warn { border-color: var(--vscode-charts-red, #f14c4c); }
-    .kpi-latency-warn .kpi-value { color: var(--vscode-charts-red, #f14c4c); }
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -187,17 +164,6 @@ export function getHtmlContent(
     .trend-neutral { opacity: 0.6; }
     @media (max-width: 600px) { .trend-container { grid-template-columns: 1fr; } }
     .insights-section { margin-bottom: 24px; }
-    .insight-card {
-      background: var(--vscode-editor-inactiveSelectionBackground);
-      border-left: 3px solid var(--vscode-charts-blue);
-      border-radius: 4px;
-      padding: 10px 14px;
-      margin: 6px 0;
-      font-size: 0.9em;
-    }
-    .insight-card.positive { border-left-color: var(--vscode-charts-green); }
-    .insight-card.negative { border-left-color: var(--vscode-charts-red, #f14c4c); }
-    .insight-icon { margin-right: 6px; }
     .tag-cloud {
       display: flex;
       flex-wrap: wrap;
@@ -521,17 +487,18 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   const totalMinutesSaved = editorMinutesSaved + cliMinutesSaved;
   const tier = getRoiTier(totalMinutesSaved);
   const roiBadge = getRoiBadge(tier);
-  const roiColorClass = tier ? `kpi-roi-${tier}` : "";
+  // Map ROI tier names to <copilot-stat-card> highlight values ('gold' → 'orange')
+  const roiHighlight = tier === "gold" ? "orange" : (tier ?? "");
 
   const timeSavedDisplay = escapeHtml(`${roiBadge}${formatMinutesSaved(totalMinutesSaved)}`);
   const editorHours = dashboardPayload
     ? (dashboardPayload.summary.totalMinutesSaved.editor / 60).toFixed(1)
     : (editorMinutesSaved / 60).toFixed(1);
   const cliHours = dashboardPayload ? (dashboardPayload.summary.totalMinutesSaved.cli / 60).toFixed(1) : "0.0";
-  const roiTooltip = ` title="${escapeHtml(`Editor: ${editorHours}h / CLI: ${cliHours}h`)}"`;
-  const roiSubText = `<span class="sub-text">Editor: ${escapeHtml(editorHours)}h / CLI: ${escapeHtml(cliHours)}h</span>`;
+  const roiSubText = escapeHtml(`Editor: ${editorHours}h / CLI: ${cliHours}h`);
   const latencyDisplay = stats.avgLatencyMs > 0 ? escapeHtml(`${stats.avgLatencyMs.toFixed(0)}ms`) : "—";
-  const latencyClass = stats.avgLatencyMs > LATENCY_WARN_MS ? "kpi-latency-warn" : "";
+  const latencyHighlight = stats.avgLatencyMs > LATENCY_WARN_MS ? "warn" : "";
+  const latencyLabel = escapeHtml(`Avg Latency${stats.avgLatencyMs > LATENCY_WARN_MS ? " ⚠️" : ""}`);
   const latencyTitle =
     stats.avgLatencyMs > LATENCY_WARN_MS
       ? ` title="${escapeHtml(`Latency is high (>${LATENCY_WARN_MS}ms). Copilot responses may feel slow.`)}"`
@@ -540,27 +507,11 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   const totalSessions = stats.bySession.size;
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
-  <div class="kpi-card">
-    <div class="kpi-value">${escapeHtml(String(stats.totalAccepted))}</div>
-    <div class="kpi-label">Accepted Completions</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-value">${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}</div>
-    <div class="kpi-label">Acceptance Rate</div>
-  </div>
-  <div class="kpi-card ${roiColorClass}"${roiTooltip}>
-    <div class="kpi-value">${timeSavedDisplay}</div>
-    <div class="kpi-label">Time Saved (ROI)</div>
-    ${roiSubText}
-  </div>
-  <div class="kpi-card ${latencyClass}"${latencyTitle}>
-    <div class="kpi-value">${latencyDisplay}</div>
-    <div class="kpi-label">Avg Latency${stats.avgLatencyMs > LATENCY_WARN_MS ? " ⚠️" : ""}</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-value">${escapeHtml(String(totalSessions))}</div>
-    <div class="kpi-label">Active Sessions</div>
-  </div>
+  <copilot-stat-card value="${escapeHtml(String(stats.totalAccepted))}" label="Accepted Completions"></copilot-stat-card>
+  <copilot-stat-card value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" label="Acceptance Rate"></copilot-stat-card>
+  <copilot-stat-card value="${timeSavedDisplay}" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
+  <copilot-stat-card value="${latencyDisplay}" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
+  <copilot-stat-card value="${escapeHtml(String(totalSessions))}" label="Active Sessions"></copilot-stat-card>
 </div>`;
 }
 
@@ -846,11 +797,11 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     const diff = trend.rateDiff;
     if (diff > 0) {
       insights.push(
-        `<div class="insight-card"><span class="insight-icon">📈</span>This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+        `<copilot-insight-card icon="📈" variant="positive">This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
       );
     } else if (diff < 0) {
       insights.push(
-        `<div class="insight-card"><span class="insight-icon">📉</span>This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</div>`,
+        `<copilot-insight-card icon="📉" variant="negative">This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
       );
     }
   }
@@ -859,7 +810,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
     insights.push(
-      `<div class="insight-card"><span class="insight-icon">⏰</span>Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</div>`,
+      `<copilot-insight-card icon="⏰">Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</copilot-insight-card>`,
     );
   }
 
@@ -867,14 +818,14 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.totalChat > 0 && stats.totalShown > 0) {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(
-      `<div class="insight-card"><span class="insight-icon">💬</span>Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</div>`,
+      `<copilot-insight-card icon="💬">Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</copilot-insight-card>`,
     );
   }
 
   // 4. Autonomous action count
   if (stats.subagentRequests > 0) {
     insights.push(
-      `<div class="insight-card"><span class="insight-icon">🤖</span>Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</div>`,
+      `<copilot-insight-card icon="🤖">Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</copilot-insight-card>`,
     );
   }
 
@@ -882,7 +833,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.subagentLoopsStarted > 0) {
     const rate = stats.completionRate.toFixed(1);
     insights.push(
-      `<div class="insight-card"><span class="insight-icon">✅</span>Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</div>`,
+      `<copilot-insight-card icon="✅">Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</copilot-insight-card>`,
     );
   }
 
