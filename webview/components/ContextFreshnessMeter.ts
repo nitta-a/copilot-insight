@@ -112,8 +112,7 @@ export class ContextFreshnessMeter extends LitElement {
     const latestRefresh = this.refreshAnalysis.at(-1) ?? null;
     const score = Math.max(0, Math.min(100, freshness.score));
 
-    const statusLabel =
-      freshness.status === "fresh" ? "Fresh" : freshness.status === "aging" ? "Aging" : "Exhausted";
+    const statusLabel = freshness.status === "fresh" ? "Fresh" : freshness.status === "aging" ? "Aging" : "Exhausted";
     const statusDetail =
       freshness.status === "fresh"
         ? "AI は絶好調"
