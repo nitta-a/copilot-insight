@@ -395,85 +395,101 @@ export function getHtmlContent(
   ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
-    <copilot-tab-panel active-tab="overview">
-      <div id="db-tab-overview" data-tab-pane="overview" role="tabpanel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span></span>
-          <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
-        </div>
-        ${coreKpiPanel}
-        <div id="db-summary-cards" class="stats-grid"></div>
-        <div id="db-freshness-container"></div>
-        <div id="db-refresh-analysis-container"></div>
-        <div id="db-insights-container"></div>
-        <div id="db-weekly-trend-container"></div>
-        <div id="db-agent-intelligence-container"></div>
-        <div id="db-autonomy-evolution-container"></div>
-      </div>
+    <vscode-panels id="main-panels" activeid="overview-tab">
+      <vscode-panel-tab id="overview-tab">📊 Overview (ROI)</vscode-panel-tab>
+      <vscode-panel-tab id="health-tab">🔍 Health (Diagnostics)</vscode-panel-tab>
+      <vscode-panel-tab id="flow-tab">🌊 Flow (Velocity)</vscode-panel-tab>
+      <vscode-panel-tab id="prompt-insights-tab">💬 Prompt Insights</vscode-panel-tab>
+      <vscode-panel-tab id="sessions-tab">📂 Sessions</vscode-panel-tab>
 
-      <div id="db-tab-health" data-tab-pane="health" role="tabpanel" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
-          <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
-        </div>
-        <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
-        <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
-          <button id="db-btn-load-historical" class="db-load-btn">🕐 Load Historical Data</button>
-          <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
-        </div>
-        ${dateSection}
-        ${modelSection}
-        ${chatModelSection}
-        ${intentSection}
-        ${latencyDistSection}
-        ${errorSection}
-        ${sessionSection}
-      </div>
-
-      <div id="db-tab-flow" data-tab-pane="flow" role="tabpanel" style="display:none">
-        <div id="model-autonomy-leverage-map"></div>
-        ${hourSection}
-        ${chatHourSection}
-        ${contextInsightsSection}
-        ${contextEffectivenessSection}
-      </div>
-
-      <div id="db-tab-prompt-insights" data-tab-pane="prompt-insights" role="tabpanel" style="display:none">
-        <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
-          <p>Click to load Prompt Insights data.</p>
-          <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
-        </div>
-        <div id="db-prompt-insights-content" style="display:none">
-          <div id="db-tag-cloud-container"></div>
-          <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
-            <div id="db-intent-command-donut-container"></div>
-            <div id="db-prompt-length-scatter-container"></div>
+      <vscode-panel-view id="db-tab-overview">
+        <div style="width:100%">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span></span>
+            <vscode-button id="db-btn-export-md" appearance="secondary">📄 Export Report (Markdown)</vscode-button>
           </div>
-          <div id="db-turn-churn-container"></div>
-          <div id="db-context-leverage-container"></div>
+          ${coreKpiPanel}
+          <div id="db-summary-cards" class="stats-grid"></div>
+          <div id="db-freshness-container"></div>
+          <div id="db-refresh-analysis-container"></div>
+          <div id="db-insights-container"></div>
+          <div id="db-weekly-trend-container"></div>
+          <div id="db-agent-intelligence-container"></div>
+          <div id="db-autonomy-evolution-container"></div>
         </div>
-      </div>
+      </vscode-panel-view>
 
-      <div id="db-tab-sessions" data-tab-pane="sessions" role="tabpanel" style="display:none">
-        <div id="db-sessions-lazy" class="db-lazy-placeholder">
-          <p>Click to load Sessions data.</p>
-          <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
+      <vscode-panel-view id="db-tab-health">
+        <div style="width:100%">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
+            <vscode-button id="db-btn-export-png-health" appearance="secondary">🖼️ Save Chart (PNG)</vscode-button>
+          </div>
+          <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
+          <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
+            <vscode-button id="db-btn-load-historical" appearance="primary">🕐 Load Historical Data</vscode-button>
+            <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
+          </div>
+          ${dateSection}
+          ${modelSection}
+          ${chatModelSection}
+          ${intentSection}
+          ${latencyDistSection}
+          ${errorSection}
+          ${sessionSection}
         </div>
-        <div id="db-sessions-content" style="display:none">
-          <div class="db-session-layout">
-            <section class="db-session-list">
-              <div id="db-session-list" class="db-session-list-body"></div>
-            </section>
-            <section class="db-session-detail">
-              <div class="db-session-detail-header">
-                <h2 style="margin:0">Threads</h2>
-              </div>
-              <div id="db-session-detail" class="db-session-detail-body"></div>
-            </section>
+      </vscode-panel-view>
+
+      <vscode-panel-view id="db-tab-flow">
+        <div style="width:100%">
+          <div id="model-autonomy-leverage-map"></div>
+          ${hourSection}
+          ${chatHourSection}
+          ${contextInsightsSection}
+          ${contextEffectivenessSection}
+        </div>
+      </vscode-panel-view>
+
+      <vscode-panel-view id="db-tab-prompt-insights">
+        <div style="width:100%">
+          <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
+            <p>Click to load Prompt Insights data.</p>
+            <vscode-button id="db-btn-load-prompt-insights" appearance="primary">📊 Load Prompt Insights</vscode-button>
+          </div>
+          <div id="db-prompt-insights-content" style="display:none">
+            <div id="db-tag-cloud-container"></div>
+            <div class="grid-container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;margin-top:16px">
+              <div id="db-intent-command-donut-container"></div>
+              <div id="db-prompt-length-scatter-container"></div>
+            </div>
+            <div id="db-turn-churn-container"></div>
+            <div id="db-context-leverage-container"></div>
           </div>
         </div>
-      </div>
-    </copilot-tab-panel>
+      </vscode-panel-view>
+
+      <vscode-panel-view id="db-tab-sessions">
+        <div style="width:100%">
+          <div id="db-sessions-lazy" class="db-lazy-placeholder">
+            <p>Click to load Sessions data.</p>
+            <vscode-button id="db-btn-load-sessions" appearance="primary">📂 Load Sessions</vscode-button>
+          </div>
+          <div id="db-sessions-content" style="display:none">
+            <div class="db-session-layout">
+              <section class="db-session-list">
+                <div id="db-session-list" class="db-session-list-body"></div>
+              </section>
+              <section class="db-session-detail">
+                <div class="db-session-detail-header">
+                  <h2 style="margin:0">Threads</h2>
+                </div>
+                <div id="db-session-detail" class="db-session-detail-body"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </vscode-panel-view>
+    </vscode-panels>
   </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
