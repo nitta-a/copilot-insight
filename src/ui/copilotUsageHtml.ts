@@ -422,6 +422,8 @@ export function getHtmlContent(
           ${coreKpiPanel}
           <div id="db-summary-cards" class="stats-grid"></div>
           <div id="db-freshness-container"></div>
+          <div id="db-context-richness-container"></div>
+          <div id="db-context-correlation-container"></div>
           <div id="db-refresh-analysis-container"></div>
           <div id="db-insights-container"></div>
           <div id="db-weekly-trend-container"></div>

@@ -21,6 +21,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   ContextFreshness,
+  ContextRichnessData,
   DashboardPayload,
   HostToWebviewMessage,
   PromptInsightsData,
@@ -42,7 +43,9 @@ import {
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
+  ContextCorrelationChart,
   ContextFreshnessMeter,
+  ContextRichnessMeter,
   TagCloud,
   ThreadList,
   ThreadSelectDetail,
@@ -402,6 +405,32 @@ function renderContextFreshness(
   }
   comp.freshness = freshness;
   comp.refreshAnalysis = refreshAnalysis;
+}
+
+function renderContextRichness(richness: ContextRichnessData): void {
+  const el = document.getElementById("db-context-richness-container");
+  if (!el) {
+    return;
+  }
+  let comp = el.querySelector<ContextRichnessMeter>("copilot-richness-meter");
+  if (!comp) {
+    comp = document.createElement("copilot-richness-meter") as ContextRichnessMeter;
+    el.replaceChildren(comp);
+  }
+  comp.richness = richness;
+}
+
+function renderContextCorrelation(richness: ContextRichnessData): void {
+  const el = document.getElementById("db-context-correlation-container");
+  if (!el) {
+    return;
+  }
+  let comp = el.querySelector<ContextCorrelationChart>("copilot-context-correlation");
+  if (!comp) {
+    comp = document.createElement("copilot-context-correlation") as ContextCorrelationChart;
+    el.replaceChildren(comp);
+  }
+  comp.buckets = richness.buckets;
 }
 
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
@@ -771,6 +800,8 @@ function render(payload: DashboardPayload): void {
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
+  renderContextRichness(payload.contextRichness);
+  renderContextCorrelation(payload.contextRichness);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);

@@ -25,6 +25,7 @@ import type {
   AgenticStats,
   ContextBucket,
   ContextFreshness,
+  ContextRichnessData,
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
@@ -432,6 +433,7 @@ export function buildDashboardPayload(
   };
 
   const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
+  const contextRichness = buildContextRichness(stats);
 
   return {
     days: timeline.length,
@@ -445,6 +447,7 @@ export function buildDashboardPayload(
     agenticStats,
     refreshAnalysis,
     freshness,
+    contextRichness,
     hasMoreData,
   };
 }
@@ -484,6 +487,34 @@ function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
   }
 
   return buckets;
+}
+
+/**
+ * Build the `ContextRichnessData` object for the Overview tab.
+ *
+ * Reuses `buildContextStats()` to bucket sessions by reference count, then
+ * derives an average and a qualitative status label from those buckets.
+ *
+ * Status thresholds:
+ *  - "low":    avgRefCount < 1
+ *  - "medium": avgRefCount < 3
+ *  - "rich":   avgRefCount >= 3
+ */
+export function buildContextRichness(stats: CopilotUsageStats): ContextRichnessData {
+  const buckets = buildContextStats(stats);
+
+  // Compute weighted average: midpoint for 4+ bucket is approximated as 5.
+  const midpoints = [0, 1, 2, 3, 5];
+  let totalSessions = 0;
+  let weightedSum = 0;
+  for (let i = 0; i < buckets.length; i++) {
+    totalSessions += buckets[i].sessionCount;
+    weightedSum += buckets[i].sessionCount * midpoints[i];
+  }
+  const avgRefCount = totalSessions > 0 ? weightedSum / totalSessions : 0;
+  const status: ContextRichnessData["status"] = avgRefCount >= 3 ? "rich" : avgRefCount >= 1 ? "medium" : "low";
+
+  return { avgRefCount, status, buckets };
 }
 
 /**
