@@ -76,39 +76,39 @@ export class WeeklyTrendCard extends LitElement {
     if (!trend || (trend.thisWeek.shown === 0 && trend.lastWeek.shown === 0)) {
       return nothing;
     }
+    const { thisWeek, lastWeek, rateDiff } = trend;
+    const thisRateStr = thisWeek.shown > 0 ? `${thisWeek.rate.toFixed(1)}%` : "—";
+    const lastRateStr = lastWeek.shown > 0 ? `${lastWeek.rate.toFixed(1)}%` : "—";
 
-    const thisRateStr = trend.thisWeek.shown > 0 ? `${trend.thisWeek.rate.toFixed(1)}%` : "—";
-    const lastRateStr = trend.lastWeek.shown > 0 ? `${trend.lastWeek.rate.toFixed(1)}%` : "—";
-
-    const showDiff = trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0;
-    const sign = trend.rateDiff > 0 ? "+" : "";
+    const showDiff = thisWeek.shown > 0 && lastWeek.shown > 0;
+    const sign = rateDiff > 0 ? "+" : "";
     const diffClasses = {
       "trend-diff": true,
-      "trend-up": trend.rateDiff > 0,
-      "trend-down": trend.rateDiff < 0,
-      "trend-neutral": trend.rateDiff === 0,
+      "trend-up": rateDiff > 0,
+      "trend-down": rateDiff < 0,
+      "trend-neutral": rateDiff === 0,
     };
-    const arrow = trend.rateDiff > 0 ? "↑" : trend.rateDiff < 0 ? "↓" : "→";
+    const arrow = rateDiff > 0 ? "↑" : rateDiff < 0 ? "↓" : "→";
 
     return html`
       <h2>📈 Weekly Trend</h2>
       <div class="trend-container">
         <div class="trend-card">
           <h3>Last Week</h3>
-          ${this._statRow("Shown", String(trend.lastWeek.shown))}
-          ${this._statRow("Accepted", String(trend.lastWeek.accepted))}
+          ${this._statRow("Shown", String(lastWeek.shown))}
+          ${this._statRow("Accepted", String(lastWeek.accepted))}
           ${this._statRow("Rate", lastRateStr)}
-          ${this._statRow("Chat", String(trend.lastWeek.chat))}
+          ${this._statRow("Chat", String(lastWeek.chat))}
         </div>
         <div class="trend-card">
           <h3>This Week</h3>
-          ${this._statRow("Shown", String(trend.thisWeek.shown))}
-          ${this._statRow("Accepted", String(trend.thisWeek.accepted))}
+          ${this._statRow("Shown", String(thisWeek.shown))}
+          ${this._statRow("Accepted", String(thisWeek.accepted))}
           ${this._statRow("Rate", thisRateStr)}
-          ${this._statRow("Chat", String(trend.thisWeek.chat))}
-          ${showDiff
-            ? html`<div class=${classMap(diffClasses)}>${arrow} ${sign}${trend.rateDiff.toFixed(1)}%</div>`
-            : nothing}
+          ${this._statRow("Chat", String(thisWeek.chat))}
+          ${
+            showDiff ? html`<div class=${classMap(diffClasses)}>${arrow} ${sign}${rateDiff.toFixed(1)}%</div>` : nothing
+          }
         </div>
       </div>
     `;
