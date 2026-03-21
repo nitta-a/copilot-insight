@@ -52,19 +52,23 @@ import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import "./components/CopilotInsightCard";
 import "./components/CopilotStatCard";
+import "./components/ContextFreshnessMeter";
+import type { ContextFreshnessMeter } from "./components/ContextFreshnessMeter";
 import "./components/DashboardTabs";
 import type { CopilotTabPanel, TabChangeDetail } from "./components/DashboardTabs";
+import "./components/TagCloud";
+import type { TagCloud } from "./components/TagCloud";
+import "./components/ThreadList";
+import type { ThreadList, ThreadSelectDetail } from "./components/ThreadList";
+import "./components/WeeklyTrendCard";
+import type { WeeklyTrendCard } from "./components/WeeklyTrendCard";
 import { fmtDate } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
-  buildContextFreshnessHtml,
   buildInsightsHtml,
   buildRefreshAnalysisHtml,
   buildSelectedThreadHtml,
   buildSummaryCardsHtml,
-  buildTagCloudHtml,
-  buildThreadListHtml,
-  buildWeeklyTrendHtml,
   getSelectableThreadsSorted,
 } from "./htmlBuilders";
 
@@ -884,7 +888,12 @@ function renderTagCloud(topKeywords: DashboardPayload["topKeywords"]): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildTagCloudHtml(topKeywords);
+  let comp = el.querySelector<TagCloud>("copilot-tag-cloud");
+  if (!comp) {
+    comp = document.createElement("copilot-tag-cloud") as TagCloud;
+    el.replaceChildren(comp);
+  }
+  comp.tags = topKeywords;
 }
 
 function renderContextFreshness(
@@ -895,7 +904,12 @@ function renderContextFreshness(
   if (!el) {
     return;
   }
-  el.innerHTML = buildContextFreshnessHtml(freshness, refreshAnalysis);
+  let comp = el.querySelector<ContextFreshnessMeter>("copilot-freshness-meter");
+  if (!comp) {
+    comp = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
+    el.replaceChildren(comp);
+  }
+  comp.setData(freshness, refreshAnalysis);
 }
 
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
@@ -915,7 +929,12 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildWeeklyTrendHtml(trend);
+  let comp = el.querySelector<WeeklyTrendCard>("copilot-weekly-trend");
+  if (!comp) {
+    comp = document.createElement("copilot-weekly-trend") as WeeklyTrendCard;
+    el.replaceChildren(comp);
+  }
+  comp.trendData = trend;
 }
 
 // ---------------------------------------------------------------------------
@@ -1093,17 +1112,12 @@ function renderAllThreads(): void {
     }
   }
   flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
-  el.innerHTML = buildThreadListHtml(
-    flat,
-    selectedThreadId,
-    selectedThreadSessionId,
-    isBackgroundLoading,
-    sessionLoadQueue.length,
-  );
-  el.querySelectorAll<HTMLButtonElement>(".db-thread-row").forEach((button) => {
-    button.addEventListener("click", () => {
-      const threadId = button.dataset.threadId ?? "";
-      const sessionId = button.dataset.sessionId ?? "";
+
+  let comp = el.querySelector<ThreadList>("copilot-thread-list");
+  if (!comp) {
+    comp = document.createElement("copilot-thread-list") as ThreadList;
+    comp.addEventListener("thread-select", (ev: Event) => {
+      const { threadId, sessionId } = (ev as CustomEvent<ThreadSelectDetail>).detail;
       if (threadId && !(threadId === selectedThreadId && sessionId === selectedThreadSessionId)) {
         selectedThreadId = threadId;
         selectedThreadSessionId = sessionId;
@@ -1111,7 +1125,9 @@ function renderAllThreads(): void {
         renderThreadDetail();
       }
     });
-  });
+    el.replaceChildren(comp);
+  }
+  comp.setData(flat, selectedThreadId, selectedThreadSessionId, isBackgroundLoading, sessionLoadQueue.length);
 }
 
 function renderThreadDetail(): void {
