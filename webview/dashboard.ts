@@ -1099,7 +1099,7 @@ function renderAllThreads(): void {
   }
   flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
 
-  if (!threadListComponent || !container.contains(threadListComponent)) {
+  if (!threadListComponent) {
     threadListComponent = document.createElement("copilot-thread-list") as ThreadList;
     threadListComponent.addEventListener("thread-select", (e: Event) => {
       const { threadId, sessionId } = (e as CustomEvent<ThreadSelectDetail>).detail;

@@ -48,7 +48,7 @@ const SHADOW_STYLES = `
     margin-top: 8px;
     text-align: center;
   }
-  .trend-up { color: var(--vscode-charts-green); }
+  .trend-up { color: var(--vscode-charts-green, #2aa952); }
   .trend-down { color: var(--vscode-charts-red, #f14c4c); }
   .trend-neutral { opacity: 0.6; }
 `;
