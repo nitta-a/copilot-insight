@@ -204,7 +204,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@vscode/webview-ui-toolkit": "^1.4.0",
     "chart.js": "^4.5.1",
     "lit": "^3.3.2",
     "react": "^19.2.4",

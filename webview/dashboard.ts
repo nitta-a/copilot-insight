@@ -46,17 +46,6 @@ import type {
   WebviewToHostMessage,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
-import {
-  provideVSCodeDesignSystem,
-  vsCodeBadge,
-  vsCodeButton,
-  vsCodeDivider,
-  vsCodePanelTab,
-  vsCodePanelView,
-  vsCodePanels,
-  vsCodeProgressRing,
-  vsCodeTag,
-} from "@vscode/webview-ui-toolkit";
 import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
@@ -88,18 +77,6 @@ Chart.register(
   Title,
   Tooltip,
   Legend,
-);
-
-// Register VS Code Webview UI Toolkit design system components.
-provideVSCodeDesignSystem().register(
-  vsCodeButton(),
-  vsCodeDivider(),
-  vsCodePanels(),
-  vsCodePanelTab(),
-  vsCodePanelView(),
-  vsCodeBadge(),
-  vsCodeTag(),
-  vsCodeProgressRing(),
 );
 
 // ---------------------------------------------------------------------------
@@ -326,7 +303,7 @@ function renderChatIntentCommandDonutCharts(data: Pick<PromptInsightsData, "chat
   }
 
   container.innerHTML = `
-    <vscode-divider></vscode-divider>
+    <hr class="db-section-sep">
     <h2>🍩 Chat Intent &amp; Command Usage</h2>
     <div style="display:flex;flex-wrap:wrap;gap:32px;margin-top:16px;align-items:flex-start">
       <div style="flex:1;min-width:240px">
@@ -566,7 +543,7 @@ function renderPromptLengthScatterChart(scatterData: DashboardPayload["promptLen
   }
 
   container.innerHTML = `
-    <vscode-divider></vscode-divider>
+    <hr class="db-section-sep">
     <h2>🔍 Prompt Length vs Acceptance Rate</h2>
     <p style="font-size:12px;opacity:0.7;margin:0 0 12px">Bubble size represents number of samples (shown). Data from Copilot CLI interactions.</p>
     <div class="chart-container" style="max-height:320px">
@@ -650,7 +627,7 @@ function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
   }
 
   container.innerHTML = `
-    <vscode-divider></vscode-divider>
+    <hr class="db-section-sep">
     <h2>🔄 Chat Session Turn Count & Resolution Rate</h2>
     <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
       Bars show session volume per turn-count bucket. The line shows the resolution rate
@@ -768,7 +745,7 @@ function renderContextLeverageChart(contextStats: DashboardPayload["contextStats
   }
 
   container.innerHTML = `
-    <vscode-divider></vscode-divider>
+    <hr class="db-section-sep">
     <h2>📎 Context Leverage — Reference Count vs Acceptance Rate</h2>
     <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
       Bars show session volume per reference-count bucket. The line shows the acceptance rate
@@ -1012,15 +989,26 @@ function onTabChange(tabId: string): void {
   }
 }
 
+function activateTab(tabId: string): void {
+  // Update tab button states.
+  document.querySelectorAll<HTMLElement>(".db-panel-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset["tab"] === tabId);
+  });
+  // Show/hide panel views.
+  document.querySelectorAll<HTMLElement>(".db-panel-view").forEach((view) => {
+    view.classList.toggle("active", view.id === `db-tab-${tabId}`);
+  });
+  onTabChange(tabId);
+}
+
 function setupTabChangeListener(): void {
-  const panels = document.getElementById("main-panels");
-  panels?.addEventListener("change", () => {
-    // `activeid` is the vscode-panels toolkit property name (lowercase, not camelCase).
-    const activeid = (panels as HTMLElement & { activeid?: string }).activeid ?? "";
-    const tabId = activeid.replace(/-tab$/, "");
-    if (VALID_TABS.has(tabId)) {
-      onTabChange(tabId);
-    }
+  document.querySelectorAll<HTMLElement>(".db-panel-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tabId = btn.dataset["tab"] ?? "";
+      if (VALID_TABS.has(tabId)) {
+        activateTab(tabId);
+      }
+    });
   });
 }
 
@@ -1085,7 +1073,7 @@ function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"
   }
 
   el.innerHTML = `
-    <vscode-divider></vscode-divider>
+    <hr class="db-section-sep">
     <h2>🧭 Autonomy Evolution</h2>
     <div id="db-autonomy-evolution-chart" style="margin-top:16px"></div>`;
 
@@ -1191,7 +1179,7 @@ function setLoadButtonState(btnId: string, loading: boolean): void {
   }
   btn.disabled = loading;
   if (loading) {
-    btn.innerHTML = '<vscode-progress-ring style="width: 16px; height: 16px; margin-right: 6px;"></vscode-progress-ring>Loading…';
+    btn.innerHTML = '<span class="db-loading-spinner"></span>Loading\u2026';
   } else {
     btn.textContent = LOAD_BTN_LABELS[btnId] ?? btn.textContent;
   }
@@ -1355,8 +1343,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Restore the last active tab after rendering.
     const saved = vscode.getState();
     if (saved?.currentTab && VALID_TABS.has(saved.currentTab)) {
-      const panels = document.getElementById("main-panels");
-      panels?.setAttribute("activeid", `${saved.currentTab}-tab`);
+      activateTab(saved.currentTab);
     }
   }
 });
