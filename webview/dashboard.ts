@@ -50,21 +50,19 @@ import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterP
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
-import "./components/CopilotInsightCard";
-import "./components/CopilotStatCard";
-import "./components/DashboardTabs";
+import "./components/index";
 import type { CopilotTabPanel, TabChangeDetail } from "./components/DashboardTabs";
+import type { ContextFreshnessMeter } from "./components/ContextFreshnessMeter";
+import type { TagCloud } from "./components/TagCloud";
+import type { ThreadList, ThreadSelectDetail } from "./components/ThreadList";
+import type { WeeklyTrendCard } from "./components/WeeklyTrendCard";
 import { fmtDate } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
-  buildContextFreshnessHtml,
   buildInsightsHtml,
   buildRefreshAnalysisHtml,
   buildSelectedThreadHtml,
   buildSummaryCardsHtml,
-  buildTagCloudHtml,
-  buildThreadListHtml,
-  buildWeeklyTrendHtml,
   getSelectableThreadsSorted,
 } from "./htmlBuilders";
 
@@ -118,6 +116,7 @@ let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
 let selectedThreadSessionId = "";
+let threadListComponent: ThreadList | null = null;
 const allSessionDetails = new Map<string, SessionDetailPayload>();
 const sessionLoadQueue: string[] = [];
 let isBackgroundLoading = false;
@@ -884,7 +883,9 @@ function renderTagCloud(topKeywords: DashboardPayload["topKeywords"]): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildTagCloudHtml(topKeywords);
+  const component = document.createElement("copilot-tag-cloud") as TagCloud;
+  component.data = topKeywords;
+  el.replaceChildren(component);
 }
 
 function renderContextFreshness(
@@ -895,7 +896,9 @@ function renderContextFreshness(
   if (!el) {
     return;
   }
-  el.innerHTML = buildContextFreshnessHtml(freshness, refreshAnalysis);
+  const component = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
+  component.data = freshness && refreshAnalysis.length > 0 ? { freshness, refreshAnalysis } : null;
+  el.replaceChildren(component);
 }
 
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
@@ -915,7 +918,9 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildWeeklyTrendHtml(trend);
+  const component = document.createElement("copilot-weekly-trend") as WeeklyTrendCard;
+  component.data = trend;
+  el.replaceChildren(component);
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,8 +1087,8 @@ function loadNextFromQueue(): void {
 }
 
 function renderAllThreads(): void {
-  const el = document.getElementById("db-session-list");
-  if (!el) {
+  const container = document.getElementById("db-session-list");
+  if (!container) {
     return;
   }
   const flat: Array<{ thread: SessionThreadSummary; sessionId: string }> = [];
@@ -1093,17 +1098,11 @@ function renderAllThreads(): void {
     }
   }
   flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
-  el.innerHTML = buildThreadListHtml(
-    flat,
-    selectedThreadId,
-    selectedThreadSessionId,
-    isBackgroundLoading,
-    sessionLoadQueue.length,
-  );
-  el.querySelectorAll<HTMLButtonElement>(".db-thread-row").forEach((button) => {
-    button.addEventListener("click", () => {
-      const threadId = button.dataset.threadId ?? "";
-      const sessionId = button.dataset.sessionId ?? "";
+
+  if (!threadListComponent || !container.contains(threadListComponent)) {
+    threadListComponent = document.createElement("copilot-thread-list") as ThreadList;
+    threadListComponent.addEventListener("thread-select", (e: Event) => {
+      const { threadId, sessionId } = (e as CustomEvent<ThreadSelectDetail>).detail;
       if (threadId && !(threadId === selectedThreadId && sessionId === selectedThreadSessionId)) {
         selectedThreadId = threadId;
         selectedThreadSessionId = sessionId;
@@ -1111,7 +1110,16 @@ function renderAllThreads(): void {
         renderThreadDetail();
       }
     });
-  });
+    container.replaceChildren(threadListComponent);
+  }
+
+  threadListComponent.data = {
+    flat,
+    selectedThreadId,
+    selectedThreadSessionId,
+    isBackgroundLoading,
+    sessionLoadQueueLength: sessionLoadQueue.length,
+  };
 }
 
 function renderThreadDetail(): void {
@@ -1271,6 +1279,7 @@ function render(payload: DashboardPayload): void {
   allSessionDetails.clear();
   sessionLoadQueue.length = 0;
   isBackgroundLoading = false;
+  threadListComponent = null;
 }
 
 // ---------------------------------------------------------------------------

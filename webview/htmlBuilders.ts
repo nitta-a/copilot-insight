@@ -5,12 +5,10 @@
  * render functions in `dashboard.ts`.
  */
 
-import type { AgentStep, SessionDetailPayload, SessionThreadSummary } from "../src/types";
+import type { AgentStep, SessionDetailPayload } from "../src/types";
 import type {
   AgentIntelligenceOverview,
-  ContextFreshness,
   DashboardPayload,
-  WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
 import {
   actorBadgeClass,
@@ -85,74 +83,6 @@ export function buildInsightsHtml(insights: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Context Freshness
-// ---------------------------------------------------------------------------
-
-export function buildContextFreshnessHtml(
-  freshness: ContextFreshness | null,
-  refreshAnalysis: DashboardPayload["refreshAnalysis"],
-): string {
-  if (!freshness || refreshAnalysis.length === 0) {
-    return "";
-  }
-
-  const latestRefresh = refreshAnalysis.at(-1) ?? null;
-  const score = Math.max(0, Math.min(100, freshness.score));
-  const statusLabel = freshness.status === "fresh" ? "Fresh" : freshness.status === "aging" ? "Aging" : "Exhausted";
-  const statusDetail =
-    freshness.status === "fresh"
-      ? "AI は絶好調"
-      : freshness.status === "aging"
-        ? "/compact を検討してください"
-        : "セッションの再起動を推奨";
-  const suggestion =
-    freshness.suggestedAction === "none"
-      ? "今はリフレッシュ不要です。"
-      : freshness.suggestedAction === "compact"
-        ? "次の大きなタスク前に /compact を挟むのが妥当です。"
-        : "新しいセッションを開始した方が回復しやすい状態です。";
-  const latestRoi = freshness.latestRefreshRoi !== null ? `+${(freshness.latestRefreshRoi * 100).toFixed(1)}%` : "N/A";
-  const latestRecovery =
-    freshness.latestRecoveryDelta !== null ? `${freshness.latestRecoveryDelta.toFixed(1)} pt` : "N/A";
-  const latestEventType = latestRefresh ? latestRefresh.event.type : "memory";
-  const latestTimestamp = latestRefresh ? new Date(latestRefresh.event.timestamp).toLocaleString() : "";
-
-  return `
-    <h2>🧠 Context Freshness</h2>
-    <div class="db-freshness-card">
-      <div class="db-freshness-header">
-        <div>
-          <div class="db-freshness-status">${escHtml(statusLabel)}</div>
-          <div style="font-size:1.6em;font-weight:800;margin-top:2px">${score.toFixed(0)}%</div>
-        </div>
-        <div style="font-size:0.88em;opacity:0.8;text-align:right">${escHtml(statusDetail)}</div>
-      </div>
-      <div class="db-freshness-meter">
-        <div class="db-freshness-fill ${freshness.status}" style="width:${score}%"></div>
-      </div>
-      <div style="font-size:0.88em;opacity:0.84">${escHtml(suggestion)}</div>
-      <div class="db-freshness-meta">
-        <div class="db-freshness-meta-card">
-          <div class="db-freshness-meta-label">Current Session Actions</div>
-          <div class="db-freshness-meta-value">${freshness.actionCount}</div>
-        </div>
-        <div class="db-freshness-meta-card">
-          <div class="db-freshness-meta-label">Latest Refresh ROI</div>
-          <div class="db-freshness-meta-value">${escHtml(latestRoi)}</div>
-        </div>
-        <div class="db-freshness-meta-card">
-          <div class="db-freshness-meta-label">Recovery Delta</div>
-          <div class="db-freshness-meta-value">${escHtml(latestRecovery)}</div>
-        </div>
-        <div class="db-freshness-meta-card">
-          <div class="db-freshness-meta-label">Latest Boundary</div>
-          <div class="db-freshness-meta-value" title="${escHtml(latestTimestamp)}">${escHtml(trunc(latestEventType, 22))}</div>
-        </div>
-      </div>
-    </div>`;
-}
-
-// ---------------------------------------------------------------------------
 // Refresh ROI analysis
 // ---------------------------------------------------------------------------
 
@@ -217,46 +147,6 @@ export function buildRefreshAnalysisHtml(refreshAnalysis: DashboardPayload["refr
         ${rows}
       </table>
     </div>`;
-}
-
-// ---------------------------------------------------------------------------
-// Weekly trend
-// ---------------------------------------------------------------------------
-
-export function buildWeeklyTrendHtml(trend: WeeklyTrendData | null): string {
-  if (!trend || (trend.thisWeek.shown === 0 && trend.lastWeek.shown === 0)) {
-    return "";
-  }
-
-  const thisRateStr = trend.thisWeek.shown > 0 ? `${trend.thisWeek.rate.toFixed(1)}%` : "—";
-  const lastRateStr = trend.lastWeek.shown > 0 ? `${trend.lastWeek.rate.toFixed(1)}%` : "—";
-
-  let diffHtml = "";
-  if (trend.thisWeek.shown > 0 && trend.lastWeek.shown > 0) {
-    const sign = trend.rateDiff > 0 ? "+" : "";
-    const cssClass = trend.rateDiff > 0 ? "trend-up" : trend.rateDiff < 0 ? "trend-down" : "trend-neutral";
-    const arrow = trend.rateDiff > 0 ? "↑" : trend.rateDiff < 0 ? "↓" : "→";
-    diffHtml = `<div class="trend-diff ${cssClass}">${arrow} ${sign}${trend.rateDiff.toFixed(1)}%</div>`;
-  }
-
-  return `<h2>📈 Weekly Trend</h2>
-<div class="trend-container">
-  <div class="trend-card">
-    <h3>Last Week</h3>
-    <div class="trend-stat"><span>Shown</span><span>${trend.lastWeek.shown}</span></div>
-    <div class="trend-stat"><span>Accepted</span><span>${trend.lastWeek.accepted}</span></div>
-    <div class="trend-stat"><span>Rate</span><span>${lastRateStr}</span></div>
-    <div class="trend-stat"><span>Chat</span><span>${trend.lastWeek.chat}</span></div>
-  </div>
-  <div class="trend-card">
-    <h3>This Week</h3>
-    <div class="trend-stat"><span>Shown</span><span>${trend.thisWeek.shown}</span></div>
-    <div class="trend-stat"><span>Accepted</span><span>${trend.thisWeek.accepted}</span></div>
-    <div class="trend-stat"><span>Rate</span><span>${thisRateStr}</span></div>
-    <div class="trend-stat"><span>Chat</span><span>${trend.thisWeek.chat}</span></div>
-    ${diffHtml}
-  </div>
-</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,38 +306,6 @@ export function getSelectableThreadsSorted(threads: SessionDetailPayload["thread
 // Tag cloud
 // ---------------------------------------------------------------------------
 
-/**
- * Build an HTML tag cloud from a list of `{ word, count }` entries.
- * Font size and opacity are scaled linearly between the min and max counts.
- * Returns an empty string when the keyword list is empty.
- */
-export function buildTagCloudHtml(topKeywords: DashboardPayload["topKeywords"]): string {
-  if (topKeywords.length === 0) {
-    return "";
-  }
-
-  const counts = topKeywords.map((k) => k.count);
-  const minCount = Math.min(...counts);
-  const maxCount = Math.max(...counts);
-  const range = maxCount - minCount || 1;
-
-  const MinEm = 0.85;
-  const MaxEm = 2.2;
-  const MinOpacity = 0.55;
-  const MaxOpacity = 1.0;
-
-  const tags = topKeywords
-    .map(({ word, count }) => {
-      const ratio = (count - minCount) / range;
-      const size = (MinEm + ratio * (MaxEm - MinEm)).toFixed(2);
-      const opacity = (MinOpacity + ratio * (MaxOpacity - MinOpacity)).toFixed(2);
-      return `<span class="tag-cloud-item" style="font-size:${size}em;opacity:${opacity}" title="${escHtml(word)} (${count})">${escHtml(word)}</span>`;
-    })
-    .join("\n");
-
-  return `<h2>🔍 Top Keywords</h2>\n<div class="tag-cloud">${tags}</div>`;
-}
-
 /** Render the step timeline for a selected thread. Returns an HTML string. */
 export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedThreadId: string): string {
   const sortedThreads = getSelectableThreadsSorted(detail.threads);
@@ -501,27 +359,4 @@ export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedTh
       </div>
     </div>
     <div class="db-agent-step-timeline">${stepsHtml}</div>`;
-}
-
-/** Render the list of all thread rows. Returns an HTML string. */
-export function buildThreadListHtml(
-  flat: Array<{ thread: SessionThreadSummary; sessionId: string }>,
-  selectedThreadId: string,
-  selectedThreadSessionId: string,
-  isBackgroundLoading: boolean,
-  sessionLoadQueueLength: number,
-): string {
-  if (flat.length === 0) {
-    return `<div class="db-empty-panel">${isBackgroundLoading || sessionLoadQueueLength > 0 ? "Loading threads\u2026" : "No threads with activity were detected."}</div>`;
-  }
-  return flat
-    .map(({ thread, sessionId }) => {
-      const active = thread.threadId === selectedThreadId && sessionId === selectedThreadSessionId ? " active" : "";
-      return `<button class="db-thread-row${active}" data-thread-id="${escHtml(thread.threadId)}" data-session-id="${escHtml(sessionId)}">
-        <div class="db-thread-row-title">${thread.hasAutonomousRun ? "\uD83E\uDD16 " : ""}${escHtml(thread.title)}</div>
-        <div class="db-thread-row-subtext">${escHtml(new Date(thread.startedAt).toLocaleString())}</div>
-        <div class="db-thread-row-meta"><span>${thread.stepCount} steps</span><span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span></div>
-      </button>`;
-    })
-    .join("");
 }
