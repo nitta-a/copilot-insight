@@ -61,16 +61,8 @@ import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterP
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
-import "./components/CopilotInsightCard";
-import "./components/CopilotStatCard";
-import "./components/ContextFreshnessMeter";
-import type { ContextFreshnessMeter } from "./components/ContextFreshnessMeter";
-import "./components/TagCloud";
-import type { TagCloud } from "./components/TagCloud";
-import "./components/ThreadList";
-import type { ThreadList, ThreadSelectDetail } from "./components/ThreadList";
-import "./components/WeeklyTrendCard";
-import type { WeeklyTrendCard } from "./components/WeeklyTrendCard";
+import type { ContextFreshnessMeter, TagCloud, ThreadList, ThreadSelectDetail, WeeklyTrendCard } from "./components/index";
+import "./components/index";
 import { fmtDate } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
@@ -930,7 +922,8 @@ function renderContextFreshness(
     comp = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
     el.replaceChildren(comp);
   }
-  comp.setData(freshness, refreshAnalysis);
+  comp.freshness = freshness;
+  comp.refreshAnalysis = refreshAnalysis;
 }
 
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
@@ -1151,7 +1144,11 @@ function renderAllThreads(): void {
     });
     el.replaceChildren(comp);
   }
-  comp.setData(flat, selectedThreadId, selectedThreadSessionId, isBackgroundLoading, sessionLoadQueue.length);
+  comp.flat = flat;
+  comp.selectedThreadId = selectedThreadId;
+  comp.selectedSessionId = selectedThreadSessionId;
+  comp.isLoading = isBackgroundLoading;
+  comp.queueLength = sessionLoadQueue.length;
 }
 
 function renderThreadDetail(): void {

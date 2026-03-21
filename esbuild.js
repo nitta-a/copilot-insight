@@ -71,6 +71,12 @@ async function main() {
     outfile: "dist/webview/dashboard.js",
     logLevel: "silent",
     jsx: "automatic",
+    tsconfigRaw: {
+      compilerOptions: {
+        experimentalDecorators: true,
+        useDefineForClassFields: false,
+      },
+    },
     plugins: [esbuildProblemMatcherPlugin],
   });
 

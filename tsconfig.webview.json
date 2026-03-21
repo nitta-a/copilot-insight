@@ -7,7 +7,9 @@
     "noEmit": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
   },
   "include": ["webview/**/*.ts", "webview/**/*.tsx", "src/ui/dashboardMessages.ts"]
 }
