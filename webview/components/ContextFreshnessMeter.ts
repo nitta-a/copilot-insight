@@ -1,123 +1,115 @@
 /**
- * ContextFreshnessMeter — Web Component (Custom Element) for displaying the
- * AI context freshness score, status, and refresh metadata.
+ * ContextFreshnessMeter — Lit Web Component for displaying the AI context
+ * freshness score, status, and refresh metadata.
  *
  * Usage:
  *   const el = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
- *   el.setData(freshness, refreshAnalysis);
+ *   el.freshness = freshness;
+ *   el.refreshAnalysis = refreshAnalysis;
  *   container.appendChild(el);
  *
- * Methods:
- *   setData(freshness, refreshAnalysis) — provide data and re-render.
+ * Properties:
+ *   freshness       — ContextFreshness object (or null to clear the component).
+ *   refreshAnalysis — array of refresh analysis entries.
  */
 
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import { classMap } from "lit/directives/class-map.js";
+import { styleMap } from "lit/directives/style-map.js";
 import type { ContextFreshness, DashboardPayload } from "../../src/ui/dashboardMessages";
 import { trunc } from "../dashboardUtils";
 
-const SHADOW_STYLES = `
-  :host {
-    display: block;
-  }
-  h2 {
-    font-size: 1.1em;
-    margin: 0 0 12px;
-  }
-  .db-freshness-card {
-    background: var(--vscode-editor-inactiveSelectionBackground);
-    border-radius: 8px;
-    padding: 16px;
-  }
-  .db-freshness-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
-  }
-  .db-freshness-status {
-    font-weight: 700;
-    font-size: 1em;
-    opacity: 0.9;
-  }
-  .db-freshness-meter {
-    height: 8px;
-    background: var(--vscode-editor-background, #1e1e1e);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 10px;
-  }
-  .db-freshness-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease;
-    background: var(--vscode-charts-blue, #007acc);
-  }
-  .db-freshness-fill.fresh     { background: var(--vscode-charts-green,  #4ec9b0); }
-  .db-freshness-fill.aging     { background: var(--vscode-charts-orange, #cca700); }
-  .db-freshness-fill.exhausted { background: var(--vscode-charts-red,    #f14c4c); }
-  .db-freshness-suggestion {
-    font-size: 0.88em;
-    opacity: 0.84;
-    margin-bottom: 12px;
-  }
-  .db-freshness-meta {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 12px;
-  }
-  .db-freshness-meta-card {
-    background: var(--vscode-editor-background, #1e1e1e);
-    border-radius: 6px;
-    padding: 8px 12px;
-    flex: 1;
-    min-width: 100px;
-  }
-  .db-freshness-meta-label {
-    font-size: 0.74em;
-    opacity: 0.7;
-    margin-bottom: 4px;
-  }
-  .db-freshness-meta-value {
-    font-size: 0.92em;
-    font-weight: 600;
-  }
-`;
+@customElement("copilot-freshness-meter")
+export class ContextFreshnessMeter extends LitElement {
+  static styles = css`
+    :host {
+      display: block;
+    }
+    h2 {
+      font-size: 1.1em;
+      margin: 0 0 12px;
+    }
+    .db-freshness-card {
+      background: var(--vscode-editor-inactiveSelectionBackground);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .db-freshness-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .db-freshness-status {
+      font-weight: 700;
+      font-size: 1em;
+      opacity: 0.9;
+    }
+    .db-freshness-meter {
+      height: 8px;
+      background: var(--vscode-editor-background, #1e1e1e);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .db-freshness-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      background: var(--vscode-charts-blue, #007acc);
+    }
+    .db-freshness-fill.fresh     { background: var(--vscode-charts-green,  #4ec9b0); }
+    .db-freshness-fill.aging     { background: var(--vscode-charts-orange, #cca700); }
+    .db-freshness-fill.exhausted { background: var(--vscode-charts-red,    #f14c4c); }
+    .db-freshness-suggestion {
+      font-size: 0.88em;
+      opacity: 0.84;
+      margin-bottom: 12px;
+    }
+    .db-freshness-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .db-freshness-meta-card {
+      background: var(--vscode-editor-background, #1e1e1e);
+      border-radius: 6px;
+      padding: 8px 12px;
+      flex: 1;
+      min-width: 100px;
+    }
+    .db-freshness-meta-label {
+      font-size: 0.74em;
+      opacity: 0.7;
+      margin-bottom: 4px;
+    }
+    .db-freshness-meta-value {
+      font-size: 0.92em;
+      font-weight: 600;
+    }
+  `;
 
-export class ContextFreshnessMeter extends HTMLElement {
-  private readonly _shadow: ShadowRoot;
-  private readonly _content: HTMLDivElement;
-  private _freshness: ContextFreshness | null = null;
-  private _refreshAnalysis: DashboardPayload["refreshAnalysis"] = [];
+  @property({ type: Object }) freshness: ContextFreshness | null = null;
+  @property({ type: Array }) refreshAnalysis: DashboardPayload["refreshAnalysis"] = [];
 
-  constructor() {
-    super();
-    this._shadow = this.attachShadow({ mode: "open" });
-    const style = document.createElement("style");
-    style.textContent = SHADOW_STYLES;
-    this._content = document.createElement("div");
-    this._shadow.append(style, this._content);
-    this._render();
+  private _metaCard(label: string, value: string, title = "") {
+    return html`
+      <div class="db-freshness-meta-card">
+        <div class="db-freshness-meta-label">${label}</div>
+        <div class="db-freshness-meta-value" title="${title}">${value}</div>
+      </div>
+    `;
   }
 
-  setData(freshness: ContextFreshness | null, refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
-    this._freshness = freshness;
-    this._refreshAnalysis = refreshAnalysis;
-    this._render();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  private _render(): void {
-    this._content.replaceChildren();
-
-    if (!this._freshness || this._refreshAnalysis.length === 0) {
-      return;
+  render() {
+    if (!this.freshness || this.refreshAnalysis.length === 0) {
+      return nothing;
     }
 
-    const freshness = this._freshness;
-    const latestRefresh = this._refreshAnalysis.at(-1) ?? null;
+    const freshness = this.freshness;
+    const latestRefresh = this.refreshAnalysis.at(-1) ?? null;
     const score = Math.max(0, Math.min(100, freshness.score));
 
     const statusLabel =
@@ -142,82 +134,30 @@ export class ContextFreshnessMeter extends HTMLElement {
     const latestEventType = latestRefresh ? latestRefresh.event.type : "memory";
     const latestTimestamp = latestRefresh ? new Date(latestRefresh.event.timestamp).toLocaleString() : "";
 
-    const heading = document.createElement("h2");
-    heading.textContent = "🧠 Context Freshness";
-    this._content.appendChild(heading);
-
-    const card = document.createElement("div");
-    card.className = "db-freshness-card";
-
-    // Header row
-    const header = document.createElement("div");
-    header.className = "db-freshness-header";
-
-    const headerLeft = document.createElement("div");
-    const statusEl = document.createElement("div");
-    statusEl.className = "db-freshness-status";
-    statusEl.textContent = statusLabel;
-    const scoreEl = document.createElement("div");
-    scoreEl.style.cssText = "font-size:1.6em;font-weight:800;margin-top:2px";
-    scoreEl.textContent = `${score.toFixed(0)}%`;
-    headerLeft.appendChild(statusEl);
-    headerLeft.appendChild(scoreEl);
-
-    const headerRight = document.createElement("div");
-    headerRight.style.cssText = "font-size:0.88em;opacity:0.8;text-align:right";
-    headerRight.textContent = statusDetail;
-
-    header.appendChild(headerLeft);
-    header.appendChild(headerRight);
-    card.appendChild(header);
-
-    // Meter bar
-    const meter = document.createElement("div");
-    meter.className = "db-freshness-meter";
-    const fill = document.createElement("div");
-    fill.className = `db-freshness-fill ${freshness.status}`;
-    fill.style.width = `${score}%`;
-    meter.appendChild(fill);
-    card.appendChild(meter);
-
-    // Suggestion
-    const suggestionEl = document.createElement("div");
-    suggestionEl.className = "db-freshness-suggestion";
-    suggestionEl.textContent = suggestion;
-    card.appendChild(suggestionEl);
-
-    // Meta cards
-    const meta = document.createElement("div");
-    meta.className = "db-freshness-meta";
-    meta.appendChild(this._metaCard("Current Session Actions", String(freshness.actionCount)));
-    meta.appendChild(this._metaCard("Latest Refresh ROI", latestRoi));
-    meta.appendChild(this._metaCard("Recovery Delta", latestRecovery));
-    const boundaryCard = this._metaCard("Latest Boundary", trunc(latestEventType, 22));
-    const valueEl = boundaryCard.querySelector(".db-freshness-meta-value");
-    if (valueEl) {
-      (valueEl as HTMLElement).title = latestTimestamp;
-    }
-    meta.appendChild(boundaryCard);
-    card.appendChild(meta);
-
-    this._content.appendChild(card);
+    return html`
+      <h2>🧠 Context Freshness</h2>
+      <div class="db-freshness-card">
+        <div class="db-freshness-header">
+          <div>
+            <div class="db-freshness-status">${statusLabel}</div>
+            <div style="font-size:1.6em;font-weight:800;margin-top:2px">${score.toFixed(0)}%</div>
+          </div>
+          <div style="font-size:0.88em;opacity:0.8;text-align:right">${statusDetail}</div>
+        </div>
+        <div class="db-freshness-meter">
+          <div
+            class=${classMap({ "db-freshness-fill": true, [freshness.status]: true })}
+            style=${styleMap({ width: `${score}%` })}
+          ></div>
+        </div>
+        <div class="db-freshness-suggestion">${suggestion}</div>
+        <div class="db-freshness-meta">
+          ${this._metaCard("Current Session Actions", String(freshness.actionCount))}
+          ${this._metaCard("Latest Refresh ROI", latestRoi)}
+          ${this._metaCard("Recovery Delta", latestRecovery)}
+          ${this._metaCard("Latest Boundary", trunc(latestEventType, 22), latestTimestamp)}
+        </div>
+      </div>
+    `;
   }
-
-  private _metaCard(label: string, value: string): HTMLElement {
-    const card = document.createElement("div");
-    card.className = "db-freshness-meta-card";
-    const labelEl = document.createElement("div");
-    labelEl.className = "db-freshness-meta-label";
-    labelEl.textContent = label;
-    const valueEl = document.createElement("div");
-    valueEl.className = "db-freshness-meta-value";
-    valueEl.textContent = value;
-    card.appendChild(labelEl);
-    card.appendChild(valueEl);
-    return card;
-  }
-}
-
-if (!customElements.get("copilot-freshness-meter")) {
-  customElements.define("copilot-freshness-meter", ContextFreshnessMeter);
 }

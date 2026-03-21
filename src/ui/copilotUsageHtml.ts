@@ -239,7 +239,16 @@ export function getHtmlContent(
     .db-lang-table th, .db-lang-table td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); }
     .db-lang-table th { opacity: 0.7; font-weight: normal; }
     .db-section-sep { border: none; border-top: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin: 28px 0; }
-    /* ── Tab bar — styles now owned by the <copilot-tab-panel> Shadow DOM ── */
+    /* ── Plain-HTML tab bar ──────────────────────────────────────────── */
+    .db-tab-nav { display: flex; gap: 0; border-bottom: 1px solid var(--vscode-editor-inactiveSelectionBackground); margin-bottom: 16px; flex-wrap: wrap; }
+    .db-panel-tab { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 16px; cursor: pointer; color: var(--vscode-foreground); opacity: 0.7; font-size: 0.9em; font-family: var(--vscode-font-family); transition: opacity 0.1s; }
+    .db-panel-tab:hover { opacity: 1; }
+    .db-panel-tab.active { border-bottom-color: var(--vscode-charts-blue, #007acc); opacity: 1; color: var(--vscode-charts-blue, #007acc); }
+    .db-panel-view { display: none; }
+    .db-panel-view.active { display: block; }
+    /* ── Tag / Badge pill replacements ──────────────────────────────── */
+    .db-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 2px; font-size: 0.78em; background: var(--vscode-badge-background, rgba(90,93,94,0.31)); color: var(--vscode-badge-foreground, #c8c8c8); }
+    .db-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 0.78em; font-weight: 600; background: var(--vscode-charts-blue, #007acc); color: #fff; }
     .db-freshness-card {
       background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 88%, transparent), transparent);
       border: 1px solid var(--vscode-editor-inactiveSelectionBackground);
@@ -395,18 +404,20 @@ export function getHtmlContent(
   ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
-    <vscode-panels id="main-panels" activeid="overview-tab">
-      <vscode-panel-tab id="overview-tab">📊 Overview (ROI)</vscode-panel-tab>
-      <vscode-panel-tab id="health-tab">🔍 Health (Diagnostics)</vscode-panel-tab>
-      <vscode-panel-tab id="flow-tab">🌊 Flow (Velocity)</vscode-panel-tab>
-      <vscode-panel-tab id="prompt-insights-tab">💬 Prompt Insights</vscode-panel-tab>
-      <vscode-panel-tab id="sessions-tab">📂 Sessions</vscode-panel-tab>
+    <div id="main-panels" class="db-panels">
+      <nav class="db-tab-nav">
+        <button class="db-panel-tab active" data-tab="overview">📊 Overview (ROI)</button>
+        <button class="db-panel-tab" data-tab="health">🔍 Health (Diagnostics)</button>
+        <button class="db-panel-tab" data-tab="flow">🌊 Flow (Velocity)</button>
+        <button class="db-panel-tab" data-tab="prompt-insights">💬 Prompt Insights</button>
+        <button class="db-panel-tab" data-tab="sessions">📂 Sessions</button>
+      </nav>
 
-      <vscode-panel-view id="db-tab-overview">
+      <div class="db-panel-view active" id="db-tab-overview">
         <div style="width:100%">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <span></span>
-            <vscode-button id="db-btn-export-md" appearance="secondary">📄 Export Report (Markdown)</vscode-button>
+            <button id="db-btn-export-md" class="db-export-btn">📄 Export Report (Markdown)</button>
           </div>
           ${coreKpiPanel}
           <div id="db-summary-cards" class="stats-grid"></div>
@@ -417,17 +428,17 @@ export function getHtmlContent(
           <div id="db-agent-intelligence-container"></div>
           <div id="db-autonomy-evolution-container"></div>
         </div>
-      </vscode-panel-view>
+      </div>
 
-      <vscode-panel-view id="db-tab-health">
+      <div class="db-panel-view" id="db-tab-health">
         <div style="width:100%">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
-            <vscode-button id="db-btn-export-png-health" appearance="secondary">🖼️ Save Chart (PNG)</vscode-button>
+            <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
           </div>
           <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
           <div id="db-load-historical-container" style="display:none;margin-top:16px;text-align:center">
-            <vscode-button id="db-btn-load-historical" appearance="primary">🕐 Load Historical Data</vscode-button>
+            <button id="db-btn-load-historical" class="db-load-btn">🕐 Load Historical Data</button>
             <p style="margin:4px 0 0;font-size:0.85em;opacity:0.7">Older sessions are available. Click to load the full history.</p>
           </div>
           ${dateSection}
@@ -438,9 +449,9 @@ export function getHtmlContent(
           ${errorSection}
           ${sessionSection}
         </div>
-      </vscode-panel-view>
+      </div>
 
-      <vscode-panel-view id="db-tab-flow">
+      <div class="db-panel-view" id="db-tab-flow">
         <div style="width:100%">
           <div id="model-autonomy-leverage-map"></div>
           ${hourSection}
@@ -448,13 +459,13 @@ export function getHtmlContent(
           ${contextInsightsSection}
           ${contextEffectivenessSection}
         </div>
-      </vscode-panel-view>
+      </div>
 
-      <vscode-panel-view id="db-tab-prompt-insights">
+      <div class="db-panel-view" id="db-tab-prompt-insights">
         <div style="width:100%">
           <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
             <p>Click to load Prompt Insights data.</p>
-            <vscode-button id="db-btn-load-prompt-insights" appearance="primary">📊 Load Prompt Insights</vscode-button>
+            <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
           </div>
           <div id="db-prompt-insights-content" style="display:none">
             <div id="db-tag-cloud-container"></div>
@@ -466,13 +477,13 @@ export function getHtmlContent(
             <div id="db-context-leverage-container"></div>
           </div>
         </div>
-      </vscode-panel-view>
+      </div>
 
-      <vscode-panel-view id="db-tab-sessions">
+      <div class="db-panel-view" id="db-tab-sessions">
         <div style="width:100%">
           <div id="db-sessions-lazy" class="db-lazy-placeholder">
             <p>Click to load Sessions data.</p>
-            <vscode-button id="db-btn-load-sessions" appearance="primary">📂 Load Sessions</vscode-button>
+            <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
           </div>
           <div id="db-sessions-content" style="display:none">
             <div class="db-session-layout">
@@ -488,8 +499,8 @@ export function getHtmlContent(
             </div>
           </div>
         </div>
-      </vscode-panel-view>
-    </vscode-panels>
+      </div>
+    </div>
   </section>
   ${buildScriptTags(nonce, scriptUri, dashboardPayload)}
 </body>
