@@ -244,6 +244,19 @@ export interface ContextBucket {
 }
 
 /**
+ * Context richness summary derived from per-session file-reference counts.
+ * Displayed in the Overview tab as a badge + progress meter.
+ */
+export interface ContextRichnessData {
+  /** Average number of file references attached per tracked session (0 if no data). */
+  avgRefCount: number;
+  /** Qualitative status derived from avgRefCount. */
+  status: "low" | "medium" | "rich";
+  /** Reference-count distribution buckets (reuses ContextBucket shape). */
+  buckets: ContextBucket[];
+}
+
+/**
  * Lazy-loaded payload for the Prompt Insights tab.
  * Requested on demand when the user clicks "Load Data" on the Prompt Insights tab.
  */
@@ -306,6 +319,11 @@ export interface DashboardPayload {
   refreshAnalysis: RefreshAnalysis[];
   /** Current-session context freshness, or null when unsupported by logs. */
   freshness: ContextFreshness | null;
+  /**
+   * Context richness summary derived from per-session file-reference counts.
+   * Displayed in the Overview tab as a badge + progress meter with correlation chart.
+   */
+  contextRichness: ContextRichnessData;
   /**
    * True when only a limited number of recent sessions were parsed during the
    * initial load.  The WebView should show a "Load Historical Data" button that

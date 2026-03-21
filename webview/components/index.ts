@@ -1,3 +1,5 @@
+export { ContextCorrelationChart } from "./ContextCorrelationChart";
+export { ContextRichnessMeter } from "./ContextRichnessMeter";
 export { CopilotInsightCard } from "./CopilotInsightCard";
 export { CopilotStatCard } from "./CopilotStatCard";
 export { ContextFreshnessMeter } from "./ContextFreshnessMeter";
