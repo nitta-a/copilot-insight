@@ -531,7 +531,7 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 // Prompt Length vs Acceptance Rate Scatter (Bubble) Chart
 // ---------------------------------------------------------------------------
 
-function renderPromptLengthScatterChart(scatterData: DashboardPayload["promptLengthScatterData"]): void {
+function renderPromptLengthScatterChart(scatterData: PromptInsightsData["promptLengthScatterData"]): void {
   const container = document.getElementById("db-prompt-length-scatter-container");
   if (!container) {
     return;
@@ -610,7 +610,7 @@ function renderPromptLengthScatterChart(scatterData: DashboardPayload["promptLen
 // Turn Churn Mixed Chart (chat session turn-count distribution)
 // ---------------------------------------------------------------------------
 
-function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
+function renderTurnChurnChart(turnStats: PromptInsightsData["turnStats"]): void {
   const container = document.getElementById("db-turn-churn-container");
   if (!container) {
     return;
@@ -728,7 +728,7 @@ function renderTurnChurnChart(turnStats: DashboardPayload["turnStats"]): void {
 // Context Leverage Mixed Chart (context reference-count distribution)
 // ---------------------------------------------------------------------------
 
-function renderContextLeverageChart(contextStats: DashboardPayload["contextStats"]): void {
+function renderContextLeverageChart(contextStats: PromptInsightsData["contextStats"]): void {
   const container = document.getElementById("db-context-leverage-container");
   if (!container) {
     return;
@@ -873,7 +873,7 @@ function renderInsights(insights: string[]): void {
   el.innerHTML = buildInsightsHtml(insights);
 }
 
-function renderTagCloud(topKeywords: DashboardPayload["topKeywords"]): void {
+function renderTagCloud(topKeywords: PromptInsightsData["topKeywords"]): void {
   const el = document.getElementById("db-tag-cloud-container");
   if (!el) {
     return;

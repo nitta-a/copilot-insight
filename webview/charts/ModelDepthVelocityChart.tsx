@@ -72,7 +72,7 @@ function CustomTooltip({
       }}
     >
       <p style={{ margin: "0 0 4px", fontWeight: "bold" }}>{label}</p>
-      {(payload as CustomTooltipPayloadItem[]).map((entry) => (
+      {(payload as unknown as CustomTooltipPayloadItem[]).map((entry) => (
         <p key={entry.name} style={{ margin: "2px 0", color: entry.color }}>
           {entry.name}:{" "}
           {typeof entry.value === "number"
