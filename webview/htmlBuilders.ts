@@ -166,7 +166,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
   const planSuccessStr = overview.planCount > 0 ? `${overview.planSuccessRate.toFixed(1)}%` : "—";
   const planningSection =
     overview.planCount > 0
-      ? `<hr class="db-section-sep">
+      ? `<vscode-divider></vscode-divider>
        <h3 style="font-size:1em;margin:16px 0 10px">📋 Planning &amp; Execution</h3>
        <div class="stats-grid">
          <div class="stat-card">
@@ -236,7 +236,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
   ];
   const hasFeatureSignals = featureCards.some((card) => card.total > 0);
   const featureSection = hasFeatureSignals
-    ? `<hr class="db-section-sep">
+    ? `<vscode-divider></vscode-divider>
        <h3 style="font-size:1em;margin:16px 0 10px">🧪 VS Code 1.110 Feature Signals</h3>
        <div class="stats-grid">
          ${featureCards
@@ -256,7 +256,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
     : "";
 
   return `
-    <hr class="db-section-sep">
+    <vscode-divider></vscode-divider>
     <h2>🤖 Agent Intelligence Overview</h2>
     <div class="stats-grid">
       <div class="stat-card db-highlight">
@@ -348,10 +348,10 @@ export function buildSelectedThreadHtml(detail: SessionDetailPayload, selectedTh
   return `<div class="db-thread-detail-header-block">
       <div><strong>${escHtml(selectedThread.title)}</strong><div style="margin-top:4px;font-size:0.84em;opacity:0.74">${escHtml(new Date(selectedThread.startedAt).toLocaleString())}</div></div>
       <div class="db-thread-detail-metrics">
-        <span class="db-thread-chip">${selectedThread.stepCount} steps</span>
-        <span class="db-thread-chip">${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</span>
-        ${selectedThread.longestPauseMs > 0 ? `<span class="db-thread-chip">Longest wait ${escHtml(formatPause(selectedThread.longestPauseMs))}</span>` : ""}
-        ${selectedThread.hasAutonomousRun ? '<span class="db-thread-chip autonomous">🤖 Autonomous</span>' : ""}
+        <vscode-tag>${selectedThread.stepCount} steps</vscode-tag>
+        <vscode-tag>${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</vscode-tag>
+        ${selectedThread.longestPauseMs > 0 ? `<vscode-tag>Longest wait ${escHtml(formatPause(selectedThread.longestPauseMs))}</vscode-tag>` : ""}
+        ${selectedThread.hasAutonomousRun ? '<vscode-badge>🤖 Autonomous</vscode-badge>' : ""}
       </div>
     </div>
     <div class="db-agent-step-timeline">${stepsHtml}</div>`;
