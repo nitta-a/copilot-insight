@@ -52,6 +52,7 @@ import type {
   WeeklyTrendCard,
 } from "./components/index";
 import "./components/index";
+import { escHtml } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
   buildInsightsHtml,
@@ -278,7 +279,7 @@ function renderFinishReasonBreakdown(finishReasonBreakdown: PromptInsightsData["
     .map((entry) => {
       const ratio = total > 0 ? (entry.count / total) * 100 : 0;
       return `<div class="bar-row">
-        <div class="bar-label">${entry.name}</div>
+        <div class="bar-label">${escHtml(entry.name)}</div>
         <div class="bar-group">
           <div class="bar-track"><div class="bar-fill purple" style="width:${ratio.toFixed(1)}%"></div></div>
           <div class="stat-detail">${ratio.toFixed(1)}% of completions</div>
