@@ -8,36 +8,39 @@
 
 ## English
 
-A VS Code extension that parses GitHub Copilot's local log files and visualizes your usage statistics in a rich dashboard panel.
+A 100% local, privacy-first VS Code extension that parses GitHub Copilot's local log files and visualizes your usage statistics in a blazingly fast, reactive dashboard. 
 
-### Features
+Stop guessing if AI is making you faster. Measure your ROI, track your prompt effectiveness, and prove that providing better context leads to better code.
 
-- **Usage Dashboard** — opens a detailed panel showing:
-  - Total suggestions shown / accepted / declined
-  - Overall acceptance rate, **True Acceptance Rate**, and estimated **minutes saved (ROI)** split into typing savings and agentic savings
-  - **Best model** highlight derived from cross-language model performance
-  - Daily usage chart with acceptance rate trendline (full span of available log data)
-  - Weekly trend comparison (this week vs. last week)
-  - AI model usage breakdown — Chat vs. Inline Completion, with per-model acceptance rate
-  - Activity heatmap by hour of day
-  - Auto-generated **Insights** summary (peak hour, weekly trend, chat/inline ratio)
-- **Five-tab dashboard** — content is organised into focused tabs:
-  - 📊 **Overview (ROI)**: summary cards, Insights, and Weekly Trend
-  - 🔍 **Health (Diagnostics)**: True Acceptance Rate Timeline chart with anomaly highlighting, daily usage, model/latency/session breakdown, **Agent Intelligence Overview** (autonomous action count, loop completion rate, per-model agentic depth and velocity, **Planning & Execution** stats — Plans Proposed / Executed / Success Rate / User Choices)
-  - 🌊 **Flow (Velocity)**: KPM vs completions scatter plot, activity heatmaps, **Context Effectiveness** breakdown by Copilot context source (Active File, Workspace, Symbol, Embeddings, etc.)
-  - 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, Prompt Length scatter chart, **Turn Churn** chart (multi-turn session distribution and resolution rate), and **Context Leverage** chart (reference-count buckets vs. acceptance rate)
-  - 📂 **Sessions**: Session Intelligence Explorer with logical chat thread grouping, per-thread estimated minutes saved, autonomous-run highlighting, and drilldown timelines for user prompts, research, browser actions, file edits, and memory refresh boundaries
-- **Real-time Status Bar** — live acceptance rate indicator in the VS Code status bar (`$(copilot) 73% (42/58)`); updates every 3 seconds during your coding session and opens the dashboard on click
-- **MCP Server** — built-in Model Context Protocol server lets external AI agents (Claude Desktop, VS Code Copilot Chat, etc.) query your usage statistics via `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools; no cloud or external network access required
-- **Activity Bar** — dedicated sidebar view with quick-access buttons
-- **Export** — export your statistics as CSV, JSON, Markdown report, or **PNG chart screenshot**
-- **Refresh** — re-parse logs at any time with a single click
+### 🚀 Key Features
+
+- **Context Richness Analysis** — Visualizes the correlation between the amount of context you provide (open tabs, referenced files) and the AI's acceptance rate. Proves the "Garbage In, Garbage Out" rule with your own data.
+- **100% Local & Privacy-First** — No telemetry, no cloud servers. It works purely by parsing local VS Code extension host logs (`exthost.log`) on your machine.
+- **ROI & True Acceptance Rate** — Tracks overall acceptance rate, declined suggestions, and estimated **minutes saved (ROI)** split into typing savings and agentic/autonomous savings.
+- **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness.
+- **Activity & Flow** — Activity heatmaps by hour of the day, weekly trend comparisons, and KPM (Keystrokes Per Minute) vs. completions scatter plots.
+- **MCP Server Built-in** — Exposes `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools via the Model Context Protocol, allowing external AI agents (like Claude Desktop) to query your stats locally.
+
+### 🛠️ Under the Hood (Architecture)
+
+Copilot Insight is built for extreme performance without bloating your editor:
+- **Backend (Rust + NAPI-RS)**: The log parsing engine is entirely written in Rust. It performs zero-copy, OS-level file I/O to parse massive log files instantly, bypassing Node.js memory limits.
+- **Frontend (Lit)**: The dashboard UI is built with the **Lit** framework, using lightweight, reactive Web Components that render smoothly without the overhead of heavy SPA frameworks.
+- **Database (DuckDB)**: Utilizes local DuckDB (Wasm) for executing fast, analytical queries on the parsed metrics.
+
+### 🗂️ Dashboard Tabs
+
+- 📊 **Overview (ROI)**: Summary cards, auto-generated Insights, and Weekly Trends.
+- 🔍 **Health (Diagnostics)**: True Acceptance Rate timelines, daily usage, and **Agent Intelligence Overview** (Planning & Execution stats, autonomous action counts).
+- 🌊 **Flow (Velocity)**: KPM scatter plots, activity heatmaps, and **Context Effectiveness** breakdown by source (Active File, Workspace, Symbol, Embeddings).
+- 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, Prompt Length scatter chart, and **Context Leverage** chart (Context size vs. Acceptance rate).
+- 📂 **Sessions**: Session Intelligence Explorer. Drill down into chat threads, user prompts, file edits, and memory refreshes.
 
 ### How to Use
 
 1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
 2. Run **Copilot Insight: Show Usage**
-3. The usage dashboard panel opens automatically
+3. The usage dashboard panel opens automatically.
 
 Alternatively, click the **Copilot Insight** icon in the Activity Bar on the left side of VS Code.
 
@@ -47,53 +50,31 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `10` | Number of recent VS Code session directories to scan for Copilot logs (1–20) |
 | `copilot-insight.defaultDisplayDays` | `14` | Default number of days shown in the Daily Usage chart (7, 14, or 30) |
-| `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics (true acceptance rate, velocity, model performance) |
-| `copilot-insight.cliLogPath` | `""` | Path to the GitHub Copilot CLI session-state directory (leave empty for automatic discovery at `~/.copilot/session-state`) |
-| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | Estimated minutes saved per GitHub Copilot CLI interaction (used for ROI calculation) |
-| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | Fallback model name label for CLI interactions when no model name can be detected from the log |
-
-### Requirements
-
-- GitHub Copilot extension must be installed in VS Code and actively used so that local log files are generated.
+| `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics |
+| `copilot-insight.cliLogPath` | `""` | Path to the GitHub Copilot CLI session-state directory |
+| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | Estimated minutes saved per GitHub Copilot CLI interaction |
+| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | Fallback model name label for CLI interactions |
 
 ### Installing from VSIX (local build)
 
 1. Build the extension package:
-   ```bash
-   npm run package
-   ```
-2. Install the generated VSIX file in VS Code:
-   - Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-   - Run **Extensions: Install from VSIX...**
-   - Select the `.vsix` file from the project root
+   `npm run package`
+2. Install the generated VSIX file in VS Code via Command Palette (**Extensions: Install from VSIX...**) or CLI:
+   `code --install-extension copilot-insight-<version>.vsix`
 
-   Or via the command line:
-   ```bash
-   code --install-extension copilot-insight-<version>.vsix
-   ```
+### Building the Native Rust Parser
 
-### Native Log Parser (optional)
-
-An optional Rust native addon is included under `native-parser/`. Building it is **optional** — the extension works without it using the TypeScript fallback parsers. When the native module is available the bridge (`src/log/nativeBridge.ts`) offloads CPU-heavy log parsing to the compiled Rust code for improved performance.
-
-#### Prerequisites
-
-| Tool | Install guide |
-|---|---|
-| **Rust toolchain** (rustup, cargo) | <https://rustup.rs/> |
-| **@napi-rs/cli** | bundled as a dev dependency (`npm install` installs it automatically) |
-
-#### Build & verify
+The extension ships with a fast JS fallback, but compiling the Rust native addon unlocks maximum performance.
 
 ```bash
-# 1. Build the native addon (outputs a .node file in native-parser/)
+# 1. Build the native addon (outputs a .node file via NAPI-RS)
 npm run build:native
 
 # 2. Run the Rust unit tests
 cd native-parser && cargo test
 ```
 
-After `npm run build:native` succeeds, restart the VS Code extension host (or run **Developer: Reload Window**) to let the bridge pick up the native addon.
+Restart the VS Code extension host (**Developer: Reload Window**) to apply.
 
 ---
 
@@ -101,90 +82,71 @@ After `npm run build:native` succeeds, restart the VS Code extension host (or ru
 
 ## 日本語
 
-GitHub Copilot のローカルログファイルを解析し、使用統計をリッチなダッシュボードパネルで可視化する VS Code 拡張機能です。
+GitHub Copilot のローカルログファイルを解析し、使用統計を高速かつリアクティブなダッシュボードで可視化する、100%ローカル・プライバシーファーストな VS Code 拡張機能です。
 
-### 機能
+AIが本当に開発を高速化しているのかを推測するのはやめましょう。ROIを測定し、プロンプトの有効性を追跡し、「適切なコンテキスト（周辺情報）を与えるほど優れたコードが生成される」という事実をデータで証明します。
 
-- **使用状況ダッシュボード** — 以下を含む詳細パネルを表示:
-  - 提案の表示回数 / 受け入れ回数 / 拒否回数
-  - 全体の受け入れ率・**真の受け入れ率 (True Acceptance Rate)**・推定**節約時間 (ROI)** (タイピング節約とエージェント節約の2分割表示)
-  - クロス言語モデル性能から導出した**ベストモデル**ハイライト
-  - 日次使用チャートと受け入れ率のトレンドライン (利用可能なログデータの全期間)
-  - 週次トレンド比較 (今週 vs 先週)
-  - AIモデル別の使用状況 — Chat vs. インライン補完、モデルごとの受け入れ率
-  - 時間帯別のアクティビティヒートマップ
-  - 自動生成される **Insights** サマリー (ピーク時間帯・週次トレンド・Chat/Inline 比率)
-- **5タブダッシュボード** — コンテンツを目的別の5タブに整理:
-  - 📊 **Overview (ROI)**: サマリーカード・Insights・週次トレンド
-  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムラインチャート (異常値ハイライト付き)・日次使用状況・モデル/レイテンシ/セッション内訳・**Agent Intelligence Overview** (自律アクション数・ループ完了率・モデル別エージェント深度と速度・**Planning & Execution** 統計 — 提案プラン数 / 実行プラン数 / 成功率 / ユーザー選択回数)
-  - 🌊 **Flow (Velocity)**: KPM vs 補完受け入れ数の散布図・アクティビティヒートマップ・**コンテキスト効果** (Active File・Workspace・Symbol・Embeddings などのコンテキストソース別の貢献度)
-  - 💬 **Prompt Insights**: よく使われる用語のタグクラウド・インテントコマンドのドーナツチャート・プロンプト長の散布図・**ターンチャーン**チャート (マルチターンセッション分布と解決率)・**コンテキストレバレッジ**チャート (参照ファイル数バケット別の受け入れ率)
-  - 📂 **Sessions**: Session Intelligence Explorer。論理チャットスレッドごとの推定節約時間、自律実行の強調表示、ユーザー質問・調査・ブラウザ操作・ファイル編集・Memory Refreshed 境界を辿れるドリルダウンタイムライン
-- **リアルタイムステータスバー** — VS Code のステータスバーにライブの受け入れ率インジケーターを表示 (`$(copilot) 73% (42/58)`)。コーディング中に 3 秒ごとに更新され、クリックするとダッシュボードが開く
-- **MCP サーバー** — 組み込みの Model Context Protocol サーバーにより、外部 AI エージェント (Claude Desktop・VS Code Copilot Chat など) が `get_usage_summary`・`get_model_efficiency`・`get_anomaly_report` ツールを通じて使用統計を照会可能。クラウドや外部ネットワークへのアクセス不要
-- **アクティビティバー** — サイドバーに専用ビューとクイックアクセスボタン
-- **エクスポート** — 統計を CSV・JSON・Markdown レポート・**PNG チャートスクリーンショット**として書き出し
-- **更新** — ワンクリックでログを再解析
+### 🚀 主な機能
+
+  - **コンテキスト充実度の相関分析 (Context Richness)** — 提供したコンテキスト量（開いているタブや参照ファイル数）とAIの提案受け入れ率の相関関係を可視化します。「Garbage In, Garbage Out（入力の質が出力の質を決める）」の原則を自身のデータで確認できます。
+  - **100% ローカル & プライバシーファースト** — 外部サーバーへのテレメトリ送信は一切ありません。マシン上のローカルログファイル（`exthost.log`）を解析するだけで完結します。
+  - **ROI と真の受け入れ率** — 全体の受け入れ率、拒否された提案数、および推定**節約時間 (ROI)** を「タイピングによる節約」と「自律エージェントによる節約」に分けて追跡します。
+  - **モデル効率の内訳** — 言語モデル間のパフォーマンスを比較し、特定のコードベースに最適なモデルを特定します（ChatとInline補完の有効性も分離して分析）。
+  - **アクティビティとフロー** — 時間帯別のアクティビティヒートマップ、週次トレンド比較、KPM（1分あたりのキーストローク）と補完受け入れ数の散布図を表示します。
+  - **MCP サーバー内蔵** — Model Context Protocol サーバーを内蔵しており、Claude Desktop などの外部AIエージェントが、ローカルであなたの使用統計（`get_usage_summary` 等）を直接照会できます。
+
+### 🛠️ アーキテクチャ (Under the Hood)
+
+エディタの動作を重くすることなく、極限のパフォーマンスを引き出すために設計されています：
+
+  - **バックエンド (Rust + NAPI-RS)**: ログ解析エンジンはすべてRustで書かれています。Node.jsのメモリ制限を回避し、OSレベルでのゼロコピー・ファイルI/Oにより、巨大なログファイルを瞬時に解析します。
+  - **フロントエンド (Lit)**: ダッシュボードUIは **Lit** フレームワークで構築されています。重いSPAフレームワークのオーバーヘッドなしに、軽量でリアクティブな Web Components として高速にレンダリングされます。
+  - **データベース (DuckDB)**: 解析されたメトリクスに対する高速な分析クエリの実行に、ローカルの DuckDB (Wasm) を利用しています。
+
+### 🗂️ ダッシュボードタブ構成
+
+  - 📊 **Overview (ROI)**: サマリーカード、自動生成Insights、週次トレンド。
+  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムライン、日次使用状況、**Agent Intelligence Overview** (自律アクション数・Planning & Execution 統計)。
+  - 🌊 **Flow (Velocity)**: KPM散布図、ヒートマップ、**コンテキスト効果** (Active File / Workspace / Embeddings 等のソース別貢献度)。
+  - 💬 **Prompt Insights**: 頻出用語タグクラウド、プロンプト長散布図、**コンテキストレバレッジ**チャート (参照ファイル数バケット別の受け入れ率)。
+  - 📂 **Sessions**: Session Intelligence Explorer。チャットスレッド、ユーザープロンプト、ファイル編集のタイムラインをドリルダウン解析。
 
 ### 使い方
 
-1. コマンドパレットを開きます (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-2. **Copilot Insight: Show Usage** を実行します
-3. 使用状況ダッシュボードのパネルが自動的に開きます
+1.  コマンドパレットを開きます (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+2.  **Copilot Insight: Show Usage** を実行します
+3.  使用状況ダッシュボードのパネルが自動的に開きます。
 
-または、VS Code 左側のアクティビティバーにある **Copilot Insight** アイコンをクリックしてください。
+（または、アクティビティバーの **Copilot Insight** アイコンをクリック）
 
 ### 設定
 
 | 設定 | デフォルト | 説明 |
 |---|---|---|
 | `copilot-insight.maxSessionDirs` | `10` | Copilotログをスキャンする直近の VS Code セッションディレクトリ数 (1〜20) |
-| `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (7・14・30 から選択) |
-| `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする (真の受け入れ率・速度・モデル性能)。無効にするとイベントログは継続されるが、メトリクスダッシュボードは利用不可 |
-| `copilot-insight.cliLogPath` | `""` | GitHub Copilot CLI セッション状態ディレクトリのパス (空欄の場合は `~/.copilot/session-state` を自動探索) |
-| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | GitHub Copilot CLI インタラクション 1 回あたりの推定節約時間 (分)（ROI 計算に使用） |
-| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | CLI ログからモデル名を検出できない場合のフォールバックラベル |
-
-### 要件
-
-- VS Code 内で GitHub Copilot 拡張機能がインストールされ、ローカルのログファイルが生成されるように実際に使用されている必要があります。
+| `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (7・14・30) |
+| `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする |
+| `copilot-insight.cliLogPath` | `""` | GitHub Copilot CLI セッション状態ディレクトリのパス |
+| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | CLI インタラクション 1 回あたりの推定節約時間 (分) |
+| `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | CLI ログからモデル名を検出できない場合のフォールバック |
 
 ### VSIX からのインストール (ローカルビルド)
 
-1. 拡張機能のパッケージ (VSIX) をビルドします:
-   ```bash
-   npm run package
-   ```
-2. 生成された VSIX ファイルを VS Code にインストールします:
-   - コマンドパレットを開く (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-   - **Extensions: Install from VSIX...** を実行する
-   - プロジェクトのルートにある `.vsix` ファイルを選択する
+1.  パッケージをビルドします:
+    `npm run package`
+2.  コマンドパレット (**Extensions: Install from VSIX...**) または CLI からインストール:
+    `code --install-extension copilot-insight-<version>.vsix`
 
-   またはコマンドラインから:
-   ```bash
-   code --install-extension copilot-insight-<version>.vsix
-   ```
+### ネイティブ Rust パーサーのビルド
 
-### ネイティブログパーサー (任意)
-
-`native-parser/` ディレクトリにオプションの Rust ネイティブアドオンが含まれています。
-ビルドは**任意**です — アドオンがなくても拡張機能は TypeScript フォールバックパーサーで通常どおり動作します。ネイティブモジュールが利用可能な場合、TypeScript ブリッジ (`src/log/nativeBridge.ts`) が CPU 負荷の高いログ解析処理をコンパイル済みの Rust コードにオフロードし、パフォーマンスを向上させます。
-
-#### 前提条件
-
-| ツール | インストール方法 |
-|---|---|
-| **Rust ツールチェーン** (rustup, cargo) | <https://rustup.rs/> |
-| **@napi-rs/cli** | 開発依存関係として同梱済み (`npm install` で自動インストール) |
-
-#### ビルドと動作確認
+JSのフォールバックパーサーでも動作しますが、Rustネイティブアドオンをコンパイルすることで最大のパフォーマンスが解放されます。
 
 ```bash
-# 1. ネイティブアドオンをビルド (native-parser/ に .node ファイルを出力)
+# 1. ネイティブアドオンをビルド (NAPI-RS経由で .node ファイルを出力)
 npm run build:native
 
 # 2. Rust ユニットテストを実行
 cd native-parser && cargo test
 ```
 
-`npm run build:native` が成功したら、VS Code の拡張機能ホストを再起動 (**Developer: Reload Window** を実行) すると、ブリッジがネイティブアドオンを読み込みます。
+適用するには VS Code ウィンドウを再読み込み (**Developer: Reload Window**) してください。
