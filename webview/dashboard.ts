@@ -60,6 +60,7 @@ import {
   buildSummaryCardsHtml,
   getSelectableThreadsSorted,
 } from "./htmlBuilders";
+import { captureAsPng } from "./utils/pngExport";
 
 // ---------------------------------------------------------------------------
 // VS Code WebView API (injected as a global by VS Code)
@@ -461,6 +462,7 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
     el.appendChild(comp);
   }
   comp.trendData = trend;
+  comp.showDownload = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +472,7 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 const EXPORT_BUTTON_LABELS: Record<string, string> = {
   "db-btn-export-md": "📄 Export Report (Markdown)",
   "db-btn-export-png-health": "🖼️ Save Chart (PNG)",
+  "db-btn-export-full-dashboard": "📸 Export Full Dashboard",
 };
 
 function setExportLoading(btnId: string, loading: boolean): void {
@@ -487,6 +490,25 @@ function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "
   vscode.postMessage({ type: "exportPng", payload: { imageData, chartId } } satisfies WebviewToHostMessage);
 }
 
+async function exportFullDashboard(): Promise<void> {
+  // Find the currently active tab panel and capture it.
+  const activePanel = document.querySelector<HTMLElement>(".db-panel-view.active");
+  if (!activePanel) {
+    return;
+  }
+  setExportLoading("db-btn-export-full-dashboard", true);
+  try {
+    const imageData = await captureAsPng(activePanel);
+    vscode.postMessage({
+      type: "exportPng",
+      payload: { imageData, chartId: "full-dashboard" },
+    } satisfies WebviewToHostMessage);
+  } catch (err) {
+    console.error("[copilot-insight] Full dashboard export failed:", err);
+    setExportLoading("db-btn-export-full-dashboard", false);
+  }
+}
+
 function setupExportButtons(): void {
   document.getElementById("db-btn-export-md")?.addEventListener("click", () => {
     setExportLoading("db-btn-export-md", true);
@@ -496,6 +518,10 @@ function setupExportButtons(): void {
   document.getElementById("db-btn-export-png-health")?.addEventListener("click", () => {
     setExportLoading("db-btn-export-png-health", true);
     exportChartAsPng("db-timeline-chart", "timeline");
+  });
+
+  document.getElementById("db-btn-export-full-dashboard")?.addEventListener("click", () => {
+    void exportFullDashboard();
   });
 }
 
@@ -860,8 +886,15 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
       renderSessionsData(msg.payload as SessionsData);
     }
   } else if (msg.type === "exportComplete") {
-    // Only markdown and timeline PNG exports are currently supported.
-    const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";
+    // Reset the export button that matches the completed export.
+    let btnId: string;
+    if (msg.exportType === "markdown") {
+      btnId = "db-btn-export-md";
+    } else if (msg.chartId === "full-dashboard") {
+      btnId = "db-btn-export-full-dashboard";
+    } else {
+      btnId = "db-btn-export-png-health";
+    }
     setExportLoading(btnId, false);
   }
 });

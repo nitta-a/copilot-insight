@@ -55,14 +55,14 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
       : "no plan or agent data";
 
   return `
-    <copilot-stat-card value="${escHtml(trueRateStr)}" label="True Acceptance Rate" highlight="blue" subtext="vs ${escHtml(summary.acceptanceRate.toFixed(1))}% raw"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(totalHours)} hours" label="Estimated Time Saved" highlight="blue" subtext="${escHtml(roiDetail)}" title="${escHtml(sourceDetail)}"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(trunc(topChatModelStr, 18))}" label="Top Chat Model" highlight="blue" subtext="${escHtml(topChatModelDetail)}" title="${escHtml(topChatModelStr)}"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(trunc(topAskModelStr, 18))}" label="Top Ask Model" highlight="blue" subtext="${escHtml(topAskModelDetail)}" title="${escHtml(topAskModelStr)}"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(trunc(topPlanModelStr, 18))}" label="Top Plan Model" highlight="blue" subtext="${escHtml(topPlanModelDetail)}" title="${escHtml(topPlanModelStr)}"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(String(summary.totalShown))}" label="Suggestions Shown"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(String(summary.totalAccepted))}" label="Suggestions Accepted"></copilot-stat-card>
-    <copilot-stat-card value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>`;
+    <copilot-stat-card show-download value="${escHtml(trueRateStr)}" label="True Acceptance Rate" highlight="blue" subtext="vs ${escHtml(summary.acceptanceRate.toFixed(1))}% raw"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(totalHours)} hours" label="Estimated Time Saved" highlight="blue" subtext="${escHtml(roiDetail)}" title="${escHtml(sourceDetail)}"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(trunc(topChatModelStr, 18))}" label="Top Chat Model" highlight="blue" subtext="${escHtml(topChatModelDetail)}" title="${escHtml(topChatModelStr)}"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(trunc(topAskModelStr, 18))}" label="Top Ask Model" highlight="blue" subtext="${escHtml(topAskModelDetail)}" title="${escHtml(topAskModelStr)}"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(trunc(topPlanModelStr, 18))}" label="Top Plan Model" highlight="blue" subtext="${escHtml(topPlanModelDetail)}" title="${escHtml(topPlanModelStr)}"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(String(summary.totalShown))}" label="Suggestions Shown"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(String(summary.totalAccepted))}" label="Suggestions Accepted"></copilot-stat-card>
+    <copilot-stat-card show-download value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ export function buildInsightsHtml(insights: string[]): string {
   const cards = insights
     .map((text) => {
       const variant = /📈/.test(text) ? "positive" : /📉/.test(text) ? "negative" : "neutral";
-      return `<copilot-insight-card variant="${variant}">${escHtml(text)}</copilot-insight-card>`;
+      return `<copilot-insight-card show-download variant="${variant}">${escHtml(text)}</copilot-insight-card>`;
     })
     .join("\n");
   return `<h2>💡 Insights</h2>\n<div class="insights-section">${cards}</div>`;

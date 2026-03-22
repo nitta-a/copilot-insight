@@ -8,19 +8,23 @@
  *   container.appendChild(el);
  *
  * Properties:
- *   trendData — WeeklyTrendData object (or null to clear the component).
+ *   trendData    — WeeklyTrendData object (or null to clear the component).
+ *   showDownload — when true, a 🖼️ download button is rendered that saves the
+ *                  card as a PNG image.
  */
 
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import type { WeeklyTrendData } from "../../src/ui/dashboardMessages";
+import { downloadAsPng } from "../utils/pngExport";
 
 @customElement("copilot-weekly-trend")
 export class WeeklyTrendCard extends LitElement {
   static styles = css`
     :host {
       display: block;
+      position: relative;
     }
     h2 {
       font-size: 1.1em;
@@ -58,9 +62,25 @@ export class WeeklyTrendCard extends LitElement {
     .trend-up   { color: var(--vscode-charts-green, #4ec9b0); }
     .trend-down { color: var(--vscode-charts-red,   #f14c4c); }
     .trend-neutral { opacity: 0.7; }
+    .download-btn {
+      position: absolute;
+      top: 0;
+      right: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+      font-size: 0.9em;
+      padding: 2px 4px;
+      color: var(--vscode-foreground);
+    }
+    :host(:hover) .download-btn { opacity: 0.6; }
+    .download-btn:hover { opacity: 1 !important; }
   `;
 
   @property({ type: Object }) trendData: WeeklyTrendData | null = null;
+  @property({ type: Boolean }) showDownload = false;
 
   private _statRow(label: string, value: string) {
     return html`
@@ -69,6 +89,10 @@ export class WeeklyTrendCard extends LitElement {
         <span>${value}</span>
       </div>
     `;
+  }
+
+  private async _handleDownload(): Promise<void> {
+    await downloadAsPng(this, "copilot-weekly-trend.png");
   }
 
   render() {
@@ -92,6 +116,9 @@ export class WeeklyTrendCard extends LitElement {
 
     return html`
       <h2>📈 Weekly Trend</h2>
+      ${this.showDownload
+        ? html`<button class="download-btn" title="Download as PNG" @click=${this._handleDownload}>🖼️</button>`
+        : ""}
       <div class="trend-container">
         <div class="trend-card">
           <h3>Last Week</h3>
