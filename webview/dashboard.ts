@@ -484,6 +484,24 @@ function setExportLoading(btnId: string, loading: boolean): void {
   btn.textContent = loading ? "⏳ Exporting…" : (EXPORT_BUTTON_LABELS[btnId] ?? btn.textContent);
 }
 
+/** Show a transient error toast inside the WebView (auto-dismissed after 6 s). */
+function showExportError(msg: string): void {
+  const TOAST_ID = "db-export-error-toast";
+  document.getElementById(TOAST_ID)?.remove();
+  const el = document.createElement("div");
+  el.id = TOAST_ID;
+  el.style.cssText =
+    "position:fixed;top:12px;right:12px;max-width:380px;" +
+    "background:var(--vscode-inputValidation-errorBackground,#5a1d1d);" +
+    "border:1px solid var(--vscode-inputValidation-errorBorder,#be1100);" +
+    "color:var(--vscode-inputValidation-errorForeground,#f14c4c);" +
+    "border-radius:4px;padding:9px 14px;font-size:12px;z-index:99999;white-space:pre-wrap;" +
+    "box-shadow:0 2px 8px rgba(0,0,0,0.4)";
+  el.textContent = `⚠️ Export failed: ${msg}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
 function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "overview"): void {
   const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const imageData = canvas?.toDataURL("image/png") ?? "";
@@ -496,6 +514,17 @@ async function exportFullDashboard(): Promise<void> {
   if (!activePanel) {
     return;
   }
+
+  // Guard: lazy-loaded tabs must have their data visible before capturing.
+  if (currentTab === "sessions" && !sessionsLoaded) {
+    showExportError('Please click \"Load Sessions\" to load session data before exporting.');
+    return;
+  }
+  if (currentTab === "prompt-insights" && !promptInsightsLoaded) {
+    showExportError('Please click \"Load Prompt Insights\" to load data before exporting.');
+    return;
+  }
+
   setExportLoading("db-btn-export-full-dashboard", true);
   try {
     const imageData = await captureAsPng(activePanel);
@@ -505,6 +534,7 @@ async function exportFullDashboard(): Promise<void> {
     } satisfies WebviewToHostMessage);
   } catch (err) {
     console.error("[copilot-insight] Full dashboard export failed:", err);
+    showExportError(err instanceof Error ? err.message : String(err));
     setExportLoading("db-btn-export-full-dashboard", false);
   }
 }

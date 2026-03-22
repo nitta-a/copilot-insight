@@ -45,7 +45,7 @@ export async function captureAsPng(element: HTMLElement): Promise<string> {
       el.setAttribute("data-png-capture-id", markId);
       shadowHosts.set(markId, el as HTMLElement);
     }
-    for (const child of el.children) {
+    for (const child of Array.from(el.children)) {
       markShadowHosts(child);
     }
   };
@@ -61,12 +61,21 @@ export async function captureAsPng(element: HTMLElement): Promise<string> {
       backgroundColor: bgColor,
       scale: window.devicePixelRatio || 1,
       onclone: (clonedDoc: Document) => {
+        // Flatten Shadow DOM first so that the subsequent rewrite also covers
+        // any <style> elements injected by _flattenShadowIntoLight.
         for (const [markId, origEl] of shadowHosts) {
           const clonedEl = clonedDoc.querySelector<HTMLElement>(`[data-png-capture-id="${markId}"]`);
           if (clonedEl) {
-            _flattenShadowIntoLight(origEl, clonedEl);
+            try {
+              _flattenShadowIntoLight(origEl, clonedEl);
+            } catch {
+              // Skip this shadow host if flattening fails; html2canvas renders it as-is.
+            }
           }
         }
+        // Remove CSS functions unsupported by html2canvas from both stylesheet
+        // text and inline style attributes in the cloned document.
+        _rewriteUnsupportedCssInClone(clonedDoc);
       },
     });
     return canvas.toDataURL("image/png");
@@ -96,7 +105,10 @@ function _flattenShadowIntoLight(original: HTMLElement, clone: HTMLElement): voi
   const styles: string[] = [];
   for (const sheet of Array.from(shadow.styleSheets)) {
     try {
-      styles.push(Array.from(sheet.cssRules).map((r) => r.cssText).join("\n"));
+      const stylesText = Array.from(sheet.cssRules)
+        .map((r) => r.cssText)
+        .join("\n");
+      styles.push(stylesText);
     } catch {
       // Skip cross-origin or inaccessible sheets.
     }
@@ -112,7 +124,9 @@ function _flattenShadowIntoLight(original: HTMLElement, clone: HTMLElement): voi
 
   if (cssText) {
     const styleEl = clone.ownerDocument.createElement("style");
-    styleEl.textContent = cssText;
+    // Strip unsupported CSS functions so the element is already clean even before
+    // the global _rewriteUnsupportedCssInClone pass runs over the cloned document.
+    styleEl.textContent = _stripUnsupportedCssColorFunctions(cssText);
     clone.insertBefore(styleEl, clone.firstChild);
   }
 
@@ -121,7 +135,7 @@ function _flattenShadowIntoLight(original: HTMLElement, clone: HTMLElement): voi
   const shadowDiv = clone.ownerDocument.createElement("div");
   shadowDiv.innerHTML = shadow.innerHTML;
 
-  for (const slot of shadowDiv.querySelectorAll<HTMLSlotElement>("slot")) {
+  for (const slot of Array.from(shadowDiv.querySelectorAll<HTMLSlotElement>("slot"))) {
     const slotName = slot.getAttribute("name");
     if (slotName) {
       // Named slot — find the matching slotted child.
@@ -149,4 +163,98 @@ function _flattenShadowIntoLight(original: HTMLElement, clone: HTMLElement): voi
   }
 
   clone.appendChild(shadowDiv);
+
+  // Copy pixel data from the original shadow-root canvases to the newly cloned
+  // canvases.  innerHTML creates blank <canvas> elements; html2canvas will render
+  // them as empty unless we transfer the pixel data here.
+  const origCanvases = Array.from(shadow.querySelectorAll<HTMLCanvasElement>("canvas"));
+  const clonedCanvases = Array.from(shadowDiv.querySelectorAll<HTMLCanvasElement>("canvas"));
+  for (let i = 0; i < Math.min(origCanvases.length, clonedCanvases.length); i++) {
+    const orig = origCanvases[i];
+    const cloned = clonedCanvases[i];
+    if (orig.width > 0 && orig.height > 0) {
+      cloned.width = orig.width;
+      cloned.height = orig.height;
+      try {
+        cloned.getContext("2d")?.drawImage(orig, 0, 0);
+      } catch {
+        // Ignore SecurityError for tainted canvases (cross-origin image sources).
+      }
+    }
+  }
+}
+
+/**
+ * Remove CSS functions that html2canvas cannot parse from both `<style>`
+ * elements and inline `style` attributes in a cloned document.
+ *
+ * html2canvas parses raw stylesheet text rather than relying on computed styles,
+ * so modern color functions can cause a hard parse error. We replace them with
+ * `transparent` which is a safe fallback for decorative backgrounds and borders.
+ */
+function _rewriteUnsupportedCssInClone(doc: Document): void {
+  for (const style of Array.from(doc.querySelectorAll<HTMLStyleElement>("style"))) {
+    if (style.textContent) {
+      style.textContent = _stripUnsupportedCssColorFunctions(style.textContent);
+    }
+  }
+
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>("[style]"))) {
+    const styleAttr = el.getAttribute("style");
+    if (styleAttr) {
+      el.setAttribute("style", _stripUnsupportedCssColorFunctions(styleAttr));
+    }
+  }
+}
+
+/**
+ * Remove all unsupported CSS color function calls from a CSS string by scanning
+ * for balanced parentheses and replacing each call with `transparent`.
+ *
+ * A simple regex like `/color\([^)]+\)/g` would break on nested parens
+ * (e.g. `color-mix(in srgb, var(--some-var) 80%, transparent)`), so we walk
+ * the string character by character and track paren depth instead.
+ */
+function _stripUnsupportedCssColorFunctions(css: string): string {
+  const prefixes = ["color-mix(", "color(", "lab(", "lch(", "oklab(", "oklch("];
+  let result = "";
+  let i = 0;
+  while (i < css.length) {
+    let nextIdx = -1;
+    let nextPrefix = "";
+    for (const prefix of prefixes) {
+      const idx = css.indexOf(prefix, i);
+      if (idx !== -1 && (nextIdx === -1 || idx < nextIdx)) {
+        nextIdx = idx;
+        nextPrefix = prefix;
+      }
+    }
+
+    if (nextIdx === -1) {
+      result += css.slice(i);
+      break;
+    }
+
+    result += css.slice(i, nextIdx);
+
+    // Skip the entire balanced function call.
+    let depth = 0;
+    let j = nextIdx + nextPrefix.length - 1;
+    while (j < css.length) {
+      if (css[j] === "(") {
+        depth++;
+      } else if (css[j] === ")") {
+        depth--;
+        if (depth === 0) {
+          j++;
+          break;
+        }
+      }
+      j++;
+    }
+
+    result += "transparent";
+    i = j;
+  }
+  return result;
 }
