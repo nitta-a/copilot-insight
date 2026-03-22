@@ -411,11 +411,10 @@ where
                 let tt = entry.total_tokens.unwrap_or(0);
                 // If only total_tokens is present (no explicit prompt/completion split),
                 // credit it entirely to completions to avoid double-counting.
-                let effective_pt = pt;
-                let effective_ct = if ct > 0 { ct } else if tt > 0 && pt == 0 { tt } else { ct };
-                if effective_pt > 0 || effective_ct > 0 {
+                let effective_ct = if ct > 0 { ct } else if pt == 0 { tt } else { 0 };
+                if pt > 0 || effective_ct > 0 {
                     stats.total_prompt_tokens =
-                        stats.total_prompt_tokens.saturating_add(effective_pt);
+                        stats.total_prompt_tokens.saturating_add(pt);
                     stats.total_completion_tokens =
                         stats.total_completion_tokens.saturating_add(effective_ct);
                     if !resolved_model.is_empty() {
@@ -424,7 +423,7 @@ where
                             .tokens_by_model
                             .entry(model_key)
                             .or_insert_with(|| vec![0, 0]);
-                        entry_vec[0] = entry_vec[0].saturating_add(effective_pt);
+                        entry_vec[0] = entry_vec[0].saturating_add(pt);
                         entry_vec[1] = entry_vec[1].saturating_add(effective_ct);
                     }
                 }

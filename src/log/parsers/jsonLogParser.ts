@@ -173,12 +173,15 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   const rawTotalTokens = data.totalTokens ?? data.total_tokens;
 
   const promptTokenCount = typeof rawPromptTokens === "number" && rawPromptTokens > 0 ? Math.round(rawPromptTokens) : 0;
-  const completionTokenCount =
-    typeof rawCompletionTokens === "number" && rawCompletionTokens > 0
-      ? Math.round(rawCompletionTokens)
-      : typeof rawTotalTokens === "number" && rawTotalTokens > 0 && promptTokenCount === 0
-        ? Math.round(rawTotalTokens)
-        : 0;
+
+  let completionTokenCount = 0;
+  if (typeof rawCompletionTokens === "number" && rawCompletionTokens > 0) {
+    completionTokenCount = Math.round(rawCompletionTokens);
+  } else if (promptTokenCount === 0 && typeof rawTotalTokens === "number" && rawTotalTokens > 0) {
+    // Only use totalTokens as a fallback when no per-role split is present,
+    // to avoid double-counting when both promptTokens and totalTokens are logged.
+    completionTokenCount = Math.round(rawTotalTokens);
+  }
 
   if (promptTokenCount > 0 || completionTokenCount > 0) {
     ctx.totalPromptTokens += promptTokenCount;
