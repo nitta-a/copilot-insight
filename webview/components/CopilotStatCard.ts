@@ -14,15 +14,18 @@
  *   </copilot-stat-card>
  *
  * Properties / Attributes:
- *   value     — the primary metric value shown in large text.
- *   label     — the short description shown below the value.
- *   highlight — colour variant: 'blue' | 'green' | 'orange' | 'red' | 'warn'.
- *               Controls both the border and value text colour.
- *   subtext   — optional secondary line shown in smaller, dimmed text.
+ *   value        — the primary metric value shown in large text.
+ *   label        — the short description shown below the value.
+ *   highlight    — colour variant: 'blue' | 'green' | 'orange' | 'red' | 'warn'.
+ *                  Controls both the border and value text colour.
+ *   subtext      — optional secondary line shown in smaller, dimmed text.
+ *   showDownload — when true, a 🖼️ download button is rendered that saves the
+ *                  card as a PNG image.
  */
 
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { downloadAsPng } from "../utils/pngExport";
 
 @customElement("copilot-stat-card")
 export class CopilotStatCard extends LitElement {
@@ -35,6 +38,7 @@ export class CopilotStatCard extends LitElement {
       text-align: center;
       border: 1px solid transparent;
       box-sizing: border-box;
+      position: relative;
     }
     :host([highlight="blue"]) { border-color: var(--vscode-charts-blue); }
     :host([highlight="blue"]) .value { color: var(--vscode-charts-blue); }
@@ -65,18 +69,42 @@ export class CopilotStatCard extends LitElement {
       opacity: 0.6;
       margin-top: 2px;
     }
+    .download-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+      font-size: 0.8em;
+      padding: 2px 4px;
+      color: var(--vscode-foreground);
+    }
+    :host(:hover) .download-btn { opacity: 0.6; }
+    .download-btn:hover { opacity: 1 !important; }
   `;
 
   @property({ type: String }) value = "";
   @property({ type: String }) label = "";
   @property({ type: String, reflect: true }) highlight = "";
   @property({ type: String }) subtext = "";
+  @property({ type: Boolean }) showDownload = false;
+
+  private async _handleDownload(): Promise<void> {
+    const safeName = this.label.replace(/[^a-zA-Z0-9-]/g, "-").toLowerCase() || "card";
+    await downloadAsPng(this, `copilot-stat-${safeName}.png`);
+  }
 
   render() {
     return html`
       <div class="value">${this.value}</div>
       <div class="label">${this.label}</div>
       ${this.subtext ? html`<span class="subtext">${this.subtext}</span>` : ""}
+      ${this.showDownload
+        ? html`<button class="download-btn" title="Download as PNG" @click=${this._handleDownload}>🖼️</button>`
+        : ""}
     `;
   }
 }

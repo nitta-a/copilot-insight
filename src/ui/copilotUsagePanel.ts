@@ -229,13 +229,17 @@ export class CopilotUsagePanel {
     return buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
   }
 
-  private _savePng(dataUri: string, chartId: "timeline" | "velocity" | "overview"): void {
+  private _savePng(dataUri: string, chartId: "timeline" | "velocity" | "overview" | "full-dashboard"): void {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const defaultFilename =
+      chartId === "full-dashboard"
+        ? `copilot-dashboard-full-${todayDateString()}.png`
+        : `copilot-dashboard-${todayDateString()}.png`;
     vscode.window
       .showSaveDialog({
         defaultUri: workspaceFolder
-          ? vscode.Uri.joinPath(workspaceFolder, `copilot-dashboard-${todayDateString()}.png`)
-          : vscode.Uri.file(`copilot-dashboard-${todayDateString()}.png`),
+          ? vscode.Uri.joinPath(workspaceFolder, defaultFilename)
+          : vscode.Uri.file(defaultFilename),
         filters: { png: ["png"] },
       })
       .then((uri) => {

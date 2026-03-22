@@ -348,7 +348,7 @@ export interface ExportCompleteMessage {
   /** Which export triggered this completion event. */
   exportType: "markdown" | "png";
   /** Chart ID for PNG exports; undefined for markdown. */
-  chartId?: "timeline" | "velocity" | "overview";
+  chartId?: "timeline" | "velocity" | "overview" | "full-dashboard";
   /** True when the file was actually written; false when cancelled or failed. */
   success: boolean;
 }
@@ -392,8 +392,9 @@ export interface ExportPngMessage {
      * - `"timeline"`: Health tab Timeline chart (Chart.js canvas).
      * - `"velocity"`: Flow tab Velocity Correlation chart (Chart.js canvas).
      * - `"overview"`: Overview tab Agentic Efficiency SVG chart.
+     * - `"full-dashboard"`: All visible cards in the active dashboard tab.
      */
-    chartId: "timeline" | "velocity" | "overview";
+    chartId: "timeline" | "velocity" | "overview" | "full-dashboard";
   };
 }
 

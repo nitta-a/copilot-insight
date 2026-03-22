@@ -405,6 +405,9 @@ export function getHtmlContent(
   ${warningSection}
   <section id="db-interactive">
     <div id="main-panels" class="db-panels">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+        <button id="db-btn-export-full-dashboard" class="db-export-btn">📸 Export Full Dashboard</button>
+      </div>
       <nav class="db-tab-nav">
         <button class="db-panel-tab active" data-tab="overview">📊 Overview (ROI)</button>
         <button class="db-panel-tab" data-tab="health">🔍 Health (Diagnostics)</button>
@@ -536,11 +539,11 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   const totalSessions = stats.bySession.size;
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
-  <copilot-stat-card value="${escapeHtml(String(stats.totalAccepted))}" label="Accepted Completions"></copilot-stat-card>
-  <copilot-stat-card value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" label="Acceptance Rate"></copilot-stat-card>
-  <copilot-stat-card value="${timeSavedDisplay}" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
-  <copilot-stat-card value="${latencyDisplay}" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
-  <copilot-stat-card value="${escapeHtml(String(totalSessions))}" label="Active Sessions"></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" label="Accepted Completions"></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" label="Acceptance Rate"></copilot-stat-card>
+  <copilot-stat-card show-download value="${timeSavedDisplay}" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
+  <copilot-stat-card show-download value="${latencyDisplay}" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(String(totalSessions))}" label="Active Sessions"></copilot-stat-card>
 </div>`;
 }
 
@@ -826,11 +829,11 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     const diff = trend.rateDiff;
     if (diff > 0) {
       insights.push(
-        `<copilot-insight-card icon="📈" variant="positive">This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
+        `<copilot-insight-card show-download icon="📈" variant="positive">This week's acceptance rate is <strong>+${diff.toFixed(1)}%</strong> higher than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
       );
     } else if (diff < 0) {
       insights.push(
-        `<copilot-insight-card icon="📉" variant="negative">This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
+        `<copilot-insight-card show-download icon="📉" variant="negative">This week's acceptance rate is <strong>${diff.toFixed(1)}%</strong> lower than last week (${trend.thisWeek.rate.toFixed(1)}% vs ${trend.lastWeek.rate.toFixed(1)}%).</copilot-insight-card>`,
       );
     }
   }
@@ -839,7 +842,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
     insights.push(
-      `<copilot-insight-card icon="⏰">Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</copilot-insight-card>`,
+      `<copilot-insight-card show-download icon="⏰">Most active hour: <strong>${peakEntry[0]}:00</strong> with ${peakEntry[1]} completions.</copilot-insight-card>`,
     );
   }
 
@@ -847,14 +850,14 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.totalChat > 0 && stats.totalShown > 0) {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(
-      `<copilot-insight-card icon="💬">Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</copilot-insight-card>`,
+      `<copilot-insight-card show-download icon="💬">Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</copilot-insight-card>`,
     );
   }
 
   // 4. Autonomous action count
   if (stats.subagentRequests > 0) {
     insights.push(
-      `<copilot-insight-card icon="🤖">Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</copilot-insight-card>`,
+      `<copilot-insight-card show-download icon="🤖">Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</copilot-insight-card>`,
     );
   }
 
@@ -862,7 +865,7 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
   if (stats.subagentLoopsStarted > 0) {
     const rate = stats.completionRate.toFixed(1);
     insights.push(
-      `<copilot-insight-card icon="✅">Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</copilot-insight-card>`,
+      `<copilot-insight-card show-download icon="✅">Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</copilot-insight-card>`,
     );
   }
 

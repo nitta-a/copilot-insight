@@ -60,6 +60,7 @@ import {
   buildSummaryCardsHtml,
   getSelectableThreadsSorted,
 } from "./htmlBuilders";
+import { captureAsPng } from "./utils/pngExport";
 
 // ---------------------------------------------------------------------------
 // VS Code WebView API (injected as a global by VS Code)
@@ -461,6 +462,7 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
     el.appendChild(comp);
   }
   comp.trendData = trend;
+  comp.showDownload = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +472,7 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
 const EXPORT_BUTTON_LABELS: Record<string, string> = {
   "db-btn-export-md": "📄 Export Report (Markdown)",
   "db-btn-export-png-health": "🖼️ Save Chart (PNG)",
+  "db-btn-export-full-dashboard": "📸 Export Full Dashboard",
 };
 
 function setExportLoading(btnId: string, loading: boolean): void {
@@ -481,10 +484,59 @@ function setExportLoading(btnId: string, loading: boolean): void {
   btn.textContent = loading ? "⏳ Exporting…" : (EXPORT_BUTTON_LABELS[btnId] ?? btn.textContent);
 }
 
+/** Show a transient error toast inside the WebView (auto-dismissed after 6 s). */
+function showExportError(msg: string): void {
+  const TOAST_ID = "db-export-error-toast";
+  document.getElementById(TOAST_ID)?.remove();
+  const el = document.createElement("div");
+  el.id = TOAST_ID;
+  el.style.cssText =
+    "position:fixed;top:12px;right:12px;max-width:380px;" +
+    "background:var(--vscode-inputValidation-errorBackground,#5a1d1d);" +
+    "border:1px solid var(--vscode-inputValidation-errorBorder,#be1100);" +
+    "color:var(--vscode-inputValidation-errorForeground,#f14c4c);" +
+    "border-radius:4px;padding:9px 14px;font-size:12px;z-index:99999;white-space:pre-wrap;" +
+    "box-shadow:0 2px 8px rgba(0,0,0,0.4)";
+  el.textContent = `⚠️ Export failed: ${msg}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
 function exportChartAsPng(canvasId: string, chartId: "timeline" | "velocity" | "overview"): void {
   const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
   const imageData = canvas?.toDataURL("image/png") ?? "";
   vscode.postMessage({ type: "exportPng", payload: { imageData, chartId } } satisfies WebviewToHostMessage);
+}
+
+async function exportFullDashboard(): Promise<void> {
+  // Find the currently active tab panel and capture it.
+  const activePanel = document.querySelector<HTMLElement>(".db-panel-view.active");
+  if (!activePanel) {
+    return;
+  }
+
+  // Guard: lazy-loaded tabs must have their data visible before capturing.
+  if (currentTab === "sessions" && !sessionsLoaded) {
+    showExportError('Please click \"Load Sessions\" to load session data before exporting.');
+    return;
+  }
+  if (currentTab === "prompt-insights" && !promptInsightsLoaded) {
+    showExportError('Please click \"Load Prompt Insights\" to load data before exporting.');
+    return;
+  }
+
+  setExportLoading("db-btn-export-full-dashboard", true);
+  try {
+    const imageData = await captureAsPng(activePanel);
+    vscode.postMessage({
+      type: "exportPng",
+      payload: { imageData, chartId: "full-dashboard" },
+    } satisfies WebviewToHostMessage);
+  } catch (err) {
+    console.error("[copilot-insight] Full dashboard export failed:", err);
+    showExportError(err instanceof Error ? err.message : String(err));
+    setExportLoading("db-btn-export-full-dashboard", false);
+  }
 }
 
 function setupExportButtons(): void {
@@ -496,6 +548,10 @@ function setupExportButtons(): void {
   document.getElementById("db-btn-export-png-health")?.addEventListener("click", () => {
     setExportLoading("db-btn-export-png-health", true);
     exportChartAsPng("db-timeline-chart", "timeline");
+  });
+
+  document.getElementById("db-btn-export-full-dashboard")?.addEventListener("click", () => {
+    void exportFullDashboard();
   });
 }
 
@@ -860,8 +916,15 @@ window.addEventListener("message", (event: MessageEvent<HostToWebviewMessage>) =
       renderSessionsData(msg.payload as SessionsData);
     }
   } else if (msg.type === "exportComplete") {
-    // Only markdown and timeline PNG exports are currently supported.
-    const btnId = msg.exportType === "markdown" ? "db-btn-export-md" : "db-btn-export-png-health";
+    // Reset the export button that matches the completed export.
+    let btnId: string;
+    if (msg.exportType === "markdown") {
+      btnId = "db-btn-export-md";
+    } else if (msg.chartId === "full-dashboard") {
+      btnId = "db-btn-export-full-dashboard";
+    } else {
+      btnId = "db-btn-export-png-health";
+    }
     setExportLoading(btnId, false);
   }
 });
