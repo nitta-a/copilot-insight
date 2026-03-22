@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.25] - 2026-03-22
+
+### Added
+- 🔢 **Token consumption tracking** — `CopilotUsageStats` now records `totalPromptTokens`, `totalCompletionTokens`, and a per-model `tokensByModel` map; values are extracted from the `promptTokens` / `prompt_tokens` / `numTokens` (prompt) and `completionTokens` / `completion_tokens` (completion) fields present in JSON log entries, covering both inline-completion and chat-request events
+- 📊 **Finish-reason distribution** — a new `finishReasonCounts` map captures `[streamChoices] finish reason:` log lines so you can see how often completions end normally (`stop`) versus being cut off by the context window (`length`) or other causes; the dashboard renders a breakdown card in the Model Intelligence section
+- 🤖 **CLI agentic detail** — three new optional fields on `CopilotUsageStats` track GitHub Copilot CLI agentic behaviour: `cliToolExecutions` (per-tool call counts with success/fail split), `cliReasoningTokens` (cumulative length of reasoning text in assistant messages), and `cliAgentTypes` (sub-agent type distribution); extracted from CLI JSONL session files
+
+### Fixed
+- 🖼️ **PNG export — recharts SVG colour attributes** — `_rewriteUnsupportedCssInClone` now strips unsupported CSS colour functions (e.g. `color(display-p3 …)`) from SVG presentation attributes (`fill`, `stroke`, `stop-color`, `flood-color`, `lighting-color`) in addition to inline `style` attributes; recharts and other SVG libraries resolve CSS variables at render time and embed the result directly as element attributes, which previously caused `html2canvas` to throw a hard parse error when exporting charts that used `oklab`/`display-p3` theme colours
+- 🔒 **XSS in finish-reason breakdown** — `renderFinishReasonBreakdown` now escapes `entry.name` through `escapeHtml` before injecting it into an `innerHTML` string, preventing a stored-XSS vector if a malicious log entry contained HTML in the finish-reason field
+
 ## [1.0.24] - 2026-03-22
 
 ### Fixed
