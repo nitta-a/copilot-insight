@@ -52,7 +52,6 @@ import type {
   WeeklyTrendCard,
 } from "./components/index";
 import "./components/index";
-import { escHtml } from "./dashboardUtils";
 import {
   buildAgentIntelligenceOverviewHtml,
   buildInsightsHtml,
@@ -275,27 +274,55 @@ function renderFinishReasonBreakdown(finishReasonBreakdown: PromptInsightsData["
   }
 
   const total = finishReasonBreakdown.reduce((sum, entry) => sum + entry.count, 0);
-  const rows = finishReasonBreakdown
-    .map((entry) => {
-      const ratio = total > 0 ? (entry.count / total) * 100 : 0;
-      return `<div class="bar-row">
-        <div class="bar-label">${escHtml(entry.name)}</div>
-        <div class="bar-group">
-          <div class="bar-track"><div class="bar-fill purple" style="width:${ratio.toFixed(1)}%"></div></div>
-          <div class="stat-detail">${ratio.toFixed(1)}% of completions</div>
-        </div>
-        <div class="bar-count">${entry.count}</div>
-      </div>`;
-    })
-    .join("");
-
-  container.innerHTML = `
+  const template = document.createElement("template");
+  template.innerHTML = `
     <hr class="db-section-sep">
     <h2>🧾 Finish Reason Breakdown</h2>
     <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
-      Distribution of completion stop reasons from stream choices. A higher <strong>length</strong> share can indicate truncation or context-window pressure.
+      Distribution of completion stop reasons from stream choices. A higher
+      <strong data-role="length-label"></strong>
+      share can indicate truncation or context-window pressure.
     </p>
-    ${rows}`;
+    <div data-role="rows"></div>`;
+
+  const fragment = template.content.cloneNode(true) as DocumentFragment;
+  const lengthLabel = fragment.querySelector("[data-role='length-label']");
+  lengthLabel?.replaceChildren(document.createTextNode("length"));
+
+  const rowsHost = fragment.querySelector("[data-role='rows']");
+  const rowsFragment = document.createDocumentFragment();
+
+  for (const entry of finishReasonBreakdown) {
+    const ratio = total > 0 ? (entry.count / total) * 100 : 0;
+    const ratioText = `${ratio.toFixed(1)}%`;
+
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `
+      <div class="bar-label"></div>
+      <div class="bar-group">
+        <div class="bar-track"><div class="bar-fill purple"></div></div>
+        <div class="stat-detail"></div>
+      </div>
+      <div class="bar-count"></div>`;
+
+    const label = row.querySelector(".bar-label");
+    const detail = row.querySelector(".stat-detail");
+    const count = row.querySelector(".bar-count");
+    const fill = row.querySelector(".bar-fill");
+
+    label?.replaceChildren(document.createTextNode(entry.name));
+    detail?.replaceChildren(document.createTextNode(`${ratioText} of completions`));
+    count?.replaceChildren(document.createTextNode(String(entry.count)));
+    if (fill instanceof HTMLElement) {
+      fill.style.width = ratioText;
+    }
+
+    rowsFragment.appendChild(row);
+  }
+
+  rowsHost?.replaceChildren(rowsFragment);
+  container.replaceChildren(fragment);
 }
 
 // ---------------------------------------------------------------------------
