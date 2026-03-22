@@ -1,7 +1,8 @@
 /**
  * ContextCorrelationChart — Lit Web Component that renders a Chart.js mixed
  * chart (Bar = session counts, Line = acceptance rate) for the context
- * reference-count buckets in the Overview tab.
+ * source-count buckets in the Overview tab. Sources include any files,
+ * code snippets, or other context items attached to each chat session.
  *
  * Usage:
  *   const el = document.createElement("copilot-context-correlation") as ContextCorrelationChart;
@@ -138,6 +139,7 @@ export class ContextCorrelationChart extends LitElement {
           legend: { display: true, labels: { color: foreground } },
           tooltip: {
             callbacks: {
+              title: (items: TooltipItem<"bar" | "line">[]) => `Sessions with ${items[0]?.label ?? ""}`,
               label: (item: TooltipItem<"bar" | "line">) => {
                 if (item.datasetIndex === 1) {
                   return `Acceptance Rate: ${item.formattedValue}%`;
@@ -182,7 +184,7 @@ export class ContextCorrelationChart extends LitElement {
 
     return html`
       <div class="db-corr-card">
-        <h3>Context Leverage — Reference Files vs Acceptance Rate</h3>
+        <h3>Context Sources vs Acceptance Rate</h3>
         <canvas></canvas>
       </div>
     `;

@@ -518,32 +518,30 @@ export function buildContextRichness(stats: CopilotUsageStats): ContextRichnessD
 }
 
 /**
- * Aggregate `chatSessionStates` into five reference-count buckets for the
+ * Aggregate `chatSessionStates` into five source-count buckets for the
  * Context Leverage mixed chart in the Prompt Insights tab.
+ * Sources = any files, code snippets, or context items attached to a chat session.
  *
- * Buckets: "0 files" | "1 file" | "2 files" | "3 files" | "4+ files"
+ * Buckets: "0 sources" | "1 source" | "2 sources" | "3 sources" | "4+ sources"
  */
 function buildContextStats(stats: CopilotUsageStats): ContextBucket[] {
   const buckets: ContextBucket[] = [
-    { referenceCount: "0 files", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "1 file", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "2 files", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "3 files", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "4+ files", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "0 sources", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "1 source", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "2 sources", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "3 sources", sessionCount: 0, acceptedCount: 0 },
+    { referenceCount: "4+ sources", sessionCount: 0, acceptedCount: 0 },
   ];
 
   for (const state of stats.chatSessionStates.values()) {
     if (state.turnCount <= 0) {
       continue;
     }
-    // Skip sessions where referenceCount is undefined — these were parsed before
-    // this feature was implemented (e.g. old log files or legacy snapshots) and
-    // their actual reference count is unknown. Excluding them avoids skewing the
-    // "0 files" bucket with historically-untracked sessions.
-    const refCount = state.referenceCount;
-    if (refCount === undefined) {
-      continue;
-    }
+    // Sessions parsed before referenceCount tracking was introduced (e.g. from
+    // legacy snapshots or logs where the event name was not detected as a chat
+    // turn) have referenceCount === undefined. Treat them as having 0 references
+    // so they still contribute to the histogram rather than being silently dropped.
+    const refCount = state.referenceCount ?? 0;
     const b = refCount < 4 ? buckets[refCount] : buckets[4];
     b.sessionCount++;
     if (state.isAccepted) {
