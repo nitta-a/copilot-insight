@@ -1353,9 +1353,11 @@ suite("buildContextRichness", () => {
     assert.strictEqual(result.status, "low");
     assert.strictEqual(result.avgRefCount, 0);
     assert.strictEqual(result.buckets.length, 5);
-    // All buckets should be empty when referenceCount is undefined.
-    for (const b of result.buckets) {
-      assert.strictEqual(b.sessionCount, 0);
+    // Sessions where referenceCount is undefined are treated as 0 references
+    // and fall into the "0 sources" bucket (rather than being silently dropped).
+    assert.strictEqual(result.buckets[0].sessionCount, 2);
+    for (let i = 1; i < result.buckets.length; i++) {
+      assert.strictEqual(result.buckets[i].sessionCount, 0);
     }
   });
 

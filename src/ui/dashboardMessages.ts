@@ -235,7 +235,7 @@ export interface TurnBucket {
 
 /** A single bucket in the Context Leverage analysis (context reference count distribution). */
 export interface ContextBucket {
-  /** Human-readable label for the reference-count bucket (e.g. "0 files", "1 file", "4+ files"). */
+  /** Human-readable label for the source-count bucket (e.g. "0 sources", "1 source", "4+ sources"). */
   referenceCount: string;
   /** Total number of chat sessions in this bucket. */
   sessionCount: number;

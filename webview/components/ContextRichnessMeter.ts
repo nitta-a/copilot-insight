@@ -1,6 +1,6 @@
 /**
  * ContextRichnessMeter — Lit Web Component for displaying the context richness
- * (file-reference count) status in the Overview tab.
+ * (context-source count per session) status in the Overview tab.
  *
  * Usage:
  *   const el = document.createElement("copilot-richness-meter") as ContextRichnessMeter;
@@ -136,10 +136,10 @@ export class ContextRichnessMeter extends LitElement {
 
     const suggestion =
       r.status === "low"
-        ? "チャットにファイルを添付すると、AI の回答精度が高まります"
+        ? "チャットにファイルやコードを添付すると、AI の回答精度が高まります"
         : r.status === "medium"
-          ? "平均 1〜2 ファイルが添付されています。さらに増やすと改善できます"
-          : "多くのセッションでリッチな参照コンテキストが提供されています";
+          ? "平均 1〜2 件のコンテキストソースが参照されています。さらに増やすと改善できます"
+          : "多くのセッションでリッチなコンテキストソースが提供されています";
 
     // Clamp fill to 0–100%: scale so 5 refs = 100%
     const fillPct = Math.min(100, (r.avgRefCount / 5) * 100);
@@ -160,7 +160,7 @@ export class ContextRichnessMeter extends LitElement {
           ></div>
         </div>
         <div class="db-richness-meta">
-          ${this._metaCard("Avg Files / Session", r.avgRefCount.toFixed(1))}
+          ${this._metaCard("Avg Context Sources", r.avgRefCount.toFixed(1))}
           ${this._metaCard("Tracked Sessions", String(totalSessions))}
           ${this._metaCard("High-Context (3+)", String(r.buckets.slice(3).reduce((s, b) => s + b.sessionCount, 0)))}
         </div>
