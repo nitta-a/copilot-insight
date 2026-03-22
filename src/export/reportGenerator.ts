@@ -15,6 +15,8 @@
  */
 
 import { mergeCountByNormalizedModel } from "../log/logContentParser";
+import type { NativeReportInput } from "../log/nativeBridge";
+import { generateMarkdownReportNative } from "../log/nativeBridge";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type { CopilotUsageStats } from "../types";
 
@@ -92,10 +94,163 @@ function formatDurationMs(ms: number): string {
 }
 
 /**
+ * Build a `NativeReportInput` from the given `ReportOptions`.
+ *
+ * Converts all `Map`-typed fields in `CopilotUsageStats` to plain
+ * `Record<string, number>` objects as expected by the Rust bridge.
+ */
+function buildNativeReportInput(options: ReportOptions): NativeReportInput {
+  const { stats } = options;
+  const typingMins = options.typingMinutesSaved ?? (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
+  const agenticMins = options.agenticMinutesSaved ?? (stats.autonomousDurationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
+
+  const allDates = Array.from(stats.byDate.keys()).sort();
+
+  return {
+    totalShown: stats.totalShown,
+    totalAccepted: stats.totalAccepted,
+    totalChat: stats.totalChat,
+    totalErrors: stats.totalErrors,
+    logFilesFound: stats.logFilesFound,
+    avgLatencyMs: stats.avgLatencyMs,
+    subagentRequests: stats.subagentRequests,
+    autonomousDurationMs: stats.autonomousDurationMs,
+    agenticRatio: stats.agenticRatio,
+    subagentLoops: stats.subagentLoops,
+    subagentLoopsStarted: stats.subagentLoopsStarted,
+    completionRate: stats.completionRate,
+    planCount: stats.planCount,
+    executedPlanCount: stats.executedPlanCount,
+    userChoicesInPlan: stats.userChoicesInPlan,
+    browserToolsByType: Object.fromEntries(stats.browserToolsByType),
+    pluginOrSkillByName: Object.fromEntries(stats.pluginOrSkillByName),
+    memoryManagementCount: stats.memoryManagementEvents.length,
+    memoryManagementByType: Object.fromEntries(stats.memoryManagementByType),
+    agentDebugEvents: stats.agentDebugEvents,
+    agentDebugByType: Object.fromEntries(stats.agentDebugByType),
+    subagentByModel: Object.fromEntries(stats.subagentByModel),
+    autonomousDurationByModel: Object.fromEntries(stats.autonomousDurationByModel),
+    byChatModel: Object.fromEntries(stats.byChatModel),
+    minDate: allDates[0] ?? "",
+    maxDate: allDates[allDates.length - 1] ?? "",
+    typingMinutesSaved: typingMins,
+    agenticMinutesSaved: agenticMins,
+    projectName: options.projectName ?? "",
+    errorsByType: Object.fromEntries(stats.errorsByType),
+  };
+}
+
+/**
+ * Append the optional report sections that require externally-computed metrics
+ * (Acceptance Analysis, Model Performance, Velocity) and the footer.
+ *
+ * These sections are always generated in TypeScript regardless of whether the
+ * core sections were produced by the native Rust path or the TS fallback path.
+ */
+function appendOptionalSections(lines: string[], options: ReportOptions): void {
+  // --- 5. Acceptance Analysis ---
+  if (options.trueAcceptance) {
+    const ta = options.trueAcceptance;
+    lines.push("## Acceptance Analysis");
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Raw Accepted | ${ta.rawAccepted} |`);
+    lines.push(`| Raw Rate | ${ta.rawRate.toFixed(1)}% |`);
+    lines.push(`| True Accepted (retained) | ${ta.trueAccepted} |`);
+    lines.push(`| True Rate | ${ta.trueRate.toFixed(1)}% |`);
+    lines.push(`| Reverted Completions | ${ta.revertedCount} |`);
+    lines.push("");
+    if (ta.revertedCount > 0) {
+      const wasteRate = ((ta.revertedCount / ta.rawAccepted) * 100).toFixed(1);
+      lines.push(`> ⚠️ ${wasteRate}% of accepted completions were reverted within 30 seconds.`);
+      lines.push("");
+    }
+  }
+
+  // --- 6. Model Performance ---
+  if (options.modelPerformance && options.modelPerformance.crossTab.length > 0) {
+    const mp = options.modelPerformance;
+    lines.push("## Model Performance");
+    lines.push("");
+    lines.push("| Model | Language | Accepted | Chars | Avg Latency |");
+    lines.push("|-------|----------|----------|-------|-------------|");
+    for (const entry of mp.crossTab.slice(0, 20)) {
+      lines.push(
+        `| ${entry.modelName} | ${entry.languageId} | ${entry.totalAccepted} | ${entry.totalCharsAccepted} | ${entry.avgLatencyMs.toFixed(0)}ms |`,
+      );
+    }
+    lines.push("");
+
+    if (mp.bestModelByLanguage.size > 0) {
+      lines.push("### Best Model per Language");
+      lines.push("");
+      for (const [lang, model] of mp.bestModelByLanguage) {
+        lines.push(`- **${lang}**: ${model}`);
+      }
+      lines.push("");
+    }
+  }
+
+  // --- 7. Velocity / Flow ---
+  if (options.velocity) {
+    const v = options.velocity;
+    lines.push("## Velocity & Flow Analysis");
+    lines.push("");
+    lines.push(`- **Average KPM:** ${v.averageKpm.toFixed(1)} keystrokes/min`);
+    lines.push(
+      `- **Flow Disruptions:** ${v.disruptionCount} windows where KPM dropped significantly after a completion`,
+    );
+    lines.push(`- **Data Points:** ${v.timeSeries.length} 1-minute windows`);
+    lines.push("");
+    if (v.disruptionCount > 0) {
+      lines.push("> 💡 Consider reviewing completion settings if flow disruptions are frequent.");
+      lines.push("");
+    }
+  }
+
+  // --- 9. Qualitative Insights ---
+  if (options.insights && options.insights.length > 0) {
+    lines.push("## 💡 Qualitative Insights");
+    lines.push("");
+    for (const insight of options.insights) {
+      lines.push(`- ${insight}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("---");
+  lines.push(
+    "*Generated by [Copilot Insight](https://marketplace.visualstudio.com/items?itemName=nitta-a.copilot-insight)*",
+  );
+}
+
+/**
  * Generate a Markdown report from Copilot usage statistics.
+ *
+ * When the native NAPI-RS addon is available, the core sections (Executive
+ * Summary through Productivity Metrics) are produced in Rust for improved
+ * performance.  Optional sections that require externally-computed metrics
+ * (Acceptance Analysis, Model Performance, Velocity, Insights) and the footer
+ * are always appended in TypeScript.
+ *
+ * Falls back to a pure-TypeScript implementation when the native addon has not
+ * been built or fails to load.
  */
 export function generateMarkdownReport(options: ReportOptions): string {
-  const { stats, period, projectName } = options;
+  const { stats, period } = options;
+
+  // ── Native fast-path ──────────────────────────────────────────────────────
+  const nativeInput = buildNativeReportInput(options);
+  const nativeCore = generateMarkdownReportNative(nativeInput, period);
+  if (nativeCore !== null) {
+    // Append the optional TypeScript-only sections and footer.
+    const extra: string[] = [];
+    appendOptionalSections(extra, options);
+    return nativeCore + extra.join("\n");
+  }
+
+  // ── TypeScript fallback ───────────────────────────────────────────────────
   const lines: string[] = [];
 
   // --- Header ---
@@ -111,8 +266,8 @@ export function generateMarkdownReport(options: ReportOptions): string {
       : "";
   lines.push(`# GitHub Copilot Contribution Report${dateRangeSuffix}`);
   lines.push("");
-  if (projectName) {
-    lines.push(`**Project:** ${projectName}`);
+  if (options.projectName) {
+    lines.push(`**Project:** ${options.projectName}`);
   }
   lines.push(`**Period:** ${period}`);
   lines.push(`**Generated:** ${new Date().toISOString().slice(0, 19).replace("T", " ")}`);
@@ -254,67 +409,6 @@ export function generateMarkdownReport(options: ReportOptions): string {
     lines.push("");
   }
 
-  // --- 5. Acceptance Analysis ---
-  if (options.trueAcceptance) {
-    const ta = options.trueAcceptance;
-    lines.push("## Acceptance Analysis");
-    lines.push("");
-    lines.push("| Metric | Value |");
-    lines.push("|--------|-------|");
-    lines.push(`| Raw Accepted | ${ta.rawAccepted} |`);
-    lines.push(`| Raw Rate | ${ta.rawRate.toFixed(1)}% |`);
-    lines.push(`| True Accepted (retained) | ${ta.trueAccepted} |`);
-    lines.push(`| True Rate | ${ta.trueRate.toFixed(1)}% |`);
-    lines.push(`| Reverted Completions | ${ta.revertedCount} |`);
-    lines.push("");
-    if (ta.revertedCount > 0) {
-      const wasteRate = ((ta.revertedCount / ta.rawAccepted) * 100).toFixed(1);
-      lines.push(`> ⚠️ ${wasteRate}% of accepted completions were reverted within 30 seconds.`);
-      lines.push("");
-    }
-  }
-
-  // --- 6. Model Performance ---
-  if (options.modelPerformance && options.modelPerformance.crossTab.length > 0) {
-    const mp = options.modelPerformance;
-    lines.push("## Model Performance");
-    lines.push("");
-    lines.push("| Model | Language | Accepted | Chars | Avg Latency |");
-    lines.push("|-------|----------|----------|-------|-------------|");
-    for (const entry of mp.crossTab.slice(0, 20)) {
-      lines.push(
-        `| ${entry.modelName} | ${entry.languageId} | ${entry.totalAccepted} | ${entry.totalCharsAccepted} | ${entry.avgLatencyMs.toFixed(0)}ms |`,
-      );
-    }
-    lines.push("");
-
-    if (mp.bestModelByLanguage.size > 0) {
-      lines.push("### Best Model per Language");
-      lines.push("");
-      for (const [lang, model] of mp.bestModelByLanguage) {
-        lines.push(`- **${lang}**: ${model}`);
-      }
-      lines.push("");
-    }
-  }
-
-  // --- 7. Velocity / Flow ---
-  if (options.velocity) {
-    const v = options.velocity;
-    lines.push("## Velocity & Flow Analysis");
-    lines.push("");
-    lines.push(`- **Average KPM:** ${v.averageKpm.toFixed(1)} keystrokes/min`);
-    lines.push(
-      `- **Flow Disruptions:** ${v.disruptionCount} windows where KPM dropped significantly after a completion`,
-    );
-    lines.push(`- **Data Points:** ${v.timeSeries.length} 1-minute windows`);
-    lines.push("");
-    if (v.disruptionCount > 0) {
-      lines.push("> 💡 Consider reviewing completion settings if flow disruptions are frequent.");
-      lines.push("");
-    }
-  }
-
   // --- 8. Productivity Metrics (ROI) ---
   // Use pre-computed values when provided (ensures consistency with the dashboard's
   // buildDashboardPayload calculation).  Fall back to deriving from stats directly.
@@ -333,20 +427,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
   }
   lines.push("");
 
-  // --- 9. Qualitative Insights ---
-  if (options.insights && options.insights.length > 0) {
-    lines.push("## 💡 Qualitative Insights");
-    lines.push("");
-    for (const insight of options.insights) {
-      lines.push(`- ${insight}`);
-    }
-    lines.push("");
-  }
-
-  lines.push("---");
-  lines.push(
-    "*Generated by [Copilot Insight](https://marketplace.visualstudio.com/items?itemName=nitta-a.copilot-insight)*",
-  );
+  appendOptionalSections(lines, options);
 
   return lines.join("\n");
 }

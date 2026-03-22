@@ -57,6 +57,8 @@ export { parseTextLogLine } from "./parsers/textLogParser";
  * - Per-hour map: `byHour` (event counts per hour key).
  * - Latency array: `latencies` (raw millisecond values appended).
  * - Context-source map: `byContextSource` (occurrence counts per source).
+ * - New fields: `autonomousDurationMs`, `subagentLoops`, `executedPlanCount`,
+ *   `browserToolsByType`, `errorsByType`.
  */
 function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): void {
   ctx.totalShown += native.totalShown;
@@ -112,6 +114,26 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
       }
       ctx.nativeRefCountBuckets.set(bucket, existing);
     }
+  }
+
+  // Merge new NativeStats fields (default to zero in the Rust parser; non-zero
+  // values are produced only when the addon has been updated to track them).
+  if (native.autonomousDurationMs) {
+    ctx.autonomousDurationMs += native.autonomousDurationMs;
+  }
+  if (native.subagentLoops) {
+    ctx.subagentLoops += native.subagentLoops;
+  }
+  if (native.executedPlanCount) {
+    ctx.executedPlanCount += native.executedPlanCount;
+  }
+  for (const [type_, count] of Object.entries(native.browserToolsByType ?? {})) {
+    ctx.browserToolsByType.set(type_, (ctx.browserToolsByType.get(type_) ?? 0) + count);
+    ctx.browserToolInvocations += count;
+  }
+  for (const [type_, count] of Object.entries(native.errorsByType ?? {})) {
+    ctx.errorsByType.set(type_, (ctx.errorsByType.get(type_) ?? 0) + count);
+    ctx.totalErrors += count;
   }
 }
 
