@@ -17,7 +17,7 @@ Stop guessing if AI is making you faster. Measure your ROI, track your prompt ef
 - **Context Richness Analysis** — Visualizes the correlation between the amount of context you provide (open tabs, referenced files) and the AI's acceptance rate. Proves the "Garbage In, Garbage Out" rule with your own data.
 - **100% Local & Privacy-First** — No telemetry, no cloud servers. It works purely by parsing local VS Code extension host logs (`exthost.log`) on your machine.
 - **ROI & True Acceptance Rate** — Tracks overall acceptance rate, declined suggestions, and estimated **minutes saved (ROI)** split into typing savings and agentic/autonomous savings.
-- **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness.
+- **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness. Includes **token consumption** (prompt + completion tokens per model) and a **finish-reason distribution** chart showing how often completions end normally versus hitting the context-window limit.
 - **Activity & Flow** — Activity heatmaps by hour of the day, weekly trend comparisons, and KPM (Keystrokes Per Minute) vs. completions scatter plots.
 - **MCP Server Built-in** — Exposes `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools via the Model Context Protocol, allowing external AI agents (like Claude Desktop) to query your stats locally.
 
@@ -91,7 +91,7 @@ AIが本当に開発を高速化しているのかを推測するのはやめま
   - **コンテキスト充実度の相関分析 (Context Richness)** — 提供したコンテキスト量（開いているタブや参照ファイル数）とAIの提案受け入れ率の相関関係を可視化します。「Garbage In, Garbage Out（入力の質が出力の質を決める）」の原則を自身のデータで確認できます。
   - **100% ローカル & プライバシーファースト** — 外部サーバーへのテレメトリ送信は一切ありません。マシン上のローカルログファイル（`exthost.log`）を解析するだけで完結します。
   - **ROI と真の受け入れ率** — 全体の受け入れ率、拒否された提案数、および推定**節約時間 (ROI)** を「タイピングによる節約」と「自律エージェントによる節約」に分けて追跡します。
-  - **モデル効率の内訳** — 言語モデル間のパフォーマンスを比較し、特定のコードベースに最適なモデルを特定します（ChatとInline補完の有効性も分離して分析）。
+  - **モデル効率の内訳** — 言語モデル間のパフォーマンスを比較し、特定のコードベースに最適なモデルを特定します（ChatとInline補完の有効性も分離して分析）。モデルごとの**トークン消費量**（プロンプトトークン＋補完トークン）と、補完が正常終了した割合をコンテキストウィンドウ超過と対比する**終了理由分布**チャートも含まれます。
   - **アクティビティとフロー** — 時間帯別のアクティビティヒートマップ、週次トレンド比較、KPM（1分あたりのキーストローク）と補完受け入れ数の散布図を表示します。
   - **MCP サーバー内蔵** — Model Context Protocol サーバーを内蔵しており、Claude Desktop などの外部AIエージェントが、ローカルであなたの使用統計（`get_usage_summary` 等）を直接照会できます。
 
