@@ -57,6 +57,53 @@ export interface NativeParseResult {
   byContextSource: Record<string, number>;
   /** Context-richness metrics extracted from reference-count and prompt-text fields. */
   contextRichness: NativeContextRichness;
+  /** Cumulative autonomous-action duration in milliseconds (f64 for JS number compat). */
+  autonomousDurationMs: number;
+  /** Number of completed agentic (ToolCallingLoop) episodes. */
+  subagentLoops: number;
+  /** Number of agent plans that were followed by an edit / patch action. */
+  executedPlanCount: number;
+  /** Browser-tool events grouped by detected action / subtype. */
+  browserToolsByType: Record<string, number>;
+  /** Error events grouped by detected error type. */
+  errorsByType: Record<string, number>;
+}
+
+/**
+ * Data shape passed to the native `generateMarkdownReportNative` function.
+ * All fields map 1-to-1 to the Rust `ReportInput` struct fields.
+ */
+export interface NativeReportInput {
+  totalShown: number;
+  totalAccepted: number;
+  totalChat: number;
+  totalErrors: number;
+  logFilesFound: number;
+  avgLatencyMs: number;
+  subagentRequests: number;
+  autonomousDurationMs: number;
+  agenticRatio: number;
+  subagentLoops: number;
+  subagentLoopsStarted: number;
+  completionRate: number;
+  planCount: number;
+  executedPlanCount: number;
+  userChoicesInPlan: number;
+  browserToolsByType: Record<string, number>;
+  pluginOrSkillByName: Record<string, number>;
+  memoryManagementCount: number;
+  memoryManagementByType: Record<string, number>;
+  agentDebugEvents: number;
+  agentDebugByType: Record<string, number>;
+  subagentByModel: Record<string, number>;
+  autonomousDurationByModel: Record<string, number>;
+  byChatModel: Record<string, number>;
+  minDate: string;
+  maxDate: string;
+  typingMinutesSaved: number;
+  agenticMinutesSaved: number;
+  projectName: string;
+  errorsByType: Record<string, number>;
 }
 
 /**
@@ -67,6 +114,7 @@ export interface NativeParseResult {
 interface NativeModule {
   parseLogChunk(input: string): NativeParseResult;
   parseLogFileNative(path: string): NativeParseResult;
+  generateMarkdownReportNative(input: NativeReportInput, period: string): string;
 }
 
 /** Cached module reference — `undefined` means "not yet attempted". */
@@ -134,6 +182,26 @@ export function parseLogFileNative(path: string): NativeParseResult | null {
 
   try {
     return mod.parseLogFileNative(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a Markdown report from the provided `NativeReportInput` using the
+ * native Rust implementation.
+ *
+ * Returns the report string on success, or `null` when the native module is
+ * unavailable or report generation fails.
+ */
+export function generateMarkdownReportNative(input: NativeReportInput, period: string): string | null {
+  const mod = loadNativeModule();
+  if (!mod) {
+    return null;
+  }
+
+  try {
+    return mod.generateMarkdownReportNative(input, period);
   } catch {
     return null;
   }
