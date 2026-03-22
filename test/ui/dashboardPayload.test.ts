@@ -146,6 +146,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
     ...overrides,
   };
 }
@@ -401,6 +402,43 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.sessionSummaries.length, 1);
       assert.strictEqual(payload.sessionSummaries[0]?.sessionId, "s1");
       assert.ok(payload.sessionSummaries[0]?.title, "fallback session should have a non-empty title");
+    });
+
+    test("untitled explicit session summaries fall back to date instead of disappearing", () => {
+      const summaries: SessionSummary[] = [
+        {
+          sessionId: "s1",
+          title: null,
+          date: "2026-03-07",
+          totalActions: 12,
+          trueRate: 58.5,
+          autonomousDuration: 12_000,
+          efficiencyScore: 63.2,
+        },
+      ];
+
+      const payload = buildSessionsPayload(makeStats(), summaries);
+      assert.strictEqual(payload.sessionSummaries.length, 1);
+      assert.strictEqual(payload.sessionSummaries[0]?.sessionId, "s1");
+      assert.strictEqual(payload.sessionSummaries[0]?.title, "2026-03-07");
+    });
+
+    test("blank explicit session titles fall back to sessionId when date is empty", () => {
+      const summaries: SessionSummary[] = [
+        {
+          sessionId: "session-without-date",
+          title: "   ",
+          date: "",
+          totalActions: 3,
+          trueRate: 0,
+          autonomousDuration: 0,
+          efficiencyScore: 0,
+        },
+      ];
+
+      const payload = buildSessionsPayload(makeStats(), summaries);
+      assert.strictEqual(payload.sessionSummaries.length, 1);
+      assert.strictEqual(payload.sessionSummaries[0]?.title, "session-without-date");
     });
 
     test("freshness is null when refresh analysis is unavailable", () => {

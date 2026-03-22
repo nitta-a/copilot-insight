@@ -425,6 +425,11 @@ export interface CopilotUsageStats {
    * Keys are normalised model names.
    */
   tokensByModel: Map<string, { promptTokens: number; completionTokens: number }>;
+  /**
+   * Completion finish-reason distribution derived from "[streamChoices] finish reason:" log lines.
+   * Common keys: "stop" (normal), "length" (context-window truncation).
+   */
+  finishReasonCounts: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

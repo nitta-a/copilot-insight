@@ -92,6 +92,7 @@ function makeEmptyStats(): ParsingContext {
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
   };
 }
 
@@ -406,6 +407,33 @@ suite("logContentParser", () => {
       parseTextLogLine("[AgentDebug] step-execution breakpoint paused", stats);
       assert.strictEqual(stats.agentDebugEvents, 1);
       assert.strictEqual(stats.agentDebugByType.get("step-execution"), 1);
+    });
+
+    test("records finish reason 'stop' from [streamChoices] line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2026-03-20T12:00:00Z [streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("stop"), 1);
+    });
+
+    test("records finish reason 'length' from [streamChoices] line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2026-03-20T12:00:00Z [streamChoices] solution 1 returned. finish reason: [length]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("length"), 1);
+    });
+
+    test("accumulates multiple finish reason counts", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("[streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      parseTextLogLine("[streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      parseTextLogLine("[streamChoices] solution 1 returned. finish reason: [length]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("stop"), 2);
+      assert.strictEqual(stats.finishReasonCounts.get("length"), 1);
+    });
+
+    test("does not modify finishReasonCounts for unrelated lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("some unrelated log line", stats);
+      assert.strictEqual(stats.finishReasonCounts.size, 0);
     });
   });
 

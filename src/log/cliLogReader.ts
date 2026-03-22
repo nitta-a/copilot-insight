@@ -36,6 +36,18 @@ export interface CliStats {
    * Keys are bucket labels (e.g. "0-50"); values hold shown/accepted counts.
    */
   promptEffectiveness: Record<string, { shown: number; accepted: number }>;
+  /** Tool execution stats by tool name: total calls, successes, and failures. */
+  toolExecutions: Map<string, { total: number; success: number; fail: number }>;
+  /** Per-tool, per-model call counts (tool name → model name → count). */
+  toolModelUsage: Map<string, Map<string, number>>;
+  /** Total length of reasoning text observed across all sessions (proxy for thinking depth). */
+  reasoningTokens: number;
+  /** Subagent type counts keyed by agentName from subagent.started events. */
+  agentTypes: Map<string, number>;
+  /** Total number of assistant turns counted across all sessions. */
+  turnCount: number;
+  /** Number of session model-change events observed. */
+  modelChanges: number;
 }
 
 /**
@@ -54,6 +66,12 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
+  const toolExecutions = new Map<string, { total: number; success: number; fail: number }>();
+  const toolModelUsage = new Map<string, Map<string, number>>();
+  let reasoningTokens = 0;
+  const agentTypes = new Map<string, number>();
+  let turnCount = 0;
+  let modelChanges = 0;
 
   let sessionDirs: string[];
   try {
@@ -61,7 +79,18 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     sessionDirs = entries.map((e) => path.join(rootDir, e));
   } catch {
     // Directory does not exist — CLI not installed or never used.
-    return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
+    return {
+      byDate,
+      totalInteractions,
+      interactionsByModel,
+      promptEffectiveness,
+      toolExecutions,
+      toolModelUsage,
+      reasoningTokens,
+      agentTypes,
+      turnCount,
+      modelChanges,
+    };
   }
 
   for (const sessionDir of sessionDirs) {
@@ -91,12 +120,46 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
           accepted: existing.accepted + counts.accepted,
         };
       }
+      // Merge tool execution stats.
+      for (const [toolName, counts] of result.toolExecutions) {
+        const existing = toolExecutions.get(toolName) ?? { total: 0, success: 0, fail: 0 };
+        toolExecutions.set(toolName, {
+          total: existing.total + counts.total,
+          success: existing.success + counts.success,
+          fail: existing.fail + counts.fail,
+        });
+      }
+      // Merge per-tool model usage.
+      for (const [toolName, modelMap] of result.toolModelUsage) {
+        const existingModelMap = toolModelUsage.get(toolName) ?? new Map<string, number>();
+        for (const [model, count] of modelMap) {
+          existingModelMap.set(model, (existingModelMap.get(model) ?? 0) + count);
+        }
+        toolModelUsage.set(toolName, existingModelMap);
+      }
+      reasoningTokens += result.reasoningTokens;
+      for (const [agentName, count] of result.agentTypes) {
+        agentTypes.set(agentName, (agentTypes.get(agentName) ?? 0) + count);
+      }
+      turnCount += result.turnCount;
+      modelChanges += result.modelChanges;
     } catch {
       // Skip unreadable or missing files.
     }
   }
 
-  return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
+  return {
+    byDate,
+    totalInteractions,
+    interactionsByModel,
+    promptEffectiveness,
+    toolExecutions,
+    toolModelUsage,
+    reasoningTokens,
+    agentTypes,
+    turnCount,
+    modelChanges,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +171,12 @@ interface ParseResult {
   totalInteractions: number;
   interactionsByModel: Map<string, number>;
   promptEffectiveness: Record<string, { shown: number; accepted: number }>;
+  toolExecutions: Map<string, { total: number; success: number; fail: number }>;
+  toolModelUsage: Map<string, Map<string, number>>;
+  reasoningTokens: number;
+  agentTypes: Map<string, number>;
+  turnCount: number;
+  modelChanges: number;
 }
 
 /**
@@ -121,6 +190,12 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
+  const toolExecutions = new Map<string, { total: number; success: number; fail: number }>();
+  const toolModelUsage = new Map<string, Map<string, number>>();
+  let reasoningTokens = 0;
+  const agentTypes = new Map<string, number>();
+  let turnCount = 0;
+  let modelChanges = 0;
 
   // Derive today's date as a fallback (YYYY-MM-DD in UTC).
   const todayKey = new Date().toISOString().substring(0, 10);
@@ -201,9 +276,72 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       // Attribute this turn to a model (prefer per-message field over session model).
       const turnModel = (data?.model as string | undefined)?.trim() || sessionModel;
       interactionsByModel.set(turnModel, (interactionsByModel.get(turnModel) ?? 0) + 1);
+      // Accumulate reasoning text length as a proxy for thinking depth.
+      const reasoningText = data?.reasoningText as string | undefined;
+      if (reasoningText) {
+        reasoningTokens += reasoningText.length;
+      }
+      continue;
+    }
+
+    if (type === "tool.execution_complete") {
+      const data = event.data as Record<string, unknown> | undefined;
+      const toolName = data?.toolName as string | undefined;
+      const success = data?.success as boolean | undefined;
+      const toolModel = (data?.model as string | undefined)?.trim() || sessionModel;
+      if (toolName) {
+        const existing = toolExecutions.get(toolName) ?? { total: 0, success: 0, fail: 0 };
+        toolExecutions.set(toolName, {
+          total: existing.total + 1,
+          success: success ? existing.success + 1 : existing.success,
+          fail: !success ? existing.fail + 1 : existing.fail,
+        });
+        // Track per-tool model usage.
+        const modelMap = toolModelUsage.get(toolName) ?? new Map<string, number>();
+        modelMap.set(toolModel, (modelMap.get(toolModel) ?? 0) + 1);
+        toolModelUsage.set(toolName, modelMap);
+      }
+      continue;
+    }
+
+    if (type === "subagent.started") {
+      const data = event.data as Record<string, unknown> | undefined;
+      const agentName = data?.agentName as string | undefined;
+      if (agentName) {
+        agentTypes.set(agentName, (agentTypes.get(agentName) ?? 0) + 1);
+      }
+      continue;
+    }
+
+    if (type === "assistant.turn_start" || type === "assistant.turn_end") {
+      if (type === "assistant.turn_start") {
+        turnCount++;
+      }
+      continue;
+    }
+
+    if (type === "session.model_change") {
+      modelChanges++;
+      // Update session-level model for subsequent events.
+      const data = event.data as Record<string, unknown> | undefined;
+      const newModel = (data?.model as string | undefined)?.trim();
+      if (newModel) {
+        sessionModel = newModel;
+      }
       continue;
     }
   }
 
-  return { byDate, totalInteractions, interactionsByModel, promptEffectiveness };
+  return {
+    byDate,
+    totalInteractions,
+    interactionsByModel,
+    promptEffectiveness,
+    toolExecutions,
+    toolModelUsage,
+    reasoningTokens,
+    agentTypes,
+    turnCount,
+    modelChanges,
+  };
 }

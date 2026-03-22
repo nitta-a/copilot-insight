@@ -148,6 +148,103 @@ suite("parseEventsJsonl", () => {
     const result = parseEventsJsonl(content);
     assert.strictEqual(result.interactionsByModel.size, 0);
   });
+
+  test("accumulates tool execution stats from tool.execution_complete events", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"tool.execution_complete","data":{"toolName":"read_file","success":true}}',
+      '{"type":"tool.execution_complete","data":{"toolName":"read_file","success":true}}',
+      '{"type":"tool.execution_complete","data":{"toolName":"grep_search","success":false}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    const readFile = result.toolExecutions.get("read_file");
+    assert.ok(readFile);
+    assert.strictEqual(readFile.total, 2);
+    assert.strictEqual(readFile.success, 2);
+    assert.strictEqual(readFile.fail, 0);
+    const grep = result.toolExecutions.get("grep_search");
+    assert.ok(grep);
+    assert.strictEqual(grep.total, 1);
+    assert.strictEqual(grep.success, 0);
+    assert.strictEqual(grep.fail, 1);
+  });
+
+  test("tracks per-tool model usage from tool.execution_complete events", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z","model":"claude-opus-4.6"}}',
+      '{"type":"tool.execution_complete","data":{"toolName":"read_file","success":true,"model":"gpt-4o"}}',
+      '{"type":"tool.execution_complete","data":{"toolName":"read_file","success":true}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    const modelMap = result.toolModelUsage.get("read_file");
+    assert.ok(modelMap);
+    assert.strictEqual(modelMap.get("gpt-4o"), 1);
+    assert.strictEqual(modelMap.get("claude-opus-4.6"), 1);
+  });
+
+  test("accumulates reasoningText length from assistant.message events", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"assistant.message","data":{"outputTokens":100,"reasoningText":"hello"}}',
+      '{"type":"assistant.message","data":{"outputTokens":200,"reasoningText":"world!"}}',
+      '{"type":"assistant.message","data":{"outputTokens":50}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    // "hello" (5) + "world!" (6) = 11
+    assert.strictEqual(result.reasoningTokens, 11);
+  });
+
+  test("accumulates agentTypes from subagent.started events", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"subagent.started","data":{"agentName":"Explore"}}',
+      '{"type":"subagent.started","data":{"agentName":"Explore"}}',
+      '{"type":"subagent.started","data":{"agentName":"AIAgentExpert"}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.agentTypes.get("Explore"), 2);
+    assert.strictEqual(result.agentTypes.get("AIAgentExpert"), 1);
+  });
+
+  test("counts assistant.turn_start events in turnCount", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      '{"type":"assistant.turn_start","data":{}}',
+      '{"type":"assistant.turn_end","data":{}}',
+      '{"type":"assistant.turn_start","data":{}}',
+      '{"type":"assistant.turn_end","data":{}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.turnCount, 2);
+  });
+
+  test("counts session.model_change events and updates sessionModel", () => {
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z","model":"claude-opus-4.6"}}',
+      '{"type":"session.model_change","data":{"model":"gpt-4o"}}',
+      '{"type":"assistant.message","data":{"outputTokens":100}}',
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.modelChanges, 1);
+    // After model change, assistant.message should use gpt-4o
+    assert.strictEqual(result.interactionsByModel.get("gpt-4o"), 1);
+  });
+
+  test("new fields are zero/empty for empty content", () => {
+    const result = parseEventsJsonl("");
+    assert.strictEqual(result.toolExecutions.size, 0);
+    assert.strictEqual(result.toolModelUsage.size, 0);
+    assert.strictEqual(result.reasoningTokens, 0);
+    assert.strictEqual(result.agentTypes.size, 0);
+    assert.strictEqual(result.turnCount, 0);
+    assert.strictEqual(result.modelChanges, 0);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -114,6 +114,7 @@ function makeStats(): CopilotUsageStats {
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
   };
 }
 

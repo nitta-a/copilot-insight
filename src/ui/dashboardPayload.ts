@@ -716,10 +716,12 @@ export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsi
  * Called on demand when the WebView requests "sessions" tab data.
  */
 export function buildSessionsPayload(stats: CopilotUsageStats, sessionSummaries: SessionSummary[] = []): SessionsData {
-  const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
   const effectiveSessionSummaries =
     sessionSummaries.length > 0
-      ? titledSessionSummaries
+      ? sessionSummaries.map((session) => ({
+          ...session,
+          title: session.title?.trim() ? session.title : session.date || session.sessionId,
+        }))
       : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
 
   return { sessionSummaries: effectiveSessionSummaries };

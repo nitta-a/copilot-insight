@@ -71,6 +71,7 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
     ...overrides,
   };
 }
