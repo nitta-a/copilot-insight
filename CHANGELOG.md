@@ -4,6 +4,13 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.24] - 2026-03-22
+
+### Fixed
+- 🔢 **Context source count now includes all log formats** — the reference-count field (`usedReferences` / `references` / `contextReferences` / `attachedFiles`) is recorded whenever it is present in a JSON log entry, independent of whether the event name matches the known chat-turn patterns; sessions with unrecognised event names no longer silently drop their context attachment data
+- 📊 **Context Leverage histogram includes all sessions** — sessions from legacy snapshots or log files where `referenceCount` was not previously tracked are now counted in the "0 sources" bucket instead of being excluded, giving a more complete picture of context usage
+- 🏷️ **"files" → "sources" terminology** — bucket labels, chart title, tooltip, and meter labels updated from "N files" to "N sources" (e.g. "0 sources", "1 source", "4+ sources") to accurately reflect that context attachments include code snippets, workspace symbols, and other context items — not just attached files
+
 ## [1.0.23] - 2026-03-20
 
 ### Added
