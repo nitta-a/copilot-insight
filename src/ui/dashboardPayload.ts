@@ -368,6 +368,27 @@ export function buildDashboardPayload(
   const toolUsageStats = Array.from(stats.toolUsageStats.entries())
     .map(([intent, count]) => ({ intent, count }))
     .sort((a, b) => b.count - a.count);
+  const cliToolExecutions = Array.from((stats.cliToolExecutions ?? new Map()).entries())
+    .map(([name, counts]) => ({
+      name,
+      total: counts.total,
+      success: counts.success,
+      fail: counts.fail,
+      successRate: counts.total > 0 ? (counts.success / counts.total) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total || b.successRate - a.successRate || a.name.localeCompare(b.name));
+  const cliReasoningTokens = stats.cliReasoningTokens ?? 0;
+  const totalCliAgentTypes = Array.from((stats.cliAgentTypes ?? new Map()).values()).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+  const cliAgentTypes = Array.from((stats.cliAgentTypes ?? new Map()).entries())
+    .map(([name, count]) => ({
+      name,
+      count,
+      share: totalCliAgentTypes > 0 ? (count / totalCliAgentTypes) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   // ── Agent Intelligence Overview ───────────────────────────────────────────
   // Semantic mapping: all fine-grained subagent intents → "Autonomous Action"
@@ -457,6 +478,9 @@ export function buildDashboardPayload(
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats,
+    cliToolExecutions,
+    cliReasoningTokens,
+    cliAgentTypes,
     agentIntelligenceOverview,
     featureSignals,
   };
@@ -704,6 +728,7 @@ export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsi
   return {
     chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
     commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
+    finishReasonBreakdown: toSortedBreakdown(stats.finishReasonCounts),
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
     turnStats: buildTurnStats(stats),

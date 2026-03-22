@@ -72,6 +72,9 @@ interface SerializedCopilotUsageStats {
   agentDebugByType: Array<[string, number]>;
   cliByDate: Array<[string, CliDateStat]>;
   cliTotalInteractions: number;
+  cliToolExecutions?: Array<[string, { total: number; success: number; fail: number }]>;
+  cliReasoningTokens?: number;
+  cliAgentTypes?: Array<[string, number]>;
   commandUsage: Array<[string, number]>;
   promptEffectiveness?: Record<string, { shown: number; accepted: number }>;
   chatSessionStates?: Array<[string, ChatSessionState]>;
@@ -144,6 +147,9 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     agentDebugByType: mapEntries(stats.agentDebugByType),
     cliByDate: mapEntries(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions,
+    cliToolExecutions: mapEntries(stats.cliToolExecutions ?? new Map()),
+    cliReasoningTokens: stats.cliReasoningTokens ?? 0,
+    cliAgentTypes: mapEntries(stats.cliAgentTypes ?? new Map()),
     commandUsage: mapEntries(stats.commandUsage),
     promptEffectiveness: { ...stats.promptEffectiveness },
     chatSessionStates: mapEntries(stats.chatSessionStates),
@@ -209,6 +215,9 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     agentDebugByType: toMap(stats.agentDebugByType),
     cliByDate: toMap(stats.cliByDate),
     cliTotalInteractions: stats.cliTotalInteractions ?? 0,
+    cliToolExecutions: toMap(stats.cliToolExecutions),
+    cliReasoningTokens: stats.cliReasoningTokens ?? 0,
+    cliAgentTypes: toMap(stats.cliAgentTypes),
     commandUsage: toMap(stats.commandUsage),
     promptEffectiveness: stats.promptEffectiveness ?? {},
     chatSessionStates: toMap(stats.chatSessionStates),

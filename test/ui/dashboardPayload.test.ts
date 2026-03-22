@@ -140,6 +140,9 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     agentDebugByType: new Map(),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    cliToolExecutions: new Map(),
+    cliReasoningTokens: 0,
+    cliAgentTypes: new Map(),
     commandUsage: new Map(),
     promptEffectiveness: {},
     chatSessionStates: new Map(),
@@ -777,6 +780,9 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.agenticStats.agenticRatio, 0);
       assert.strictEqual(payload.agenticStats.autonomousDurationMs, 0);
       assert.deepStrictEqual(payload.agenticStats.toolUsageStats, []);
+      assert.deepStrictEqual(payload.agenticStats.cliToolExecutions, []);
+      assert.strictEqual(payload.agenticStats.cliReasoningTokens, 0);
+      assert.deepStrictEqual(payload.agenticStats.cliAgentTypes, []);
     });
 
     test("includes subagentRequests, agenticRatio, autonomousDurationMs from stats", () => {
@@ -811,6 +817,53 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(sorted[1].count, 2);
       assert.strictEqual(sorted[2].intent, "searchSubagentTool");
       assert.strictEqual(sorted[2].count, 1);
+    });
+
+    test("cliToolExecutions is sorted by total count descending", () => {
+      const stats = makeStats({
+        cliToolExecutions: new Map([
+          ["grep_search", { total: 2, success: 1, fail: 1 }],
+          ["read_file", { total: 5, success: 5, fail: 0 }],
+          ["run_in_terminal", { total: 1, success: 1, fail: 0 }],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const sorted = payload.agenticStats.cliToolExecutions;
+      assert.strictEqual(sorted[0].name, "read_file");
+      assert.strictEqual(sorted[0].total, 5);
+      assert.strictEqual(sorted[0].successRate, 100);
+      assert.strictEqual(sorted[1].name, "grep_search");
+      assert.strictEqual(sorted[2].name, "run_in_terminal");
+    });
+
+    test("cliToolExecutions computes successRate from success and total", () => {
+      const stats = makeStats({
+        cliToolExecutions: new Map([["read_file", { total: 4, success: 3, fail: 1 }]]),
+      });
+      const payload = buildDashboardPayload(stats);
+      assert.strictEqual(payload.agenticStats.cliToolExecutions[0]?.successRate, 75);
+    });
+
+    test("agenticStats exposes cliReasoningTokens", () => {
+      const payload = buildDashboardPayload(makeStats({ cliReasoningTokens: 4321 }));
+      assert.strictEqual(payload.agenticStats.cliReasoningTokens, 4321);
+    });
+
+    test("cliAgentTypes is sorted by count descending and computes share", () => {
+      const stats = makeStats({
+        cliAgentTypes: new Map([
+          ["general-purpose", 2],
+          ["planner", 5],
+          ["researcher", 3],
+        ]),
+      });
+      const payload = buildDashboardPayload(stats);
+      const sorted = payload.agenticStats.cliAgentTypes;
+      assert.strictEqual(sorted[0].name, "planner");
+      assert.strictEqual(sorted[0].count, 5);
+      assert.strictEqual(sorted[0].share, 50);
+      assert.strictEqual(sorted[1].name, "researcher");
+      assert.strictEqual(sorted[2].name, "general-purpose");
     });
 
     test("agentIntelligenceOverview is zero when no subagent data", () => {
@@ -1191,6 +1244,28 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
     assert.strictEqual(payload.commandUsageBreakdown[0].count, 10);
     assert.strictEqual(payload.commandUsageBreakdown[1].name, "/fix");
     assert.strictEqual(payload.commandUsageBreakdown[2].name, "/explain");
+  });
+
+  test("finishReasonBreakdown is empty when finishReasonCounts is empty", () => {
+    const payload = buildPromptInsightsPayload(makeStats({ finishReasonCounts: new Map() }));
+    assert.deepStrictEqual(payload.finishReasonBreakdown, []);
+  });
+
+  test("finishReasonBreakdown reflects finishReasonCounts sorted by count desc", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        finishReasonCounts: new Map([
+          ["stop", 12],
+          ["length", 5],
+          ["content_filter", 1],
+        ]),
+      }),
+    );
+    assert.strictEqual(payload.finishReasonBreakdown.length, 3);
+    assert.strictEqual(payload.finishReasonBreakdown[0].name, "stop");
+    assert.strictEqual(payload.finishReasonBreakdown[0].count, 12);
+    assert.strictEqual(payload.finishReasonBreakdown[1].name, "length");
+    assert.strictEqual(payload.finishReasonBreakdown[2].name, "content_filter");
   });
 
   // ── promptLengthScatterData ───────────────────────────────────────────────

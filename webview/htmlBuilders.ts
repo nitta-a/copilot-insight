@@ -6,10 +6,7 @@
  */
 
 import type { AgentStep, SessionDetailPayload } from "../src/types";
-import type {
-  AgentIntelligenceOverview,
-  DashboardPayload,
-} from "../src/ui/dashboardMessages";
+import type { AgentIntelligenceOverview, DashboardPayload } from "../src/ui/dashboardMessages";
 import {
   actorBadgeClass,
   actorIcon,
@@ -180,6 +177,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
   const ratioStr = agenticStats.agenticRatio.toFixed(1);
   const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
   const completionStr = overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
+  const cliReasoningStr = agenticStats.cliReasoningTokens > 0 ? agenticStats.cliReasoningTokens.toLocaleString() : "—";
   const durationCell =
     agenticStats.autonomousDurationMs > 0
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
@@ -231,6 +229,47 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
        <table class="db-lang-table">
          <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th><th>Avg sec / Action</th></tr>
          ${modelRows}
+       </table>`
+    : "";
+
+  const cliToolRows = agenticStats.cliToolExecutions
+    .slice(0, 8)
+    .map(({ name, total, success, fail, successRate }) => {
+      const rate = total > 0 ? `${successRate.toFixed(1)}%` : "—";
+      return `<tr>
+          <td>${escHtml(trunc(name, 28))}</td>
+          <td>${total}</td>
+          <td>${success}</td>
+          <td>${fail}</td>
+          <td>${rate}</td>
+        </tr>`;
+    })
+    .join("");
+
+  const cliToolSection = cliToolRows
+    ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">CLI Tool Efficiency</h3>
+       <table class="db-lang-table">
+         <tr><th>Tool</th><th>Total</th><th>Success</th><th>Fail</th><th>Success Rate</th></tr>
+         ${cliToolRows}
+       </table>`
+    : "";
+
+  const cliAgentTypeRows = agenticStats.cliAgentTypes
+    .slice(0, 8)
+    .map(
+      ({ name, count, share }) => `<tr>
+          <td>${escHtml(trunc(name, 28))}</td>
+          <td>${count}</td>
+          <td>${share.toFixed(1)}%</td>
+        </tr>`,
+    )
+    .join("");
+
+  const cliAgentTypeSection = cliAgentTypeRows
+    ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">CLI Agent Types</h3>
+       <table class="db-lang-table">
+         <tr><th>Agent</th><th>Count</th><th>Share</th></tr>
+         ${cliAgentTypeRows}
        </table>`
     : "";
 
@@ -297,6 +336,11 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
         <div class="stat-detail">completed episodes</div>
       </div>
       <div class="stat-card">
+        <div class="stat-value">${cliReasoningStr}</div>
+        <div class="stat-label">CLI Reasoning Chars</div>
+        <div class="stat-detail">assistant.reasoningText length</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-value">${avgStr}</div>
         <div class="stat-label">Avg Calls / Loop</div>
         <div class="stat-detail">agentic depth</div>
@@ -309,6 +353,8 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
       ${durationCell}
     </div>
     ${modelTable}
+    ${cliToolSection}
+    ${cliAgentTypeSection}
     ${featureSection}
     ${planningSection}
     <div id="db-model-depth-chart" style="margin-top:16px"></div>

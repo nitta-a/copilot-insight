@@ -390,6 +390,12 @@ export interface CopilotUsageStats {
   cliByDate: Map<string, CliDateStat>;
   /** Total number of CLI prompt interactions across all sessions. */
   cliTotalInteractions: number;
+  /** CLI tool execution stats keyed by tool name. */
+  cliToolExecutions?: Map<string, { total: number; success: number; fail: number }>;
+  /** Total reasoning text length observed in CLI assistant messages. */
+  cliReasoningTokens?: number;
+  /** CLI subagent type counts keyed by agent name. */
+  cliAgentTypes?: Map<string, number>;
 
   // Slash commands and @participants usage
   /** Usage counts for slash commands (/fix, /explain, …) and @participants (@workspace, …). */

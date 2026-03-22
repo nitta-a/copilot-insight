@@ -262,6 +262,41 @@ function renderPromptLengthScatterChart(scatterData: PromptInsightsData["promptL
   promptLengthScatterChart = createPromptLengthScatterChart(canvas, scatterData, getColors());
 }
 
+function renderFinishReasonBreakdown(finishReasonBreakdown: PromptInsightsData["finishReasonBreakdown"]): void {
+  const container = document.getElementById("db-finish-reason-container");
+  if (!container) {
+    return;
+  }
+
+  if (finishReasonBreakdown.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const total = finishReasonBreakdown.reduce((sum, entry) => sum + entry.count, 0);
+  const rows = finishReasonBreakdown
+    .map((entry) => {
+      const ratio = total > 0 ? (entry.count / total) * 100 : 0;
+      return `<div class="bar-row">
+        <div class="bar-label">${entry.name}</div>
+        <div class="bar-group">
+          <div class="bar-track"><div class="bar-fill purple" style="width:${ratio.toFixed(1)}%"></div></div>
+          <div class="stat-detail">${ratio.toFixed(1)}% of completions</div>
+        </div>
+        <div class="bar-count">${entry.count}</div>
+      </div>`;
+    })
+    .join("");
+
+  container.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🧾 Finish Reason Breakdown</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
+      Distribution of completion stop reasons from stream choices. A higher <strong>length</strong> share can indicate truncation or context-window pressure.
+    </p>
+    ${rows}`;
+}
+
 // ---------------------------------------------------------------------------
 // Turn Churn Mixed Chart (chat session turn-count distribution)
 // ---------------------------------------------------------------------------
@@ -486,10 +521,10 @@ function setExportLoading(btnId: string, loading: boolean): void {
 
 /** Show a transient error toast inside the WebView (auto-dismissed after 6 s). */
 function showExportError(msg: string): void {
-  const TOAST_ID = "db-export-error-toast";
-  document.getElementById(TOAST_ID)?.remove();
+  const ToastId = "db-export-error-toast";
+  document.getElementById(ToastId)?.remove();
   const el = document.createElement("div");
-  el.id = TOAST_ID;
+  el.id = ToastId;
   el.style.cssText =
     "position:fixed;top:12px;right:12px;max-width:380px;" +
     "background:var(--vscode-inputValidation-errorBackground,#5a1d1d);" +
@@ -619,7 +654,13 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
     (total) => total > 0,
   );
 
-  if (subagentRequests === 0 && !hasFeatureSignals) {
+  if (
+    subagentRequests === 0 &&
+    !hasFeatureSignals &&
+    agenticStats.cliToolExecutions.length === 0 &&
+    agenticStats.cliReasoningTokens === 0 &&
+    agenticStats.cliAgentTypes.length === 0
+  ) {
     depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
     scatterPlotRoot = unmountRoot(scatterPlotRoot);
     el.innerHTML = '<p class="no-data">No autonomous activity or 1.110 feature signals detected in this period.</p>';
@@ -793,6 +834,7 @@ function renderPromptInsightsData(data: PromptInsightsData): void {
   renderTagCloud(data.topKeywords);
   renderChatIntentCommandDonutCharts(data);
   renderPromptLengthScatterChart(data.promptLengthScatterData);
+  renderFinishReasonBreakdown(data.finishReasonBreakdown);
   renderTurnChurnChart(data.turnStats);
   renderContextLeverageChart(data.contextStats);
   // Trigger resize so charts render correctly after becoming visible.
