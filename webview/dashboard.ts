@@ -385,7 +385,8 @@ function renderTagCloud(topKeywords: PromptInsightsData["topKeywords"]): void {
   let comp = el.querySelector<TagCloud>("copilot-tag-cloud");
   if (!comp) {
     comp = document.createElement("copilot-tag-cloud") as TagCloud;
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.tags = topKeywords;
 }
@@ -401,7 +402,8 @@ function renderContextFreshness(
   let comp = el.querySelector<ContextFreshnessMeter>("copilot-freshness-meter");
   if (!comp) {
     comp = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.freshness = freshness;
   comp.refreshAnalysis = refreshAnalysis;
@@ -415,7 +417,8 @@ function renderContextRichness(richness: ContextRichnessData): void {
   let comp = el.querySelector<ContextRichnessMeter>("copilot-richness-meter");
   if (!comp) {
     comp = document.createElement("copilot-richness-meter") as ContextRichnessMeter;
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.richness = richness;
 }
@@ -428,7 +431,8 @@ function renderContextCorrelation(richness: ContextRichnessData): void {
   let comp = el.querySelector<ContextCorrelationChart>("copilot-context-correlation");
   if (!comp) {
     comp = document.createElement("copilot-context-correlation") as ContextCorrelationChart;
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.buckets = richness.buckets;
 }
@@ -453,7 +457,8 @@ function renderWeeklyTrend(trend: WeeklyTrendData | null): void {
   let comp = el.querySelector<WeeklyTrendCard>("copilot-weekly-trend");
   if (!comp) {
     comp = document.createElement("copilot-weekly-trend") as WeeklyTrendCard;
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.trendData = trend;
 }
@@ -659,7 +664,8 @@ function renderAllThreads(): void {
         renderThreadDetail();
       }
     });
-    el.replaceChildren(comp);
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
   comp.flat = flat;
   comp.selectedThreadId = selectedThreadId;

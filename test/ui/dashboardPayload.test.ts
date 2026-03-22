@@ -1225,6 +1225,122 @@ suite("buildDashboardPayload — chatIntentBreakdown and commandUsageBreakdown",
   });
 });
 
+suite("buildPromptInsightsPayload — topKeywords", () => {
+  function makeTitleRecord(id: string, title: string, firstRequestText: string | null = null) {
+    return {
+      chatSessionId: id,
+      workspaceId: "ws1",
+      title,
+      createdAt: "2026-01-01",
+      lastMessageAt: null,
+      firstRequestText,
+    };
+  }
+
+  function makeSessionRecord(id: string, title: string | null, firstRequestText: string | null, messagTexts: string[]) {
+    const requests = messagTexts.map((text, i) => ({
+      requestId: `r${i}`,
+      timestamp: 0,
+      agentId: "copilot",
+      customAgentName: null,
+      modelId: "gpt-4o",
+      messageText: text,
+      timings: { firstProgress: null, totalElapsed: null },
+      toolCalls: [],
+      availableSkills: [],
+      loadedSkills: [],
+    }));
+    return {
+      chatSessionId: id,
+      workspaceId: "ws1",
+      title,
+      createdAt: "2026-01-01",
+      lastMessageAt: null,
+      firstRequestText,
+      requests,
+      source: "jsonl" as const,
+      provider: "copilot" as const,
+    };
+  }
+
+  test("topKeywords is empty when chatSessionTitles and chatSessions are both undefined", () => {
+    const payload = buildPromptInsightsPayload(makeStats());
+    assert.deepStrictEqual(payload.topKeywords, []);
+  });
+
+  test("topKeywords is empty when chatSessionTitles and chatSessions are empty arrays", () => {
+    const payload = buildPromptInsightsPayload(makeStats({ chatSessionTitles: [], chatSessions: [] }));
+    assert.deepStrictEqual(payload.topKeywords, []);
+  });
+
+  test("topKeywords extracted from chatSessionTitles[].title", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        chatSessionTitles: [makeTitleRecord("s1", "typescript refactor"), makeTitleRecord("s2", "typescript types")],
+      }),
+    );
+    const words = payload.topKeywords.map((k) => k.word);
+    assert.ok(words.includes("typescript"), "expected 'typescript' in topKeywords");
+    const ts = payload.topKeywords.find((k) => k.word === "typescript");
+    assert.strictEqual(ts?.count, 2, "typescript should appear twice");
+  });
+
+  test("topKeywords extracted from chatSessionTitles[].firstRequestText", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        chatSessionTitles: [makeTitleRecord("s1", "session", "explain typescript generics")],
+      }),
+    );
+    const words = payload.topKeywords.map((k) => k.word);
+    assert.ok(words.includes("typescript"), "expected 'typescript' from firstRequestText");
+    assert.ok(words.includes("generics"), "expected 'generics' from firstRequestText");
+  });
+
+  test("topKeywords extracted from chatSessions[].requests[].messageText", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        chatSessions: [makeSessionRecord("s1", null, null, ["write unit tests", "write unit tests coverage"])],
+      }),
+    );
+    const words = payload.topKeywords.map((k) => k.word);
+    assert.ok(words.includes("write"), "expected 'write' in topKeywords");
+    assert.ok(words.includes("unit"), "expected 'unit' in topKeywords");
+    assert.ok(words.includes("tests"), "expected 'tests' in topKeywords");
+    const write = payload.topKeywords.find((k) => k.word === "write");
+    assert.strictEqual(write?.count, 2, "'write' should appear in both requests");
+  });
+
+  test("stop-words are filtered out from topKeywords", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        chatSessionTitles: [makeTitleRecord("s1", "the best and greatest typescript fix")],
+      }),
+    );
+    const words = payload.topKeywords.map((k) => k.word);
+    assert.ok(!words.includes("the"), "'the' should be filtered as a stop-word");
+    assert.ok(!words.includes("and"), "'and' should be filtered as a stop-word");
+    assert.ok(words.includes("typescript"), "content word 'typescript' should be present");
+  });
+
+  test("topKeywords is sorted by frequency descending", () => {
+    const payload = buildPromptInsightsPayload(
+      makeStats({
+        chatSessionTitles: [
+          makeTitleRecord("s1", "typescript refactor"),
+          makeTitleRecord("s2", "typescript types"),
+          makeTitleRecord("s3", "refactor methods"),
+        ],
+      }),
+    );
+    // typescript: 2, refactor: 2, types: 1, methods: 1 — at least two entries, sorted desc
+    assert.ok(payload.topKeywords.length >= 2);
+    assert.ok(
+      payload.topKeywords[0].count >= payload.topKeywords[1].count,
+      "first entry should have count >= second entry",
+    );
+  });
+});
+
 suite("buildContextRichness", () => {
   test("returns status=low and avgRefCount=0 when no sessions have referenceCount data", () => {
     const stats = makeStats({

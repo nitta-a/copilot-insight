@@ -48,6 +48,8 @@ export class CopilotUsagePanel {
   private _stats: CopilotUsageStats;
   private _advanced: AdvancedMetrics;
   private _dbWorker: DbWorkerClient | undefined;
+  /** Guard against reading workspaceStorage chat sessions more than once. */
+  private _chatSessionsLoaded = false;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -146,8 +148,7 @@ export class CopilotUsagePanel {
       }
       case "requestTabData": {
         if (msg.tab === "promptInsights") {
-          const payload = buildPromptInsightsPayload(this._stats);
-          void this._panel.webview.postMessage({ type: "tabData", tab: "promptInsights", payload });
+          void this._handlePromptInsightsTabRequest();
         } else if (msg.tab === "sessions") {
           void this._handleSessionsTabRequest();
         }
@@ -158,6 +159,37 @@ export class CopilotUsagePanel {
         break;
       }
     }
+  }
+
+  /**
+   * Read workspaceStorage chat session data once and cache it into `this._stats`.
+   * Idempotent — subsequent calls are no-ops.
+   */
+  private async _ensureChatSessionsLoaded(): Promise<void> {
+    if (this._chatSessionsLoaded) {
+      return;
+    }
+    if (!this._advanced.logBaseDir) {
+      return;
+    }
+    try {
+      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir);
+      this._stats.chatSessionTitles = chatSessionTitles;
+      this._stats.chatSessions = chatSessions;
+    } catch {
+      // Non-fatal — workspace storage may not exist in all environments.
+    }
+    this._chatSessionsLoaded = true;
+  }
+
+  /**
+   * Load chat sessions (once) then post the Prompt Insights payload.
+   * Separated so `_handleWebviewMessage` can fire-and-forget with `void`.
+   */
+  private async _handlePromptInsightsTabRequest(): Promise<void> {
+    await this._ensureChatSessionsLoaded();
+    const payload = buildPromptInsightsPayload(this._stats);
+    void this._panel.webview.postMessage({ type: "tabData", tab: "promptInsights", payload });
   }
 
   /**
@@ -182,8 +214,12 @@ export class CopilotUsagePanel {
   }
 
   private async _buildSessionsPayloadAsync(): Promise<SessionsData> {
+    await this._ensureChatSessionsLoaded();
     if (this._advanced.logBaseDir && this._dbWorker) {
-      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir);
+      const { chatSessionTitles, chatSessions } =
+        this._stats.chatSessionTitles && this._stats.chatSessions
+          ? { chatSessionTitles: this._stats.chatSessionTitles, chatSessions: this._stats.chatSessions }
+          : await readWorkspaceChatSessions(this._advanced.logBaseDir);
       await this._dbWorker.setChatSessionTitles(chatSessionTitles);
       await this._dbWorker.setChatSessions(chatSessions);
       const sessionSummaries = await this._dbWorker.getSessionList();
