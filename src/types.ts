@@ -408,6 +408,23 @@ export interface CopilotUsageStats {
    * explicit session identifiers; sessions without IDs are silently skipped.
    */
   chatSessionStates: Map<string, ChatSessionState>;
+
+  // Token consumption tracking
+  /**
+   * Total number of prompt tokens consumed across all log entries that report
+   * token counts (e.g. `promptTokens`, `prompt_tokens`, `numTokens` fields).
+   */
+  totalPromptTokens: number;
+  /**
+   * Total number of completion tokens generated across all log entries that
+   * report completion token counts (e.g. `completionTokens`, `completion_tokens`).
+   */
+  totalCompletionTokens: number;
+  /**
+   * Per-model prompt and completion token totals for model-efficiency analysis.
+   * Keys are normalised model names.
+   */
+  tokensByModel: Map<string, { promptTokens: number; completionTokens: number }>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

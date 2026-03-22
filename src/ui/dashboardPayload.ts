@@ -68,6 +68,34 @@ function toSortedBreakdown(source: Map<string, number>): CountBreakdownEntry[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+/**
+ * Build the token consumption summary from accumulated stats.
+ * Returns `null` when no log entries reported token-count fields.
+ */
+function buildTokenStats(stats: CopilotUsageStats): SummaryData["tokenStats"] {
+  const total = stats.totalPromptTokens + stats.totalCompletionTokens;
+  if (total === 0) {
+    return null;
+  }
+
+  const totalRequests = stats.totalShown + stats.totalChat;
+  const avgPromptTokensPerRequest =
+    totalRequests > 0 && stats.totalPromptTokens > 0 ? Math.round(stats.totalPromptTokens / totalRequests) : 0;
+
+  const topModelsByTokens = Array.from(stats.tokensByModel.entries())
+    .map(([model, { promptTokens, completionTokens }]) => ({ model, promptTokens, completionTokens }))
+    .sort((a, b) => b.promptTokens + b.completionTokens - (a.promptTokens + a.completionTokens))
+    .slice(0, 5);
+
+  return {
+    totalPromptTokens: stats.totalPromptTokens,
+    totalCompletionTokens: stats.totalCompletionTokens,
+    totalTokens: total,
+    avgPromptTokensPerRequest,
+    topModelsByTokens,
+  };
+}
+
 function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary[] {
   return Array.from(stats.bySession.values())
     .map((session) => {
@@ -203,6 +231,7 @@ export function buildDashboardPayload(
     totalMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
+    tokenStats: buildTokenStats(stats),
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────

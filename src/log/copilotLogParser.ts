@@ -122,6 +122,9 @@ export async function parseCopilotLogs(
     commandUsage: new Map(),
     promptEffectiveness: {},
     chatSessionStates: new Map(),
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    tokensByModel: new Map(),
   };
 
   try {

@@ -30,6 +30,27 @@ import {
 // Summary cards
 // ---------------------------------------------------------------------------
 
+/**
+ * Build `<copilot-stat-card>` elements for token consumption stats.
+ * Returns an empty string when no token data is available (tokenStats is null).
+ */
+function buildTokenStatCardsHtml(tokenStats: DashboardPayload["summary"]["tokenStats"]): string {
+  if (!tokenStats) {
+    return "";
+  }
+  const totalK = (tokenStats.totalTokens / 1000).toFixed(1);
+  const promptK = (tokenStats.totalPromptTokens / 1000).toFixed(1);
+  const completionK = (tokenStats.totalCompletionTokens / 1000).toFixed(1);
+  const topModel = tokenStats.topModelsByTokens[0];
+  const topModelStr = topModel ? escHtml(trunc(topModel.model, 18)) : "—";
+  const topModelDetail = topModel
+    ? escHtml(`${((topModel.promptTokens + topModel.completionTokens) / 1000).toFixed(1)}k tokens`)
+    : "no data";
+  return `
+    <copilot-stat-card show-download value="${escHtml(totalK)}k" label="Total Tokens Used" subtext="${escHtml(promptK)}k prompt / ${escHtml(completionK)}k completion"></copilot-stat-card>
+    <copilot-stat-card show-download value="${topModelStr}" label="Top Model (Tokens)" subtext="${topModelDetail}"></copilot-stat-card>`;
+}
+
 export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): string {
   const trueRateStr = summary.trueAcceptanceRate !== null ? `${summary.trueAcceptanceRate.toFixed(1)}%` : "—";
   const totalHours = (summary.totalMinutesSaved.total / 60).toFixed(1);
@@ -62,7 +83,8 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
     <copilot-stat-card show-download value="${escHtml(trunc(topPlanModelStr, 18))}" label="Top Plan Model" highlight="blue" subtext="${escHtml(topPlanModelDetail)}" title="${escHtml(topPlanModelStr)}"></copilot-stat-card>
     <copilot-stat-card show-download value="${escHtml(String(summary.totalShown))}" label="Suggestions Shown"></copilot-stat-card>
     <copilot-stat-card show-download value="${escHtml(String(summary.totalAccepted))}" label="Suggestions Accepted"></copilot-stat-card>
-    <copilot-stat-card show-download value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>`;
+    <copilot-stat-card show-download value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>
+    ${buildTokenStatCardsHtml(summary.tokenStats)}`;
 }
 
 // ---------------------------------------------------------------------------

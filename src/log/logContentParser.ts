@@ -135,6 +135,21 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     ctx.errorsByType.set(type_, (ctx.errorsByType.get(type_) ?? 0) + count);
     ctx.totalErrors += count;
   }
+
+  // Merge token consumption stats.
+  if (native.totalPromptTokens) {
+    ctx.totalPromptTokens += native.totalPromptTokens;
+  }
+  if (native.totalCompletionTokens) {
+    ctx.totalCompletionTokens += native.totalCompletionTokens;
+  }
+  for (const [model, tokenPair] of Object.entries(native.tokensByModel ?? {})) {
+    const [pt, ct] = tokenPair as [number, number];
+    const existing = ctx.tokensByModel.get(model) ?? { promptTokens: 0, completionTokens: 0 };
+    existing.promptTokens += pt ?? 0;
+    existing.completionTokens += ct ?? 0;
+    ctx.tokensByModel.set(model, existing);
+  }
 }
 
 /**

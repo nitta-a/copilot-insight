@@ -72,6 +72,19 @@ export interface SummaryData {
   estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
   totalSessions: number;
+  /**
+   * Aggregated token consumption summary.
+   * `null` when no log entries carried token-count fields.
+   */
+  tokenStats: {
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalTokens: number;
+    /** Average prompt tokens per request (0 when no data). */
+    avgPromptTokensPerRequest: number;
+    /** Top models by total token consumption (descending). */
+    topModelsByTokens: Array<{ model: string; promptTokens: number; completionTokens: number }>;
+  } | null;
 }
 
 export interface TimelineEntry {

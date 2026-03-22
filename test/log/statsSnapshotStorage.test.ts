@@ -111,6 +111,9 @@ function makeStats(): CopilotUsageStats {
     commandUsage: new Map([["@workspace", 3]]),
     promptEffectiveness: {},
     chatSessionStates: new Map([["session-1", { sessionId: "session-1", turnCount: 2, isAccepted: true }]]),
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    tokensByModel: new Map(),
   };
 }
 

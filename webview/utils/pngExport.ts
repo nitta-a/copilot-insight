@@ -191,6 +191,11 @@ function _flattenShadowIntoLight(original: HTMLElement, clone: HTMLElement): voi
  * html2canvas parses raw stylesheet text rather than relying on computed styles,
  * so modern color functions can cause a hard parse error. We replace them with
  * `transparent` which is a safe fallback for decorative backgrounds and borders.
+ *
+ * SVG libraries such as recharts read CSS variable values at render time via
+ * `getComputedStyle` and embed the resolved values directly as SVG presentation
+ * attributes (e.g. `fill="color(display-p3 0.2 0.4 0.8)"`).  html2canvas also
+ * tries to parse those attribute values, so we must strip them too.
  */
 function _rewriteUnsupportedCssInClone(doc: Document): void {
   for (const style of Array.from(doc.querySelectorAll<HTMLStyleElement>("style"))) {
@@ -203,6 +208,24 @@ function _rewriteUnsupportedCssInClone(doc: Document): void {
     const styleAttr = el.getAttribute("style");
     if (styleAttr) {
       el.setAttribute("style", _stripUnsupportedCssColorFunctions(styleAttr));
+    }
+  }
+
+  // Strip unsupported color functions from SVG presentation attributes.
+  // Recharts and other SVG-based chart libraries set colors as SVG attributes
+  // (fill, stroke, stop-color, etc.) rather than in the CSS `style` attribute.
+  // html2canvas parses these attribute values with the same CSS colour parser,
+  // so any modern colour function (e.g. `color(display-p3 …)`) will throw.
+  const svgColorAttrs = ["fill", "stroke", "stop-color", "flood-color", "lighting-color"] as const;
+  for (const attr of svgColorAttrs) {
+    for (const el of Array.from(doc.querySelectorAll(`[${attr}]`))) {
+      const value = el.getAttribute(attr);
+      if (value) {
+        const stripped = _stripUnsupportedCssColorFunctions(value);
+        if (stripped !== value) {
+          el.setAttribute(attr, stripped);
+        }
+      }
     }
   }
 }

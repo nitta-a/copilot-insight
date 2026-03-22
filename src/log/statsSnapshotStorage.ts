@@ -75,6 +75,9 @@ interface SerializedCopilotUsageStats {
   commandUsage: Array<[string, number]>;
   promptEffectiveness?: Record<string, { shown: number; accepted: number }>;
   chatSessionStates?: Array<[string, ChatSessionState]>;
+  totalPromptTokens?: number;
+  totalCompletionTokens?: number;
+  tokensByModel?: Array<[string, { promptTokens: number; completionTokens: number }]>;
 }
 
 function mapEntries<K, V>(value: Map<K, V>): Array<[K, V]> {
@@ -143,6 +146,9 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     commandUsage: mapEntries(stats.commandUsage),
     promptEffectiveness: { ...stats.promptEffectiveness },
     chatSessionStates: mapEntries(stats.chatSessionStates),
+    totalPromptTokens: stats.totalPromptTokens,
+    totalCompletionTokens: stats.totalCompletionTokens,
+    tokensByModel: mapEntries(stats.tokensByModel),
   };
 }
 
@@ -204,6 +210,9 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     commandUsage: toMap(stats.commandUsage),
     promptEffectiveness: stats.promptEffectiveness ?? {},
     chatSessionStates: toMap(stats.chatSessionStates),
+    totalPromptTokens: stats.totalPromptTokens ?? 0,
+    totalCompletionTokens: stats.totalCompletionTokens ?? 0,
+    tokensByModel: toMap(stats.tokensByModel),
   };
 }
 

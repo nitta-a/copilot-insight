@@ -93,6 +93,9 @@ suite("nativeBridge", () => {
       executedPlanCount: 1,
       browserToolsByType: { screenshot: 3 },
       errorsByType: { "HTTP 429": 1 },
+      totalPromptTokens: 1500,
+      totalCompletionTokens: 200,
+      tokensByModel: { "gpt-4o": [1200, 150] },
     };
     assert.strictEqual(sample.totalShown, 10);
     assert.strictEqual(sample.totalAccepted, 3);
