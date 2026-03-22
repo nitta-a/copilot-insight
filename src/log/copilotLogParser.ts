@@ -119,9 +119,16 @@ export async function parseCopilotLogs(
     activePlanPending: false,
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    cliToolExecutions: new Map(),
+    cliReasoningTokens: 0,
+    cliAgentTypes: new Map(),
     commandUsage: new Map(),
     promptEffectiveness: {},
     chatSessionStates: new Map(),
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
   };
 
   try {
@@ -289,6 +296,18 @@ export async function parseCopilotLogs(
       });
     }
     ctx.cliTotalInteractions = cliResult.totalInteractions;
+    for (const [toolName, counts] of cliResult.toolExecutions) {
+      const existing = ctx.cliToolExecutions?.get(toolName) ?? { total: 0, success: 0, fail: 0 };
+      ctx.cliToolExecutions?.set(toolName, {
+        total: existing.total + counts.total,
+        success: existing.success + counts.success,
+        fail: existing.fail + counts.fail,
+      });
+    }
+    ctx.cliReasoningTokens = (ctx.cliReasoningTokens ?? 0) + cliResult.reasoningTokens;
+    for (const [agentName, count] of cliResult.agentTypes) {
+      ctx.cliAgentTypes?.set(agentName, (ctx.cliAgentTypes?.get(agentName) ?? 0) + count);
+    }
     // Merge CLI per-model interactions into subagentByModel and byChatModel so that
     // CLI models appear in "Autonomous Ratio by Model" and agentic charts.
     // CLI sessions are fully autonomous, so both maps receive the same count (ratio = 100%).

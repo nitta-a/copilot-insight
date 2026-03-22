@@ -317,6 +317,10 @@ suite("parseRemoteExthostLog", () => {
       promptEffectiveness: {},
       activePlanPending: false,
       chatSessionStates: new Map(),
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      tokensByModel: new Map(),
+      finishReasonCounts: new Map(),
     };
   }
 

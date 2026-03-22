@@ -6,10 +6,7 @@
  */
 
 import type { AgentStep, SessionDetailPayload } from "../src/types";
-import type {
-  AgentIntelligenceOverview,
-  DashboardPayload,
-} from "../src/ui/dashboardMessages";
+import type { AgentIntelligenceOverview, DashboardPayload } from "../src/ui/dashboardMessages";
 import {
   actorBadgeClass,
   actorIcon,
@@ -29,6 +26,27 @@ import {
 // ---------------------------------------------------------------------------
 // Summary cards
 // ---------------------------------------------------------------------------
+
+/**
+ * Build `<copilot-stat-card>` elements for token consumption stats.
+ * Returns an empty string when no token data is available (tokenStats is null).
+ */
+function buildTokenStatCardsHtml(tokenStats: DashboardPayload["summary"]["tokenStats"]): string {
+  if (!tokenStats) {
+    return "";
+  }
+  const totalK = (tokenStats.totalTokens / 1000).toFixed(1);
+  const promptK = (tokenStats.totalPromptTokens / 1000).toFixed(1);
+  const completionK = (tokenStats.totalCompletionTokens / 1000).toFixed(1);
+  const topModel = tokenStats.topModelsByTokens[0];
+  const topModelStr = topModel ? escHtml(trunc(topModel.model, 18)) : "—";
+  const topModelDetail = topModel
+    ? escHtml(`${((topModel.promptTokens + topModel.completionTokens) / 1000).toFixed(1)}k tokens`)
+    : "no data";
+  return `
+    <copilot-stat-card show-download value="${escHtml(totalK)}k" label="Total Tokens Used" subtext="${escHtml(promptK)}k prompt / ${escHtml(completionK)}k completion"></copilot-stat-card>
+    <copilot-stat-card show-download value="${topModelStr}" label="Top Model (Tokens)" subtext="${topModelDetail}"></copilot-stat-card>`;
+}
 
 export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): string {
   const trueRateStr = summary.trueAcceptanceRate !== null ? `${summary.trueAcceptanceRate.toFixed(1)}%` : "—";
@@ -62,7 +80,8 @@ export function buildSummaryCardsHtml(summary: DashboardPayload["summary"]): str
     <copilot-stat-card show-download value="${escHtml(trunc(topPlanModelStr, 18))}" label="Top Plan Model" highlight="blue" subtext="${escHtml(topPlanModelDetail)}" title="${escHtml(topPlanModelStr)}"></copilot-stat-card>
     <copilot-stat-card show-download value="${escHtml(String(summary.totalShown))}" label="Suggestions Shown"></copilot-stat-card>
     <copilot-stat-card show-download value="${escHtml(String(summary.totalAccepted))}" label="Suggestions Accepted"></copilot-stat-card>
-    <copilot-stat-card show-download value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>`;
+    <copilot-stat-card show-download value="${escHtml(summary.acceptanceRate.toFixed(1))}%" label="Raw Acceptance Rate"></copilot-stat-card>
+    ${buildTokenStatCardsHtml(summary.tokenStats)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +177,7 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
   const ratioStr = agenticStats.agenticRatio.toFixed(1);
   const avgStr = overview.avgCallsPerLoop > 0 ? overview.avgCallsPerLoop.toFixed(1) : "—";
   const completionStr = overview.completionRate > 0 ? `${overview.completionRate.toFixed(1)}%` : "—";
+  const cliReasoningStr = agenticStats.cliReasoningTokens > 0 ? agenticStats.cliReasoningTokens.toLocaleString() : "—";
   const durationCell =
     agenticStats.autonomousDurationMs > 0
       ? `<div class="stat-card"><div class="stat-value">${escHtml(formatDuration(agenticStats.autonomousDurationMs))}</div><div class="stat-label">Autonomous Duration</div><div class="stat-detail">total active time</div></div>`
@@ -209,6 +229,47 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
        <table class="db-lang-table">
          <tr><th>Model</th><th>Autonomous / Total</th><th>Ratio</th><th>Avg sec / Action</th></tr>
          ${modelRows}
+       </table>`
+    : "";
+
+  const cliToolRows = agenticStats.cliToolExecutions
+    .slice(0, 8)
+    .map(({ name, total, success, fail, successRate }) => {
+      const rate = total > 0 ? `${successRate.toFixed(1)}%` : "—";
+      return `<tr>
+          <td>${escHtml(trunc(name, 28))}</td>
+          <td>${total}</td>
+          <td>${success}</td>
+          <td>${fail}</td>
+          <td>${rate}</td>
+        </tr>`;
+    })
+    .join("");
+
+  const cliToolSection = cliToolRows
+    ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">CLI Tool Efficiency</h3>
+       <table class="db-lang-table">
+         <tr><th>Tool</th><th>Total</th><th>Success</th><th>Fail</th><th>Success Rate</th></tr>
+         ${cliToolRows}
+       </table>`
+    : "";
+
+  const cliAgentTypeRows = agenticStats.cliAgentTypes
+    .slice(0, 8)
+    .map(
+      ({ name, count, share }) => `<tr>
+          <td>${escHtml(trunc(name, 28))}</td>
+          <td>${count}</td>
+          <td>${share.toFixed(1)}%</td>
+        </tr>`,
+    )
+    .join("");
+
+  const cliAgentTypeSection = cliAgentTypeRows
+    ? `<h3 style="font-size:0.9em;margin:16px 0 6px;opacity:0.8">CLI Agent Types</h3>
+       <table class="db-lang-table">
+         <tr><th>Agent</th><th>Count</th><th>Share</th></tr>
+         ${cliAgentTypeRows}
        </table>`
     : "";
 
@@ -275,6 +336,11 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
         <div class="stat-detail">completed episodes</div>
       </div>
       <div class="stat-card">
+        <div class="stat-value">${cliReasoningStr}</div>
+        <div class="stat-label">CLI Reasoning Chars</div>
+        <div class="stat-detail">assistant.reasoningText length</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-value">${avgStr}</div>
         <div class="stat-label">Avg Calls / Loop</div>
         <div class="stat-detail">agentic depth</div>
@@ -287,6 +353,8 @@ export function buildAgentIntelligenceOverviewHtml(agenticStats: DashboardPayloa
       ${durationCell}
     </div>
     ${modelTable}
+    ${cliToolSection}
+    ${cliAgentTypeSection}
     ${featureSection}
     ${planningSection}
     <div id="db-model-depth-chart" style="margin-top:16px"></div>

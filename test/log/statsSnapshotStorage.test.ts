@@ -108,9 +108,19 @@ function makeStats(): CopilotUsageStats {
     agentDebugByType: new Map([["step-execution", 4]]),
     cliByDate: new Map(),
     cliTotalInteractions: 0,
+    cliToolExecutions: new Map([["read_file", { total: 3, success: 2, fail: 1 }]]),
+    cliReasoningTokens: 128,
+    cliAgentTypes: new Map([
+      ["planner", 2],
+      ["researcher", 1],
+    ]),
     commandUsage: new Map([["@workspace", 3]]),
     promptEffectiveness: {},
     chatSessionStates: new Map([["session-1", { sessionId: "session-1", turnCount: 2, isAccepted: true }]]),
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
   };
 }
 
@@ -153,6 +163,15 @@ suite("StatsSnapshotStorage", () => {
       assert.deepStrictEqual(
         [...(restored?.agentDebugByType.entries() ?? [])],
         [...expected.agentDebugByType.entries()],
+      );
+      assert.deepStrictEqual(
+        [...(restored?.cliToolExecutions?.entries() ?? [])],
+        [...(expected.cliToolExecutions?.entries() ?? [])],
+      );
+      assert.strictEqual(restored?.cliReasoningTokens, expected.cliReasoningTokens);
+      assert.deepStrictEqual(
+        [...(restored?.cliAgentTypes?.entries() ?? [])],
+        [...(expected.cliAgentTypes?.entries() ?? [])],
       );
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });

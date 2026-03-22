@@ -390,6 +390,12 @@ export interface CopilotUsageStats {
   cliByDate: Map<string, CliDateStat>;
   /** Total number of CLI prompt interactions across all sessions. */
   cliTotalInteractions: number;
+  /** CLI tool execution stats keyed by tool name. */
+  cliToolExecutions?: Map<string, { total: number; success: number; fail: number }>;
+  /** Total reasoning text length observed in CLI assistant messages. */
+  cliReasoningTokens?: number;
+  /** CLI subagent type counts keyed by agent name. */
+  cliAgentTypes?: Map<string, number>;
 
   // Slash commands and @participants usage
   /** Usage counts for slash commands (/fix, /explain, …) and @participants (@workspace, …). */
@@ -408,6 +414,28 @@ export interface CopilotUsageStats {
    * explicit session identifiers; sessions without IDs are silently skipped.
    */
   chatSessionStates: Map<string, ChatSessionState>;
+
+  // Token consumption tracking
+  /**
+   * Total number of prompt tokens consumed across all log entries that report
+   * token counts (e.g. `promptTokens`, `prompt_tokens`, `numTokens` fields).
+   */
+  totalPromptTokens: number;
+  /**
+   * Total number of completion tokens generated across all log entries that
+   * report completion token counts (e.g. `completionTokens`, `completion_tokens`).
+   */
+  totalCompletionTokens: number;
+  /**
+   * Per-model prompt and completion token totals for model-efficiency analysis.
+   * Keys are normalised model names.
+   */
+  tokensByModel: Map<string, { promptTokens: number; completionTokens: number }>;
+  /**
+   * Completion finish-reason distribution derived from "[streamChoices] finish reason:" log lines.
+   * Common keys: "stop" (normal), "length" (context-window truncation).
+   */
+  finishReasonCounts: Map<string, number>;
 }
 
 /** Internal state used during log parsing. Extends public stats with accumulators. */

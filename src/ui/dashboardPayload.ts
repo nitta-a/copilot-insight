@@ -68,6 +68,34 @@ function toSortedBreakdown(source: Map<string, number>): CountBreakdownEntry[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+/**
+ * Build the token consumption summary from accumulated stats.
+ * Returns `null` when no log entries reported token-count fields.
+ */
+function buildTokenStats(stats: CopilotUsageStats): SummaryData["tokenStats"] {
+  const total = stats.totalPromptTokens + stats.totalCompletionTokens;
+  if (total === 0) {
+    return null;
+  }
+
+  const totalRequests = stats.totalShown + stats.totalChat;
+  const avgPromptTokensPerRequest =
+    totalRequests > 0 && stats.totalPromptTokens > 0 ? Math.round(stats.totalPromptTokens / totalRequests) : 0;
+
+  const topModelsByTokens = Array.from(stats.tokensByModel.entries())
+    .map(([model, { promptTokens, completionTokens }]) => ({ model, promptTokens, completionTokens }))
+    .sort((a, b) => b.promptTokens + b.completionTokens - (a.promptTokens + a.completionTokens))
+    .slice(0, 5);
+
+  return {
+    totalPromptTokens: stats.totalPromptTokens,
+    totalCompletionTokens: stats.totalCompletionTokens,
+    totalTokens: total,
+    avgPromptTokensPerRequest,
+    topModelsByTokens,
+  };
+}
+
 function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary[] {
   return Array.from(stats.bySession.values())
     .map((session) => {
@@ -203,6 +231,7 @@ export function buildDashboardPayload(
     totalMinutesSaved,
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
+    tokenStats: buildTokenStats(stats),
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────
@@ -339,6 +368,27 @@ export function buildDashboardPayload(
   const toolUsageStats = Array.from(stats.toolUsageStats.entries())
     .map(([intent, count]) => ({ intent, count }))
     .sort((a, b) => b.count - a.count);
+  const cliToolExecutions = Array.from((stats.cliToolExecutions ?? new Map()).entries())
+    .map(([name, counts]) => ({
+      name,
+      total: counts.total,
+      success: counts.success,
+      fail: counts.fail,
+      successRate: counts.total > 0 ? (counts.success / counts.total) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total || b.successRate - a.successRate || a.name.localeCompare(b.name));
+  const cliReasoningTokens = stats.cliReasoningTokens ?? 0;
+  const totalCliAgentTypes = Array.from((stats.cliAgentTypes ?? new Map()).values()).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+  const cliAgentTypes = Array.from((stats.cliAgentTypes ?? new Map()).entries())
+    .map(([name, count]) => ({
+      name,
+      count,
+      share: totalCliAgentTypes > 0 ? (count / totalCliAgentTypes) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   // ── Agent Intelligence Overview ───────────────────────────────────────────
   // Semantic mapping: all fine-grained subagent intents → "Autonomous Action"
@@ -428,6 +478,9 @@ export function buildDashboardPayload(
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats,
+    cliToolExecutions,
+    cliReasoningTokens,
+    cliAgentTypes,
     agentIntelligenceOverview,
     featureSignals,
   };
@@ -675,6 +728,7 @@ export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsi
   return {
     chatIntentBreakdown: toSortedBreakdown(stats.byChatIntent),
     commandUsageBreakdown: toSortedBreakdown(stats.commandUsage),
+    finishReasonBreakdown: toSortedBreakdown(stats.finishReasonCounts),
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
     turnStats: buildTurnStats(stats),
@@ -687,10 +741,12 @@ export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsi
  * Called on demand when the WebView requests "sessions" tab data.
  */
 export function buildSessionsPayload(stats: CopilotUsageStats, sessionSummaries: SessionSummary[] = []): SessionsData {
-  const titledSessionSummaries = sessionSummaries.filter((session) => Boolean(session.title?.trim()));
   const effectiveSessionSummaries =
     sessionSummaries.length > 0
-      ? titledSessionSummaries
+      ? sessionSummaries.map((session) => ({
+          ...session,
+          title: session.title?.trim() ? session.title : session.date || session.sessionId,
+        }))
       : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
 
   return { sessionSummaries: effectiveSessionSummaries };

@@ -77,6 +77,13 @@ pub struct NativeStats {
     pub browser_tools_by_type: HashMap<String, u32>,
     /// Error events grouped by detected error type.
     pub errors_by_type: HashMap<String, u32>,
+    /// Total prompt tokens consumed across all log entries that report token counts.
+    pub total_prompt_tokens: u32,
+    /// Total completion tokens generated across all log entries that report token counts.
+    pub total_completion_tokens: u32,
+    /// Per-model prompt and completion token totals.
+    /// Keys are normalised model names; values are `[promptTokens, completionTokens]`.
+    pub tokens_by_model: HashMap<String, Vec<u32>>,
 }
 
 /// All data required to produce a Markdown report.
@@ -164,6 +171,18 @@ struct LogEntry {
     #[serde(alias = "query")]
     #[serde(rename = "userMessage")]
     prompt_text: Option<String>,
+    /// Prompt token count from various field name conventions.
+    #[serde(alias = "prompt_tokens", alias = "numPromptTokens", alias = "numTokens", alias = "tokenCount")]
+    #[serde(rename = "promptTokens")]
+    prompt_tokens: Option<u32>,
+    /// Completion token count from various field name conventions.
+    #[serde(alias = "completion_tokens", alias = "numCompletionTokens")]
+    #[serde(rename = "completionTokens")]
+    completion_tokens: Option<u32>,
+    /// Total token count used as a fallback when no per-role split is present.
+    #[serde(alias = "total_tokens")]
+    #[serde(rename = "totalTokens")]
+    total_tokens: Option<u32>,
 }
 
 /// Extract the first `{ … }` JSON object slice from a log line.
@@ -248,6 +267,9 @@ where
         executed_plan_count: 0,
         browser_tools_by_type: HashMap::new(),
         errors_by_type: HashMap::new(),
+        total_prompt_tokens: 0,
+        total_completion_tokens: 0,
+        tokens_by_model: HashMap::new(),
     };
 
     for line in lines {
@@ -378,6 +400,31 @@ where
                             stats.context_richness.total_prompt_chars.saturating_add(text.len() as u32);
                         stats.context_richness.prompt_count =
                             stats.context_richness.prompt_count.saturating_add(1);
+                    }
+                }
+
+                // Token consumption tracking.
+                // Use prompt_tokens if present; fall back to total_tokens when
+                // no explicit per-role split is available.
+                let pt = entry.prompt_tokens.unwrap_or(0);
+                let ct = entry.completion_tokens.unwrap_or(0);
+                let tt = entry.total_tokens.unwrap_or(0);
+                // If only total_tokens is present (no explicit prompt/completion split),
+                // credit it entirely to completions to avoid double-counting.
+                let effective_ct = if ct > 0 { ct } else if pt == 0 { tt } else { 0 };
+                if pt > 0 || effective_ct > 0 {
+                    stats.total_prompt_tokens =
+                        stats.total_prompt_tokens.saturating_add(pt);
+                    stats.total_completion_tokens =
+                        stats.total_completion_tokens.saturating_add(effective_ct);
+                    if !resolved_model.is_empty() {
+                        let model_key = normalize_model(resolved_model);
+                        let entry_vec = stats
+                            .tokens_by_model
+                            .entry(model_key)
+                            .or_insert_with(|| vec![0, 0]);
+                        entry_vec[0] = entry_vec[0].saturating_add(pt);
+                        entry_vec[1] = entry_vec[1].saturating_add(effective_ct);
                     }
                 }
 
@@ -962,6 +1009,42 @@ mod tests {
         assert_eq!(s.executed_plan_count, 0);
         assert!(s.browser_tools_by_type.is_empty());
         assert!(s.errors_by_type.is_empty());
+        assert_eq!(s.total_prompt_tokens, 0);
+        assert_eq!(s.total_completion_tokens, 0);
+        assert!(s.tokens_by_model.is_empty());
+    }
+
+    #[test]
+    fn accumulates_token_counts_from_json() {
+        let input = concat!(
+            r#"{"event":"chat/request","modelId":"gpt-4o","promptTokens":500,"completionTokens":80}"#,
+            "\n",
+            r#"{"event":"chat/request","modelId":"gpt-4o","promptTokens":300,"completionTokens":60}"#,
+            "\n",
+            r#"{"event":"chat/request","modelId":"claude-3.5-sonnet","prompt_tokens":400,"completion_tokens":100}"#,
+        );
+        let s = parse(input);
+        assert_eq!(s.total_prompt_tokens, 1200);
+        assert_eq!(s.total_completion_tokens, 240);
+        let gpt_tokens = s.tokens_by_model.get("gpt-4o");
+        assert!(gpt_tokens.is_some());
+        let gpt = gpt_tokens.unwrap();
+        assert_eq!(gpt[0], 800);
+        assert_eq!(gpt[1], 140);
+        let claude_tokens = s.tokens_by_model.get("claude-3.5-sonnet");
+        assert!(claude_tokens.is_some());
+        let claude = claude_tokens.unwrap();
+        assert_eq!(claude[0], 400);
+        assert_eq!(claude[1], 100);
+    }
+
+    #[test]
+    fn uses_total_tokens_as_fallback_completion() {
+        // When only totalTokens is present and no explicit split, treat as completion tokens.
+        let input = r#"{"event":"chat/request","modelId":"gpt-4o","totalTokens":300}"#;
+        let s = parse(input);
+        assert_eq!(s.total_prompt_tokens, 0);
+        assert_eq!(s.total_completion_tokens, 300);
     }
 
     // ── generate_markdown_report_native tests ─────────────────────────────────

@@ -67,6 +67,15 @@ export interface NativeParseResult {
   browserToolsByType: Record<string, number>;
   /** Error events grouped by detected error type. */
   errorsByType: Record<string, number>;
+  /** Total prompt tokens consumed across all log entries that report token counts. */
+  totalPromptTokens: number;
+  /** Total completion tokens generated across all log entries that report token counts. */
+  totalCompletionTokens: number;
+  /**
+   * Per-model prompt and completion token totals.
+   * Each value is a two-element array: `[promptTokens, completionTokens]`.
+   */
+  tokensByModel: Record<string, number[]>;
 }
 
 /**

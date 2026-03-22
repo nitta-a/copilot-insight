@@ -72,6 +72,19 @@ export interface SummaryData {
   estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
   totalSessions: number;
+  /**
+   * Aggregated token consumption summary.
+   * `null` when no log entries carried token-count fields.
+   */
+  tokenStats: {
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalTokens: number;
+    /** Average prompt tokens per request (0 when no data). */
+    avgPromptTokensPerRequest: number;
+    /** Top models by total token consumption (descending). */
+    topModelsByTokens: Array<{ model: string; promptTokens: number; completionTokens: number }>;
+  } | null;
 }
 
 export interface TimelineEntry {
@@ -147,6 +160,12 @@ export interface AgenticStats {
   autonomousDurationMs: number;
   /** Per-intent execution counts sorted by count descending (e.g. [{intent:"runSubagent",count:5}]). */
   toolUsageStats: Array<{ intent: string; count: number }>;
+  /** CLI tool execution stats sorted by total count descending. */
+  cliToolExecutions: Array<{ name: string; total: number; success: number; fail: number; successRate: number }>;
+  /** Total CLI reasoning text length observed across assistant turns. */
+  cliReasoningTokens: number;
+  /** CLI subagent type counts sorted by count descending. */
+  cliAgentTypes: Array<{ name: string; count: number; share: number }>;
   /** High-level "Agent Intelligence Overview" summary. */
   agentIntelligenceOverview: AgentIntelligenceOverview;
   /** Emerging 1.110 feature signals grouped by category. */
@@ -265,6 +284,8 @@ export interface PromptInsightsData {
   chatIntentBreakdown: CountBreakdownEntry[];
   /** Slash-command / @participant usage breakdown sorted by count desc — for donut chart. */
   commandUsageBreakdown: CountBreakdownEntry[];
+  /** Completion finish-reason breakdown sorted by count desc (e.g. stop, length). */
+  finishReasonBreakdown: CountBreakdownEntry[];
   /**
    * Scatter data for the Prompt Length vs Acceptance Rate bubble chart.
    * - `x`: prompt character count midpoint of the bucket

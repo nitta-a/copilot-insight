@@ -493,6 +493,23 @@ function parseRunInTerminalCommandLine(line: string, timestamp: string, ctx: Par
   }
 }
 
+/**
+ * Parse "[streamChoices] solution N returned. finish reason: [XXX]" lines.
+ * Accumulates finish-reason distribution (e.g. "stop", "length") that can
+ * detect context-window truncation when "length" is unusually high.
+ * Returns true if the line was handled.
+ */
+function parseStreamChoicesLine(line: string, lower: string, ctx: ParsingContext): boolean {
+  if (!lower.includes("[streamchoices]") || !lower.includes("finish reason:")) {
+    return false;
+  }
+  const match = line.match(/finish reason:\s*\[([^\]]+)\]/i);
+  if (match) {
+    incrementCount(ctx.finishReasonCounts, match[1].toLowerCase());
+  }
+  return true;
+}
+
 export function parseTextLogLine(line: string, ctx: ParsingContext): void {
   const lineCtx = extractLineContext(line);
 
@@ -515,6 +532,9 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
     return;
   }
   if (parseRunInTerminalCommandLine(line, lineCtx.timestamp, ctx)) {
+    return;
+  }
+  if (parseStreamChoicesLine(line, lineCtx.lower, ctx)) {
     return;
   }
   if (parseFetchCompletionsLine(line, lineCtx, ctx)) {

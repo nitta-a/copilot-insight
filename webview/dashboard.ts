@@ -262,6 +262,69 @@ function renderPromptLengthScatterChart(scatterData: PromptInsightsData["promptL
   promptLengthScatterChart = createPromptLengthScatterChart(canvas, scatterData, getColors());
 }
 
+function renderFinishReasonBreakdown(finishReasonBreakdown: PromptInsightsData["finishReasonBreakdown"]): void {
+  const container = document.getElementById("db-finish-reason-container");
+  if (!container) {
+    return;
+  }
+
+  if (finishReasonBreakdown.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const total = finishReasonBreakdown.reduce((sum, entry) => sum + entry.count, 0);
+  const template = document.createElement("template");
+  template.innerHTML = `
+    <hr class="db-section-sep">
+    <h2>🧾 Finish Reason Breakdown</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
+      Distribution of completion stop reasons from stream choices. A higher
+      <strong data-role="length-label"></strong>
+      share can indicate truncation or context-window pressure.
+    </p>
+    <div data-role="rows"></div>`;
+
+  const fragment = template.content.cloneNode(true) as DocumentFragment;
+  const lengthLabel = fragment.querySelector("[data-role='length-label']");
+  lengthLabel?.replaceChildren(document.createTextNode("length"));
+
+  const rowsHost = fragment.querySelector("[data-role='rows']");
+  const rowsFragment = document.createDocumentFragment();
+
+  for (const entry of finishReasonBreakdown) {
+    const ratio = total > 0 ? (entry.count / total) * 100 : 0;
+    const ratioText = `${ratio.toFixed(1)}%`;
+
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `
+      <div class="bar-label"></div>
+      <div class="bar-group">
+        <div class="bar-track"><div class="bar-fill purple"></div></div>
+        <div class="stat-detail"></div>
+      </div>
+      <div class="bar-count"></div>`;
+
+    const label = row.querySelector(".bar-label");
+    const detail = row.querySelector(".stat-detail");
+    const count = row.querySelector(".bar-count");
+    const fill = row.querySelector(".bar-fill");
+
+    label?.replaceChildren(document.createTextNode(entry.name));
+    detail?.replaceChildren(document.createTextNode(`${ratioText} of completions`));
+    count?.replaceChildren(document.createTextNode(String(entry.count)));
+    if (fill instanceof HTMLElement) {
+      fill.style.width = ratioText;
+    }
+
+    rowsFragment.appendChild(row);
+  }
+
+  rowsHost?.replaceChildren(rowsFragment);
+  container.replaceChildren(fragment);
+}
+
 // ---------------------------------------------------------------------------
 // Turn Churn Mixed Chart (chat session turn-count distribution)
 // ---------------------------------------------------------------------------
@@ -486,10 +549,10 @@ function setExportLoading(btnId: string, loading: boolean): void {
 
 /** Show a transient error toast inside the WebView (auto-dismissed after 6 s). */
 function showExportError(msg: string): void {
-  const TOAST_ID = "db-export-error-toast";
-  document.getElementById(TOAST_ID)?.remove();
+  const ToastId = "db-export-error-toast";
+  document.getElementById(ToastId)?.remove();
   const el = document.createElement("div");
-  el.id = TOAST_ID;
+  el.id = ToastId;
   el.style.cssText =
     "position:fixed;top:12px;right:12px;max-width:380px;" +
     "background:var(--vscode-inputValidation-errorBackground,#5a1d1d);" +
@@ -619,7 +682,13 @@ function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agentic
     (total) => total > 0,
   );
 
-  if (subagentRequests === 0 && !hasFeatureSignals) {
+  if (
+    subagentRequests === 0 &&
+    !hasFeatureSignals &&
+    agenticStats.cliToolExecutions.length === 0 &&
+    agenticStats.cliReasoningTokens === 0 &&
+    agenticStats.cliAgentTypes.length === 0
+  ) {
     depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
     scatterPlotRoot = unmountRoot(scatterPlotRoot);
     el.innerHTML = '<p class="no-data">No autonomous activity or 1.110 feature signals detected in this period.</p>';
@@ -793,6 +862,7 @@ function renderPromptInsightsData(data: PromptInsightsData): void {
   renderTagCloud(data.topKeywords);
   renderChatIntentCommandDonutCharts(data);
   renderPromptLengthScatterChart(data.promptLengthScatterData);
+  renderFinishReasonBreakdown(data.finishReasonBreakdown);
   renderTurnChurnChart(data.turnStats);
   renderContextLeverageChart(data.contextStats);
   // Trigger resize so charts render correctly after becoming visible.

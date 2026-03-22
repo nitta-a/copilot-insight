@@ -89,6 +89,10 @@ function makeEmptyStats(): ParsingContext {
     promptEffectiveness: {},
     activePlanPending: false,
     chatSessionStates: new Map(),
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    tokensByModel: new Map(),
+    finishReasonCounts: new Map(),
   };
 }
 
@@ -260,6 +264,50 @@ suite("logContentParser", () => {
       );
       assert.strictEqual(stats.byContextEffectiveness.size, 0);
     });
+
+    test("accumulates promptTokens and completionTokens from JSON entry", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "chat/request", modelId: "gpt-4o", promptTokens: 500, completionTokens: 80 }, stats);
+      assert.strictEqual(stats.totalPromptTokens, 500);
+      assert.strictEqual(stats.totalCompletionTokens, 80);
+      assert.deepStrictEqual(stats.tokensByModel.get("gpt-4o"), { promptTokens: 500, completionTokens: 80 });
+    });
+
+    test("accumulates prompt_tokens (snake_case) alias", () => {
+      const stats = makeEmptyStats();
+      // biome-ignore lint/style/useNamingConvention: testing snake_case field aliases from log data
+      processJsonEntry({ event: "chat/request", modelId: "gpt-4o", prompt_tokens: 300, completion_tokens: 60 }, stats);
+      assert.strictEqual(stats.totalPromptTokens, 300);
+      assert.strictEqual(stats.totalCompletionTokens, 60);
+    });
+
+    test("uses totalTokens as completion fallback when no split present", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "chat/request", modelId: "gpt-4o", totalTokens: 400 }, stats);
+      assert.strictEqual(stats.totalPromptTokens, 0);
+      assert.strictEqual(stats.totalCompletionTokens, 400);
+    });
+
+    test("accumulates tokens across multiple entries", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "chat/request", modelId: "gpt-4o", promptTokens: 500, completionTokens: 80 }, stats);
+      processJsonEntry(
+        { event: "chat/request", modelId: "claude-3.5-sonnet", promptTokens: 300, completionTokens: 60 },
+        stats,
+      );
+      assert.strictEqual(stats.totalPromptTokens, 800);
+      assert.strictEqual(stats.totalCompletionTokens, 140);
+      assert.deepStrictEqual(stats.tokensByModel.get("gpt-4o"), { promptTokens: 500, completionTokens: 80 });
+      assert.deepStrictEqual(stats.tokensByModel.get("claude-3.5-sonnet"), { promptTokens: 300, completionTokens: 60 });
+    });
+
+    test("ignores entries with zero or missing token counts", () => {
+      const stats = makeEmptyStats();
+      processJsonEntry({ event: "suggestion_shown" }, stats);
+      assert.strictEqual(stats.totalPromptTokens, 0);
+      assert.strictEqual(stats.totalCompletionTokens, 0);
+      assert.strictEqual(stats.tokensByModel.size, 0);
+    });
   });
 
   suite("tryParseJsonLogLine", () => {
@@ -359,6 +407,33 @@ suite("logContentParser", () => {
       parseTextLogLine("[AgentDebug] step-execution breakpoint paused", stats);
       assert.strictEqual(stats.agentDebugEvents, 1);
       assert.strictEqual(stats.agentDebugByType.get("step-execution"), 1);
+    });
+
+    test("records finish reason 'stop' from [streamChoices] line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2026-03-20T12:00:00Z [streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("stop"), 1);
+    });
+
+    test("records finish reason 'length' from [streamChoices] line", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("2026-03-20T12:00:00Z [streamChoices] solution 1 returned. finish reason: [length]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("length"), 1);
+    });
+
+    test("accumulates multiple finish reason counts", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("[streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      parseTextLogLine("[streamChoices] solution 0 returned. finish reason: [stop]", stats);
+      parseTextLogLine("[streamChoices] solution 1 returned. finish reason: [length]", stats);
+      assert.strictEqual(stats.finishReasonCounts.get("stop"), 2);
+      assert.strictEqual(stats.finishReasonCounts.get("length"), 1);
+    });
+
+    test("does not modify finishReasonCounts for unrelated lines", () => {
+      const stats = makeEmptyStats();
+      parseTextLogLine("some unrelated log line", stats);
+      assert.strictEqual(stats.finishReasonCounts.size, 0);
     });
   });
 

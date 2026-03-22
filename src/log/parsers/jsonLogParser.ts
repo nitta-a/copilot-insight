@@ -158,6 +158,42 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       ctx.chatSessionStates.set(rawSessionId, existing);
     }
   }
+
+  // ── Token Consumption Tracking ────────────────────────────────────────────
+  // Extract prompt and completion token counts from any JSON log entry that
+  // carries token-usage fields. Copilot log entries use several field-name
+  // conventions depending on the log source and version:
+  //   - `promptTokens` / `prompt_tokens` / `numPromptTokens` / `numTokens`
+  //   - `completionTokens` / `completion_tokens` / `numCompletionTokens`
+  //   - `totalTokens` / `total_tokens` (treated as completion tokens when no
+  //     explicit split is present)
+  const rawPromptTokens =
+    data.promptTokens ?? data.prompt_tokens ?? data.numPromptTokens ?? data.numTokens ?? data.tokenCount;
+  const rawCompletionTokens = data.completionTokens ?? data.completion_tokens ?? data.numCompletionTokens;
+  const rawTotalTokens = data.totalTokens ?? data.total_tokens;
+
+  const promptTokenCount = typeof rawPromptTokens === "number" && rawPromptTokens > 0 ? Math.round(rawPromptTokens) : 0;
+
+  let completionTokenCount = 0;
+  if (typeof rawCompletionTokens === "number" && rawCompletionTokens > 0) {
+    completionTokenCount = Math.round(rawCompletionTokens);
+  } else if (promptTokenCount === 0 && typeof rawTotalTokens === "number" && rawTotalTokens > 0) {
+    // Only use totalTokens as a fallback when no per-role split is present,
+    // to avoid double-counting when both promptTokens and totalTokens are logged.
+    completionTokenCount = Math.round(rawTotalTokens);
+  }
+
+  if (promptTokenCount > 0 || completionTokenCount > 0) {
+    ctx.totalPromptTokens += promptTokenCount;
+    ctx.totalCompletionTokens += completionTokenCount;
+
+    if (jsonModel) {
+      const existing = ctx.tokensByModel.get(jsonModel) ?? { promptTokens: 0, completionTokens: 0 };
+      existing.promptTokens += promptTokenCount;
+      existing.completionTokens += completionTokenCount;
+      ctx.tokensByModel.set(jsonModel, existing);
+    }
+  }
 }
 
 export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean {
