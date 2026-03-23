@@ -29,6 +29,7 @@ import type {
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
+  ProjectContextFile,
   PromptInsightsData,
   RoiBreakdown,
   SessionsData,
@@ -174,6 +175,7 @@ export function buildDashboardPayload(
   _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
   cliRoiMinutesPerInteraction = 30,
   hasMoreData = false,
+  projectContextFiles: ProjectContextFile[] = [],
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
@@ -502,6 +504,7 @@ export function buildDashboardPayload(
     freshness,
     contextRichness,
     hasMoreData,
+    projectContextFiles,
   };
 }
 

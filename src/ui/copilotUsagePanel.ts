@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
+import * as path from "node:path";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
 import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
-import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
+import type { ProjectContextFile, SessionsData, WebviewToHostMessage } from "./dashboardMessages";
 import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
 import { loadMoreCopilotLogs, readWorkspaceChatSessions } from "../log/copilotLogParser";
 
@@ -37,6 +38,10 @@ export interface AdvancedMetrics {
    * and older sessions are still available to load.
    */
   hasMoreData?: boolean;
+  /** Path to the VS Code user-level prompts directory (for context file discovery). */
+  userPromptsDir?: string;
+  /** Path to the Copilot Plan Agent session memory directory (for context file discovery). */
+  copilotMemoryDir?: string;
 }
 
 export class CopilotUsagePanel {
@@ -64,7 +69,7 @@ export class CopilotUsagePanel {
       CopilotUsagePanel.currentPanel._stats = stats;
       CopilotUsagePanel.currentPanel._advanced = advanced;
       CopilotUsagePanel.currentPanel._dbWorker = dbWorker;
-      CopilotUsagePanel.currentPanel._update();
+      void CopilotUsagePanel.currentPanel._update();
       return;
     }
 
@@ -95,7 +100,7 @@ export class CopilotUsagePanel {
     this._stats = stats;
     this._advanced = advanced;
     this._dbWorker = dbWorker;
-    this._update();
+    void this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     // Handle messages from the WebView
@@ -156,6 +161,10 @@ export class CopilotUsagePanel {
       }
       case "loadMoreData": {
         void this._handleLoadMoreData();
+        break;
+      }
+      case "openDocument": {
+        void vscode.commands.executeCommand("vscode.open", vscode.Uri.file(msg.filePath));
         break;
       }
     }
@@ -276,7 +285,7 @@ export class CopilotUsagePanel {
       const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
       this._stats = fullStats;
       this._advanced = { ...this._advanced, hasMoreData: false };
-      this._update();
+      await this._update();
     } catch (err) {
       vscode.window.showWarningMessage(
         `Copilot Insight: could not load historical data — ${err instanceof Error ? err.message : "unknown error"}`,
@@ -284,11 +293,12 @@ export class CopilotUsagePanel {
     }
   }
 
-  private _update(): void {
+  private async _update(): Promise<void> {
     const nonce = getNonce();
     const scriptUri = this._panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "dist", "webview", "dashboard.js"),
     );
+    const projectContextFiles = await this._collectProjectContextFiles();
     const payload = buildDashboardPayload(
       this._stats,
       this._advanced.trueAcceptance,
@@ -298,11 +308,141 @@ export class CopilotUsagePanel {
       this._advanced.sessionSummaries,
       vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30,
       this._advanced.hasMoreData ?? false,
+      projectContextFiles,
     );
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
 
     // Also push an update via postMessage so the WebView re-renders without
     // a full HTML reload (e.g. when only the period changes after first load).
     this._panel.webview.postMessage({ type: "dashboardData", payload });
+  }
+
+  /**
+   * Discover context-definition files from three sources:
+   * 1. Workspace files matching known patterns (e.g. `.github/copilot-instructions.md`)
+   * 2. VS Code user-level prompts directory
+   * 3. Copilot Plan Agent session memory files (workspaceStorage)
+   */
+  private async _collectProjectContextFiles(): Promise<ProjectContextFile[]> {
+    const files: ProjectContextFile[] = [];
+    const seenPaths = new Set<string>();
+    const decoder = new TextDecoder();
+
+    // ── Source ①: Workspace files ────────────────────────────────────────
+    try {
+      const [specificFiles, instructionFiles] = await Promise.all([
+        vscode.workspace.findFiles(
+          "**/{plan.md,Plan.md,.cursorrules,copilot-instructions.md,AGENTS.md}",
+          "**/node_modules/**",
+          50,
+        ),
+        vscode.workspace.findFiles(
+          "**/{.github/copilot-instructions.md,*.instructions.md,*.prompt.md}",
+          "**/node_modules/**",
+          50,
+        ),
+      ]);
+      for (const uri of [...specificFiles, ...instructionFiles]) {
+        if (seenPaths.has(uri.fsPath)) {
+          continue;
+        }
+        seenPaths.add(uri.fsPath);
+        try {
+          const buf = await vscode.workspace.fs.readFile(uri);
+          files.push({
+            path: uri.fsPath,
+            name: path.basename(uri.fsPath),
+            preview: decoder.decode(buf).slice(0, 100),
+            source: "workspace",
+          });
+        } catch {
+          // skip unreadable files
+        }
+      }
+    } catch {
+      // findFiles may fail if no workspace is open
+    }
+
+    // ── Source ②: VS Code user-level prompts directory ───────────────────
+    if (this._advanced.userPromptsDir) {
+      try {
+        const dirUri = vscode.Uri.file(this._advanced.userPromptsDir);
+        const entries = await vscode.workspace.fs.readDirectory(dirUri);
+        for (const [name, type] of entries) {
+          if (type !== vscode.FileType.File) {
+            continue;
+          }
+          if (!name.endsWith(".instructions.md") && !name.endsWith(".prompt.md")) {
+            continue;
+          }
+          const fileUri = vscode.Uri.joinPath(dirUri, name);
+          if (seenPaths.has(fileUri.fsPath)) {
+            continue;
+          }
+          seenPaths.add(fileUri.fsPath);
+          try {
+            const buf = await vscode.workspace.fs.readFile(fileUri);
+            files.push({
+              path: fileUri.fsPath,
+              name,
+              preview: decoder.decode(buf).slice(0, 100),
+              source: "user-prompts",
+            });
+          } catch {
+            // skip unreadable files
+          }
+        }
+      } catch {
+        // prompts dir may not exist
+      }
+    }
+
+    // ── Source ③: Copilot Plan Agent session memory files ────────────────
+    if (this._advanced.copilotMemoryDir) {
+      try {
+        const memoriesUri = vscode.Uri.file(this._advanced.copilotMemoryDir);
+        const sessionDirs = await vscode.workspace.fs.readDirectory(memoriesUri);
+        for (const [sessionDirName, sessionDirType] of sessionDirs) {
+          if (sessionDirType !== vscode.FileType.Directory) {
+            continue;
+          }
+          // Skip the internal repo/ subdirectory (agent notes, not user-facing)
+          if (sessionDirName === "repo") {
+            continue;
+          }
+          try {
+            const sessionDirUri = vscode.Uri.joinPath(memoriesUri, sessionDirName);
+            const sessionFiles = await vscode.workspace.fs.readDirectory(sessionDirUri);
+            for (const [fileName, fileType] of sessionFiles) {
+              if (fileType !== vscode.FileType.File || !fileName.endsWith(".md")) {
+                continue;
+              }
+              const fileUri = vscode.Uri.joinPath(sessionDirUri, fileName);
+              if (seenPaths.has(fileUri.fsPath)) {
+                continue;
+              }
+              seenPaths.add(fileUri.fsPath);
+              try {
+                const buf = await vscode.workspace.fs.readFile(fileUri);
+                files.push({
+                  path: fileUri.fsPath,
+                  name: fileName,
+                  preview: decoder.decode(buf).slice(0, 100),
+                  source: "copilot-memory",
+                });
+              } catch {
+                // skip unreadable files
+              }
+            }
+          } catch {
+            // skip unreadable session directories
+          }
+        }
+      } catch {
+        // copilotMemoryDir may not exist
+      }
+    }
+
+    return files;
   }
 }

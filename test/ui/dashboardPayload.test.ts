@@ -1532,4 +1532,28 @@ suite("buildContextRichness", () => {
     assert.ok(["low", "medium", "rich"].includes(payload.contextRichness.status));
     assert.strictEqual(payload.contextRichness.buckets.length, 5);
   });
+
+  test("buildDashboardPayload defaults projectContextFiles to empty array", () => {
+    const payload = buildDashboardPayload(makeStats());
+    assert.deepStrictEqual(payload.projectContextFiles, []);
+  });
+
+  test("buildDashboardPayload passes through projectContextFiles", () => {
+    const files = [
+      {
+        path: "/workspace/.github/copilot-instructions.md",
+        name: "copilot-instructions.md",
+        preview: "# Instructions",
+        source: "workspace" as const,
+      },
+      {
+        path: "/home/user/.vscode-server/data/User/prompts/foo.instructions.md",
+        name: "foo.instructions.md",
+        preview: "---\napplyTo: '**'",
+        source: "user-prompts" as const,
+      },
+    ];
+    const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], [], 30, false, files);
+    assert.deepStrictEqual(payload.projectContextFiles, files);
+  });
 });

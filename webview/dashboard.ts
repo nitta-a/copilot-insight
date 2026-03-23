@@ -46,6 +46,7 @@ import type {
   ContextCorrelationChart,
   ContextFreshnessMeter,
   ContextRichnessMeter,
+  ProjectPlanList,
   TagCloud,
   ThreadList,
   ThreadSelectDetail,
@@ -856,6 +857,25 @@ function showLazyContent(placeholderId: string, contentId: string): void {
   }
 }
 
+function renderProjectContextFiles(files: DashboardPayload["projectContextFiles"]): void {
+  const container = document.getElementById("db-project-context-container");
+  if (!container) {
+    return;
+  }
+  // Remove any previously rendered component
+  container.innerHTML = "";
+  if (!files || files.length === 0) {
+    return;
+  }
+  const el = document.createElement("copilot-project-plan-list") as ProjectPlanList;
+  el.files = files;
+  el.addEventListener("open-file", (e: Event) => {
+    const filePath = (e as CustomEvent<{ filePath: string }>).detail.filePath;
+    vscode.postMessage({ type: "openDocument", filePath } satisfies WebviewToHostMessage);
+  });
+  container.appendChild(el);
+}
+
 function renderPromptInsightsData(data: PromptInsightsData): void {
   promptInsightsLoaded = true;
   showLazyContent("db-prompt-insights-lazy", "db-prompt-insights-content");
@@ -941,6 +961,7 @@ function render(payload: DashboardPayload): void {
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
+  renderProjectContextFiles(payload.projectContextFiles);
 
   // Show or hide the "Load Historical Data" section.
   const loadHistoricalContainer = document.getElementById("db-load-historical-container");
