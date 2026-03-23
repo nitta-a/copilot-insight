@@ -112,26 +112,42 @@ export class ContextFreshnessMeter extends LitElement {
     const latestRefresh = this.refreshAnalysis.at(-1) ?? null;
     const score = Math.max(0, Math.min(100, freshness.score));
 
-    const statusLabel = freshness.status === "fresh" ? "Fresh" : freshness.status === "aging" ? "Aging" : "Exhausted";
-    const statusDetail =
-      freshness.status === "fresh"
-        ? "AI は絶好調"
-        : freshness.status === "aging"
-          ? "/compact を検討してください"
-          : "セッションの再起動を推奨";
-    const suggestion =
-      freshness.suggestedAction === "none"
-        ? "今はリフレッシュ不要です。"
-        : freshness.suggestedAction === "compact"
-          ? "次の大きなタスク前に /compact を挟むのが妥当です。"
-          : "新しいセッションを開始した方が回復しやすい状態です。";
+    const [statusLabel, statusDetail] = (() => {
+      switch (freshness.status) {
+        case "fresh":
+          return ["Fresh", "AI is performing well."];
+        case "aging":
+          return ["Aging", "Consider using /compact to refresh context."];
+        case "exhausted":
+          return ["Exhausted", "Recommend restarting the session for better recovery."];
+        default:
+          return ["", ""];
+      }
+    })();
+    const suggestion = (() => {
+      switch (freshness.suggestedAction) {
+        case "none":
+          return "No refresh needed at the moment.";
+        case "compact":
+          return "Consider using /compact before the next major task.";
+        case "restart":
+          return "Starting a new session may help recover freshness.";
+        default:
+          return "";
+      }
+    })();
 
     const latestRoi =
       freshness.latestRefreshRoi !== null ? `+${(freshness.latestRefreshRoi * 100).toFixed(1)}%` : "N/A";
     const latestRecovery =
       freshness.latestRecoveryDelta !== null ? `${freshness.latestRecoveryDelta.toFixed(1)} pt` : "N/A";
-    const latestEventType = latestRefresh ? latestRefresh.event.type : "memory";
-    const latestTimestamp = latestRefresh ? new Date(latestRefresh.event.timestamp).toLocaleString() : "";
+    const [latestEventType, latestTimestamp] = (() => {
+      if (latestRefresh) {
+        const { type, timestamp } = latestRefresh.event;
+        return [type, new Date(timestamp).toLocaleString()];
+      }
+      return ["memory", ""];
+    })();
 
     return html`
       <h2>🧠 Context Freshness</h2>

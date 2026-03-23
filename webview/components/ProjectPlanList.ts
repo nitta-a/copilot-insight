@@ -117,9 +117,14 @@ export class ProjectPlanList extends LitElement {
   }
 
   private _badgeClass(source: ProjectContextFile["source"]): string {
-    if (source === "workspace") return "ppl-badge ppl-badge-workspace";
-    if (source === "user-prompts") return "ppl-badge ppl-badge-user-prompts";
-    return "ppl-badge ppl-badge-copilot-memory";
+    switch (source) {
+      case "workspace":
+        return "ppl-badge ppl-badge-workspace";
+      case "user-prompts":
+        return "ppl-badge ppl-badge-user-prompts";
+      default:
+        return "ppl-badge ppl-badge-copilot-memory";
+    }
   }
 
   override render() {

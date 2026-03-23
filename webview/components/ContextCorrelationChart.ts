@@ -86,10 +86,14 @@ export class ContextCorrelationChart extends LitElement {
 
   updated() {
     const canvas = this.shadowRoot?.querySelector<HTMLCanvasElement>("canvas");
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
 
     const totalSessions = this.buckets.reduce((s, b) => s + b.sessionCount, 0);
-    if (totalSessions === 0) return;
+    if (totalSessions === 0) {
+      return;
+    }
 
     const style = getComputedStyle(document.documentElement);
     const blue = style.getPropertyValue("--vscode-charts-blue").trim() || "#007acc";
