@@ -208,10 +208,18 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const { stats, hasMoreData } = await getInitialStats();
         const advanced = await getAdvancedMetrics(stats);
+        const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
+        const copilotMemoryDir = path.join(
+          context.storageUri?.fsPath ?? "",
+          "..",
+          "GitHub.copilot-chat",
+          "memory-tool",
+          "memories",
+        );
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
           stats,
-          { ...advanced, logUri: context.logUri, hasMoreData },
+          { ...advanced, logUri: context.logUri, hasMoreData, userPromptsDir, copilotMemoryDir },
           dbWorker,
         );
       },
@@ -228,10 +236,18 @@ export function activate(context: vscode.ExtensionContext) {
         const stats = await refreshStats();
         if (CopilotUsagePanel.currentPanel) {
           const advanced = await getAdvancedMetrics(stats);
+          const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
+          const copilotMemoryDir = path.join(
+            context.storageUri?.fsPath ?? "",
+            "..",
+            "GitHub.copilot-chat",
+            "memory-tool",
+            "memories",
+          );
           CopilotUsagePanel.createOrShow(
             context.extensionUri,
             stats,
-            { ...advanced, logUri: context.logUri, hasMoreData: false },
+            { ...advanced, logUri: context.logUri, hasMoreData: false, userPromptsDir, copilotMemoryDir },
             dbWorker,
           );
         }
