@@ -46,7 +46,9 @@ import type {
   ContextCorrelationChart,
   ContextFreshnessMeter,
   ContextRichnessMeter,
+  InsightsList,
   ProjectPlanList,
+  SummaryCards,
   TagCloud,
   ThreadList,
   ThreadSelectDetail,
@@ -55,10 +57,8 @@ import type {
 import "./components/index";
 import {
   buildAgentIntelligenceOverviewHtml,
-  buildInsightsHtml,
   buildRefreshAnalysisHtml,
   buildSelectedThreadHtml,
-  buildSummaryCardsHtml,
   getSelectableThreadsSorted,
 } from "./htmlBuilders";
 import { captureAsPng } from "./utils/pngExport";
@@ -124,7 +124,13 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildSummaryCardsHtml(summary);
+  let comp = el.querySelector<SummaryCards>("copilot-summary-cards");
+  if (!comp) {
+    comp = document.createElement("copilot-summary-cards") as SummaryCards;
+    el.innerHTML = "";
+    el.appendChild(comp);
+  }
+  comp.summary = summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -439,7 +445,13 @@ function renderInsights(insights: string[]): void {
   if (!el) {
     return;
   }
-  el.innerHTML = buildInsightsHtml(insights);
+  let comp = el.querySelector<InsightsList>("copilot-insights-list");
+  if (!comp) {
+    comp = document.createElement("copilot-insights-list") as InsightsList;
+    el.innerHTML = "";
+    el.appendChild(comp);
+  }
+  comp.insights = insights;
 }
 
 function renderTagCloud(topKeywords: PromptInsightsData["topKeywords"]): void {

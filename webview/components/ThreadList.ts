@@ -17,7 +17,7 @@
  *                   detail: { threadId: string; sessionId: string }
  */
 
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import type { SessionThreadSummary } from "../../src/types";
@@ -86,22 +86,19 @@ export class ThreadList extends LitElement {
 
   private _handleSelect(threadId: string, sessionId: string): void {
     if (threadId) {
-      this.dispatchEvent(
-        new CustomEvent<ThreadSelectDetail>("thread-select", {
-          bubbles: true,
-          composed: true,
-          detail: { threadId, sessionId },
-        }),
-      );
+      const ev = new CustomEvent<ThreadSelectDetail>("thread-select", {
+        bubbles: true,
+        composed: true,
+        detail: { threadId, sessionId },
+      });
+      this.dispatchEvent(ev);
     }
   }
 
   render() {
     if (this.flat.length === 0) {
       const msg =
-        this.isLoading || this.queueLength > 0
-          ? "Loading threads\u2026"
-          : "No threads with activity were detected.";
+        this.isLoading || this.queueLength > 0 ? "Loading threads\u2026" : "No threads with activity were detected.";
       return html`<div class="db-empty-panel">${msg}</div>`;
     }
 
