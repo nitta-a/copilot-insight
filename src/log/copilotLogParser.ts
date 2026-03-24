@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import type { ChatSessionRecord, ChatSessionTitleRecord, CopilotUsageStats, ParsingContext } from "../types";
 import { resolveLogSearchPaths } from "../utils/logPaths";
 import {
@@ -9,6 +10,7 @@ import {
   resolveWorkspaceStorageRoot,
 } from "./chatSessionTitleReader";
 import { readCliStats } from "./cliLogReader";
+import { getLogChannel, isTimingLogsEnabled } from "./logChannel";
 import {
   findCopilotDirs,
   getAllSessionDirs,
@@ -28,15 +30,6 @@ export interface ParseCopilotLogsOptions {
    * dashboard loads.  Ignored when `scanAllSessions` is true.
    */
   limitSessions?: number;
-}
-
-/** Lazy output channel for diagnostic logging. */
-let _outputChannel: vscode.OutputChannel | undefined;
-function getOutputChannel(): vscode.OutputChannel {
-  if (!_outputChannel) {
-    _outputChannel = vscode.window.createOutputChannel("Copilot Insight");
-  }
-  return _outputChannel;
 }
 
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
@@ -131,39 +124,69 @@ export async function parseCopilotLogs(
     finishReasonCounts: new Map(),
   };
 
+  const channel = getLogChannel();
+  const timingEnabled = isTimingLogsEnabled();
+  const parseStartMs = timingEnabled ? performance.now() : 0;
+  if (timingEnabled) {
+    channel.appendLine(`[TIMING] parseCopilotLogs start | logUri: ${logUri.fsPath}`);
+  }
+
   try {
     // Locate the VS Code session root by splitting fsPath on the native
     // separator and finding the `logs` landmark segment — depth-independent
     // and correct on both macOS ('/') and Windows ('\').
-    const channel = getOutputChannel();
-    channel.appendLine(`Original logUri: ${logUri.fsPath}`);
-
+    let phaseStartMs = timingEnabled ? performance.now() : 0;
     const { sessionRoot, logBaseDir, fallbackSessionDir } = resolveLogSearchPaths(logUri.fsPath);
-    channel.appendLine(sessionRoot ? `Session root: ${sessionRoot}` : `Session root: not found`);
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] resolveLogSearchPaths: ${(performance.now() - phaseStartMs).toFixed(1)}ms | ` +
+          (sessionRoot ? `session root: ${sessionRoot}` : "session root: not found"),
+      );
+    }
     if (!sessionRoot) {
       channel.appendLine(`Warning: could not detect session root from ${logUri.fsPath}; using inferred fallback`);
     }
 
     channel.appendLine(`Searching for logs in: ${logBaseDir}`);
 
+    if (timingEnabled) {
+      phaseStartMs = performance.now();
+    }
     const sessionDirs = options?.scanAllSessions
       ? await getAllSessionDirs(logBaseDir, fallbackSessionDir)
       : await getSortedSessionDirs(logBaseDir, fallbackSessionDir, { limit: options?.limitSessions });
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] ${options?.scanAllSessions ? "getAllSessionDirs" : "getSortedSessionDirs"}: ` +
+          `${(performance.now() - phaseStartMs).toFixed(1)}ms | found ${sessionDirs.length} session(s)`,
+      );
+    }
 
     // Process all session directories in parallel. Note: ctx.currentSessionId is
     // shared state set per-session below; when sessions run concurrently it acts
     // as a best-effort fallback — most log lines embed their own session ID in
     // the JSON payload and do not rely on this field.
+    const sessionsStartMs = timingEnabled ? performance.now() : 0;
     await Promise.all(
       sessionDirs.map(async (sessDir) => {
         try {
           ctx.currentSessionId = path.basename(sessDir);
+          const sessionStartMs = timingEnabled ? performance.now() : 0;
           channel.appendLine(`Scanning session: ${sessDir}`);
 
+          let sessionPhaseMs = timingEnabled ? performance.now() : 0;
           const copilotDirs = await findCopilotDirs(sessDir);
-          channel.appendLine(`  Copilot log dirs detected: ${copilotDirs.length}`);
+          if (timingEnabled) {
+            channel.appendLine(
+              `[TIMING]   findCopilotDirs: ${(performance.now() - sessionPhaseMs).toFixed(1)}ms | ${copilotDirs.length} dir(s)`,
+            );
+          }
           if (copilotDirs.length === 0) {
             channel.appendLine(`  Skipped: no GitHub Copilot log directories found in ${sessDir}`);
+          }
+
+          if (timingEnabled) {
+            sessionPhaseMs = performance.now();
           }
           for (const copilotLogDir of copilotDirs) {
             channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
@@ -171,27 +194,47 @@ export async function parseCopilotLogs(
             await parseLogDirectory(copilotLogDir, ctx);
             channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
           }
+          if (timingEnabled) {
+            channel.appendLine(
+              `[TIMING]   parseLogDirectories: ${(performance.now() - sessionPhaseMs).toFixed(1)}ms (${copilotDirs.length} copilot dir(s))`,
+            );
+          }
 
+          if (timingEnabled) {
+            sessionPhaseMs = performance.now();
+          }
           const terminalLogParsed = await parseSessionTerminalLog(sessDir, ctx);
-          channel.appendLine(
-            `  Terminal log ${terminalLogParsed ? "parsed" : "missing/unreadable"}: ${path.join(sessDir, "terminal.log")}`,
-          );
+          if (timingEnabled) {
+            channel.appendLine(
+              `[TIMING]   parseSessionTerminalLog: ${(performance.now() - sessionPhaseMs).toFixed(1)}ms | ${terminalLogParsed ? "parsed" : "missing/unreadable"}`,
+            );
+          }
 
+          if (timingEnabled) {
+            sessionPhaseMs = performance.now();
+          }
           // Also parse all .log files inside exthost<N>/ subdirectories — present in
           // VS Code Remote / WSL sessions; contains MCP and agentic-loop signals.
           const exthostResult = await parseRemoteExthostLog(sessDir, ctx);
-          channel.appendLine(
-            `  Remote exthost dirs detected: ${exthostResult.matchedDirs}, parsed files: ${exthostResult.parsedFiles}`,
-          );
+          if (timingEnabled) {
+            channel.appendLine(
+              `[TIMING]   parseRemoteExthostLog: ${(performance.now() - sessionPhaseMs).toFixed(1)}ms | ${exthostResult.matchedDirs} dir(s), ${exthostResult.parsedFiles} file(s)`,
+            );
+            channel.appendLine(
+              `[TIMING] session total: ${(performance.now() - sessionStartMs).toFixed(1)}ms | ${path.basename(sessDir)}`,
+            );
+          }
         } catch {
           // Skip unreadable session directories
           channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
         }
       }),
     );
-    channel.appendLine(
-      `Scan complete: logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
-    );
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] all sessions: ${(performance.now() - sessionsStartMs).toFixed(1)}ms | logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
+      );
+    }
     // NOTE: SQLite workspace chat-session reads are intentionally deferred.
     // Call readWorkspaceChatSessions(logBaseDir) on demand (e.g. when the
     // Sessions tab is first opened) to avoid blocking the initial parse.
@@ -199,6 +242,7 @@ export async function parseCopilotLogs(
     console.error("Error parsing Copilot logs:", e instanceof Error ? e.message : "unknown error");
   }
 
+  const postProcessStartMs = timingEnabled ? performance.now() : 0;
   if (ctx.totalShown > 0) {
     ctx.acceptanceRate = (ctx.totalAccepted / ctx.totalShown) * 100;
   }
@@ -281,9 +325,13 @@ export async function parseCopilotLogs(
     ctx.chatLatencyP95 = percentile(ctx.chatLatencies, 0.95);
   }
 
+  if (timingEnabled) {
+    channel.appendLine(`[TIMING] post-processing: ${(performance.now() - postProcessStartMs).toFixed(1)}ms`);
+  }
+
   // Read CLI usage data from ~/.copilot/session-state/*/events.jsonl
   try {
-    const channel = getOutputChannel();
+    const cliStartMs = timingEnabled ? performance.now() : 0;
     const config = vscode.workspace.getConfiguration("copilot-insight");
     const cliLogPath = config.get<string>("cliLogPath") || undefined;
     const cliDefaultModel = config.get<string>("cliDefaultModel")?.trim() || "Copilot CLI";
@@ -323,11 +371,18 @@ export async function parseCopilotLogs(
         accepted: existing.accepted + counts.accepted,
       };
     }
-    channel.appendLine(`CLI stats: ${ctx.cliTotalInteractions} interactions across ${cliResult.byDate.size} days`);
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] readCliStats: ${(performance.now() - cliStartMs).toFixed(1)}ms | ${ctx.cliTotalInteractions} interactions across ${cliResult.byDate.size} days`,
+      );
+    }
   } catch {
     // CLI stats are optional — never abort the main scan
   }
 
+  if (timingEnabled) {
+    channel.appendLine(`[TIMING] parseCopilotLogs total: ${(performance.now() - parseStartMs).toFixed(1)}ms`);
+  }
   return ctx;
 }
 

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
+import { performance } from "node:perf_hooks";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
 import { todayDateString } from "../utils";
@@ -9,6 +10,7 @@ import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
 import { collectAllContextFiles } from "../utils/contextFileLocator";
 import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
 import { loadMoreCopilotLogs, readWorkspaceChatSessions } from "../log/copilotLogParser";
+import { getLogChannel, isTimingLogsEnabled } from "../log/logChannel";
 
 /** Cryptographically secure nonce for the WebView Content-Security-Policy. */
 function getNonce(): string {
@@ -223,18 +225,45 @@ export class CopilotUsagePanel {
   }
 
   private async _buildSessionsPayloadAsync(): Promise<SessionsData> {
+    const timingEnabled = isTimingLogsEnabled();
+    const channel = getLogChannel();
+    const buildStartMs = performance.now();
+
     await this._ensureChatSessionsLoaded();
     if (this._advanced.logBaseDir && this._dbWorker) {
       const { chatSessionTitles, chatSessions } =
         this._stats.chatSessionTitles && this._stats.chatSessions
           ? { chatSessionTitles: this._stats.chatSessionTitles, chatSessions: this._stats.chatSessions }
           : await readWorkspaceChatSessions(this._advanced.logBaseDir);
+      if (timingEnabled) {
+        channel.appendLine(
+          `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,
+        );
+      }
+
+      let phaseMs = performance.now();
       await this._dbWorker.setChatSessionTitles(chatSessionTitles);
       await this._dbWorker.setChatSessions(chatSessions);
+      if (timingEnabled) {
+        channel.appendLine(`[TIMING] sessions.dbSet: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+      }
+
+      phaseMs = performance.now();
       const sessionSummaries = await this._dbWorker.getSessionList();
+      if (timingEnabled) {
+        channel.appendLine(
+          `[TIMING] sessions.getSessionList: ${(performance.now() - phaseMs).toFixed(1)}ms | ${sessionSummaries.length} summary(ies)`,
+        );
+        channel.appendLine(`[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms`);
+      }
       return buildSessionsPayload(this._stats, sessionSummaries);
     }
     // No logBaseDir or no dbWorker — fall back to in-memory stats
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms [in-memory fallback]`,
+      );
+    }
     return buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
   }
 
@@ -294,14 +323,27 @@ export class CopilotUsagePanel {
   }
 
   private async _update(): Promise<void> {
+    const timingEnabled = isTimingLogsEnabled();
+    const channel = getLogChannel();
+    const updateStartMs = performance.now();
+
     const nonce = getNonce();
     const scriptUri = this._panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "dist", "webview", "dashboard.js"),
     );
+
+    let phaseMs = performance.now();
     const projectContextFiles = await collectAllContextFiles(
       this._advanced.userPromptsDir,
       this._advanced.copilotMemoryDir,
     );
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] _update.collectContextFiles: ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
+      );
+    }
+
+    phaseMs = performance.now();
     const payload = buildDashboardPayload(
       this._stats,
       this._advanced.trueAcceptance,
@@ -313,10 +355,23 @@ export class CopilotUsagePanel {
       this._advanced.hasMoreData ?? false,
       projectContextFiles,
     );
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] _update.buildPayload: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    }
+
+    phaseMs = performance.now();
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] _update.setHtml: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    }
 
     // Also push an update via postMessage so the WebView re-renders without
     // a full HTML reload (e.g. when only the period changes after first load).
+    phaseMs = performance.now();
     this._panel.webview.postMessage({ type: "dashboardData", payload });
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] _update.postMessage: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+      channel.appendLine(`[TIMING] _update total: ${(performance.now() - updateStartMs).toFixed(1)}ms`);
+    }
   }
 }

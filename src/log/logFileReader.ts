@@ -1,12 +1,17 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import type { ParsingContext } from "../types";
 import { parseLogFile } from "./logContentParser";
+import { getLogChannel, isTimingLogsEnabled } from "./logChannel";
 
 function getMaxSessionDirs(): number {
   return vscode.workspace.getConfiguration("copilot-insight").get<number>("maxSessionDirs", 10);
 }
+
+/** Files that take longer than this threshold (ms) are logged as slow. */
+const SLOW_FILE_THRESHOLD_MS = 100;
 
 interface SessionDirOptions {
   limit?: number;
@@ -107,11 +112,30 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
 }
 
 export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Promise<void> {
+  const timingEnabled = isTimingLogsEnabled();
+  const dirStartMs = timingEnabled ? performance.now() : 0;
   try {
     const entries = await fs.readdir(logDir, { withFileTypes: true });
     const logFiles = entries.filter((e) => !e.isDirectory() && e.name.endsWith(".log"));
-    const results = await Promise.all(logFiles.map((e) => parseLogFile(path.join(logDir, e.name), ctx)));
-    ctx.logFilesFound += results.filter(Boolean).length;
+    const results = await Promise.all(
+      logFiles.map(async (e) => {
+        const filePath = path.join(logDir, e.name);
+        const result = await parseLogFile(filePath, ctx);
+        if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
+          getLogChannel().appendLine(
+            `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
+          );
+        }
+        return result;
+      }),
+    );
+    const parsed = results.filter((r) => r.success).length;
+    ctx.logFilesFound += parsed;
+    if (timingEnabled) {
+      getLogChannel().appendLine(
+        `[TIMING] parseLogDirectory: ${(performance.now() - dirStartMs).toFixed(1)}ms | ${parsed}/${logFiles.length} file(s): ${logDir}`,
+      );
+    }
   } catch {
     // Skip if directory is not readable
   }
@@ -132,16 +156,35 @@ export async function parseRemoteExthostLog(
   sessionDir: string,
   ctx: ParsingContext,
 ): Promise<{ matchedDirs: number; parsedFiles: number }> {
+  const timingEnabled = isTimingLogsEnabled();
   const exthostDirs = await findExthostDirs(sessionDir);
   const countsByDir = await Promise.all(
     exthostDirs.map(async (exthostDir) => {
+      const dirStartMs = timingEnabled ? performance.now() : 0;
       const entries = await fs.readdir(exthostDir, { withFileTypes: true }).catch(() => null);
       if (!entries) {
         return 0;
       }
       const logFiles = entries.filter((e) => !e.isDirectory() && e.name.endsWith(".log"));
-      const results = await Promise.all(logFiles.map((e) => parseLogFile(path.join(exthostDir, e.name), ctx)));
-      return results.filter(Boolean).length;
+      const results = await Promise.all(
+        logFiles.map(async (e) => {
+          const filePath = path.join(exthostDir, e.name);
+          const result = await parseLogFile(filePath, ctx);
+          if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
+            getLogChannel().appendLine(
+              `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
+            );
+          }
+          return result;
+        }),
+      );
+      const parsed = results.filter((r) => r.success).length;
+      if (timingEnabled) {
+        getLogChannel().appendLine(
+          `[TIMING] exthost dir: ${(performance.now() - dirStartMs).toFixed(1)}ms | ${parsed}/${logFiles.length} file(s): ${exthostDir}`,
+        );
+      }
+      return parsed;
     }),
   );
   const parsedFiles = countsByDir.reduce((sum, n) => sum + n, 0);
@@ -151,9 +194,14 @@ export async function parseRemoteExthostLog(
 
 export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {
   const terminalLogPath = path.join(sessionDir, "terminal.log");
-  const success = await parseLogFile(terminalLogPath, ctx);
-  if (success) {
+  const result = await parseLogFile(terminalLogPath, ctx);
+  if (result.success) {
     ctx.logFilesFound++;
   }
-  return success;
+  if (isTimingLogsEnabled()) {
+    getLogChannel().appendLine(
+      `[TIMING] terminal.log: ${result.elapsedMs.toFixed(1)}ms [${result.usedNative ? "native" : "js"}] | ${result.success ? "parsed" : "missing/unreadable"}: ${terminalLogPath}`,
+    );
+  }
+  return result.success;
 }
