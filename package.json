@@ -13,9 +13,7 @@
     "vscode": "^1.105.0",
     "node": ">=22.22.0"
   },
-  "categories": [
-    "Other"
-  ],
+  "categories": ["Other"],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
@@ -121,11 +119,7 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [
-            7,
-            14,
-            30
-          ],
+          "enum": [7, 14, 30],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.enableAdvancedAnalysis": {
@@ -149,17 +143,18 @@
           "type": "string",
           "default": "Copilot CLI",
           "description": "Fallback model name label for GitHub Copilot CLI interactions when a model name cannot be detected from the CLI log (e.g. 'claude-opus-4.6')."
+        },
+        "copilot-insight.enableTimingLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Output detailed [TIMING] diagnostic logs to the Output panel during log parsing. Enabling this adds per-file overhead and is intended for troubleshooting slow parses only."
         }
       }
     },
     "mcpServers": {
       "copilot-insight": {
         "command": "node",
-        "args": [
-          "${extensionPath}/bin/mcp-server.js",
-          "--storage",
-          "${globalStoragePath}"
-        ]
+        "args": ["${extensionPath}/bin/mcp-server.js", "--storage", "${globalStoragePath}"]
       }
     }
   },

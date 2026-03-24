@@ -20,6 +20,7 @@
 
 import * as fsSync from "node:fs";
 import * as readline from "node:readline";
+import { performance } from "node:perf_hooks";
 import type { ParsingContext } from "../types";
 import { tryParseJsonLogLine } from "./parsers/jsonLogParser";
 import { parseTextLogLine } from "./parsers/textLogParser";
@@ -183,6 +184,16 @@ export async function parseLogContent(content: string, ctx: ParsingContext): Pro
   }
 }
 
+/** Result of a single log-file parse pass. */
+export interface ParseLogFileResult {
+  /** Whether the file was successfully opened and parsed. */
+  success: boolean;
+  /** Wall-clock time taken to parse the file, in milliseconds. */
+  elapsedMs: number;
+  /** Whether the native Rust addon was used (`true`) or the JS readline fallback (`false`). */
+  usedNative: boolean;
+}
+
 /**
  * Parse a log file, using the native addon when available for performance.
  *
@@ -191,17 +202,18 @@ export async function parseLogContent(content: string, ctx: ParsingContext): Pro
  * reading the file. When the addon is absent the file is streamed line-by-line
  * via `readline` to keep memory usage bounded.
  *
- * Returns `true` when parsing completed successfully, `false` if the file
- * could not be opened or a stream/parse error occurred.
+ * Returns a `ParseLogFileResult` describing whether parsing succeeded, how long
+ * it took (in ms), and which code path was used (native vs. JS).
  */
-export async function parseLogFile(filePath: string, ctx: ParsingContext): Promise<boolean> {
+export async function parseLogFile(filePath: string, ctx: ParsingContext): Promise<ParseLogFileResult> {
+  const startMs = performance.now();
   // Check if the native addon is available (cheap after the first call — result is cached).
   if (loadNativeModule()) {
     try {
       const nativeResult = parseLogFileNative(filePath);
       if (nativeResult) {
         mergeNativeResults(nativeResult, ctx);
-        return true;
+        return { success: true, elapsedMs: performance.now() - startMs, usedNative: true };
       }
     } catch {
       // Intentionally silent: file-not-found, permission errors, and unexpected
@@ -209,14 +221,14 @@ export async function parseLogFile(filePath: string, ctx: ParsingContext): Promi
       // receives `false` and can decide how to proceed.  Logging is omitted
       // here because individual file failures are normal during log-dir scans
       // (e.g. files removed while scanning).
-      return false;
+      return { success: false, elapsedMs: performance.now() - startMs, usedNative: true };
     }
   }
 
   // Fallback: readline streaming (memory-efficient, full detail).
-  return new Promise<boolean>((resolve) => {
+  return new Promise<ParseLogFileResult>((resolve) => {
     const stream = fsSync.createReadStream(filePath, { encoding: "utf-8" });
-    stream.on("error", () => resolve(false));
+    stream.on("error", () => resolve({ success: false, elapsedMs: performance.now() - startMs, usedNative: false }));
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     rl.on("line", (line) => {
       if (!line.trim()) {
@@ -226,7 +238,7 @@ export async function parseLogFile(filePath: string, ctx: ParsingContext): Promi
         parseTextLogLine(line, ctx);
       }
     });
-    rl.on("close", () => resolve(true));
-    rl.on("error", () => resolve(false));
+    rl.on("close", () => resolve({ success: true, elapsedMs: performance.now() - startMs, usedNative: false }));
+    rl.on("error", () => resolve({ success: false, elapsedMs: performance.now() - startMs, usedNative: false }));
   });
 }

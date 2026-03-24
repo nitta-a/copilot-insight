@@ -55,6 +55,14 @@ let cachedEvents: TrackedEvent[] = [];
 let cachedChatSessionTitles: ChatSessionTitleRecord[] = [];
 let cachedChatSessions: ChatSessionRecord[] = [];
 
+/**
+ * Maximum lookback window for metrics computation.
+ * Events older than this are ignored by the four analytics handlers
+ * (trueRate, velocity, modelPerf, getRefreshAnalysis) to prevent
+ * O(W×E) blow-up on long-running installations.
+ */
+const METRICS_LOOKBACK_DAYS = 90;
+
 const SESSION_ACTION_GAP_MS = 5 * 60_000;
 const EPISODE_ATTACHMENT_MS = 2 * 60_000;
 const THREAD_ACTION_GAP_MS = 10 * 60_000;
@@ -1736,20 +1744,26 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
 
       case "trueRate": {
         const opts = (msg.payload ?? {}) as { totalShown?: number; windowMs?: number };
-        const result = computeTrueAcceptanceRate(cachedEvents, opts.totalShown ?? 0, opts.windowMs);
+        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
+        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+        const result = computeTrueAcceptanceRate(recentEvents, opts.totalShown ?? 0, opts.windowMs);
         parentPort?.postMessage({ type: "trueRate", id: msg.id, result });
         break;
       }
 
       case "velocity": {
         const opts = (msg.payload ?? {}) as { windowMs?: number };
-        const result = computeVelocityAnalysis(cachedEvents, opts.windowMs);
+        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
+        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+        const result = computeVelocityAnalysis(recentEvents, opts.windowMs);
         parentPort?.postMessage({ type: "velocity", id: msg.id, result });
         break;
       }
 
       case "modelPerf": {
-        const result = computeModelPerformance(cachedEvents);
+        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
+        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+        const result = computeModelPerformance(recentEvents);
         // Convert Map → Object for structured-clone compatibility
         const serialisable = {
           crossTab: result.crossTab,
@@ -1766,7 +1780,9 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
           turnWindowSize?: number;
           revertWindowMs?: number;
         };
-        const result = computeRefreshAnalysis(cachedEvents, opts.memoryEvents ?? [], {
+        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
+        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
+        const result = computeRefreshAnalysis(recentEvents, opts.memoryEvents ?? [], {
           windowMs: opts.windowMs,
           turnWindowSize: opts.turnWindowSize,
           revertWindowMs: opts.revertWindowMs,

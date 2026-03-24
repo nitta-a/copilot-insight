@@ -36,5 +36,6 @@
         "sess"
     ],
     "editor.formatOnSave": true,
-    "chat.autopilot.enabled": true
+    "chat.autopilot.enabled": true,
+    "copilot-insight.enableTimingLogs": true
 }

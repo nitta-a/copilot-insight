@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import { EventTracker } from "./events/eventTracker";
 import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
 import { exportAsCsv, exportAsJson } from "./export/exportStats";
@@ -22,6 +23,7 @@ import { todayDateString } from "./utils";
 import { resolveLogSearchPaths } from "./utils/logPaths";
 import type { DbWorkerClient } from "./worker/dbWorkerClient";
 import { DbWorkerClientImpl } from "./worker/dbWorkerClient";
+import { getLogChannel, isTimingLogsEnabled } from "./log/logChannel";
 
 /** Number of most-recent session directories parsed on initial dashboard load. */
 const INITIAL_SESSION_LIMIT = 5;
@@ -152,27 +154,57 @@ export function activate(context: vscode.ExtensionContext) {
 
   /** Compute advanced metrics (best-effort) from tracked events. */
   async function getAdvancedMetrics(stats: CopilotUsageStats) {
+    const timingEnabled = isTimingLogsEnabled();
+    const channel = getLogChannel();
+    const advancedStartMs = performance.now();
+
     const logBaseDir = resolveLogSearchPaths(context.logUri.fsPath).logBaseDir;
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
     if (allEvents.length === 0) {
+      if (timingEnabled) {
+        channel.appendLine(
+          `[TIMING] getAdvancedMetrics: skipped (no tracked events) | ${(performance.now() - advancedStartMs).toFixed(1)}ms`,
+        );
+      }
       return { logBaseDir };
     }
     if (dbWorker) {
       try {
+        let phaseMs = performance.now();
         await dbWorker.loadFromJsonl(context.globalStorageUri.fsPath);
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] db.loadFromJsonl: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
+
+        phaseMs = performance.now();
         if (stats.sessionSignals.length > 0) {
           await dbWorker.ingest(stats.sessionSignals);
         }
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] db.ingest: ${(performance.now() - phaseMs).toFixed(1)}ms | ${stats.sessionSignals.length} signal(s)`,
+          );
+        }
+
         // NOTE: setChatSessionTitles / setChatSessions / getSessionList are
         // intentionally omitted here — chat session data is loaded lazily when
         // the Sessions tab is first opened (see CopilotUsagePanel._buildSessionsPayloadAsync).
+        phaseMs = performance.now();
         const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
           dbWorker.modelPerformance(),
           dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
         ]);
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] db.computeMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms (trueRate+velocity+modelPerf+refreshAnalysis parallel)`,
+          );
+          channel.appendLine(
+            `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [db path]`,
+          );
+        }
         return {
           trueAcceptance,
           velocity,
@@ -184,11 +216,35 @@ export function activate(context: vscode.ExtensionContext) {
         // Fall back to in-process computation when the worker is unavailable.
       }
     }
+
+    let phaseMs = performance.now();
+    const trueAcceptance = computeTrueAcceptanceRate(allEvents, stats.totalShown);
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] fallback.trueRate: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    }
+    phaseMs = performance.now();
+    const velocity = computeVelocityAnalysis(allEvents);
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] fallback.velocity: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    }
+    phaseMs = performance.now();
+    const modelPerformance = computeModelPerformance(allEvents);
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] fallback.modelPerformance: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    }
+    phaseMs = performance.now();
+    const refreshAnalysis = computeRefreshAnalysis(allEvents, stats.memoryManagementEvents);
+    if (timingEnabled) {
+      channel.appendLine(`[TIMING] fallback.refreshAnalysis: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+      channel.appendLine(
+        `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [fallback path]`,
+      );
+    }
     return {
-      trueAcceptance: computeTrueAcceptanceRate(allEvents, stats.totalShown),
-      velocity: computeVelocityAnalysis(allEvents),
-      modelPerformance: computeModelPerformance(allEvents),
-      refreshAnalysis: computeRefreshAnalysis(allEvents, stats.memoryManagementEvents),
+      trueAcceptance,
+      velocity,
+      modelPerformance,
+      refreshAnalysis,
       logBaseDir,
     };
   }
@@ -206,8 +262,21 @@ export function activate(context: vscode.ExtensionContext) {
         title: "Parsing GitHub Copilot logs...",
       },
       async () => {
+        const timingEnabled = isTimingLogsEnabled();
+        const channel = getLogChannel();
+
+        let phaseMs = performance.now();
         const { stats, hasMoreData } = await getInitialStats();
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] getInitialStats: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
+
+        phaseMs = performance.now();
         const advanced = await getAdvancedMetrics(stats);
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
+
         const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
         const copilotMemoryDir = path.join(
           context.storageUri?.fsPath ?? "",
@@ -216,12 +285,17 @@ export function activate(context: vscode.ExtensionContext) {
           "memory-tool",
           "memories",
         );
+        phaseMs = performance.now();
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
           stats,
           { ...advanced, logUri: context.logUri, hasMoreData, userPromptsDir, copilotMemoryDir },
           dbWorker,
         );
+        if (timingEnabled) {
+          // _update() is async fire-and-forget; this measures only the sync entry cost.
+          channel.appendLine(`[TIMING] createOrShow (sync entry): ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
       },
     );
   });
@@ -233,9 +307,22 @@ export function activate(context: vscode.ExtensionContext) {
         title: "Refreshing Copilot usage data...",
       },
       async () => {
+        const timingEnabled = isTimingLogsEnabled();
+        const channel = getLogChannel();
+
+        let phaseMs = performance.now();
         const stats = await refreshStats();
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] refreshStats: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
+
         if (CopilotUsagePanel.currentPanel) {
+          phaseMs = performance.now();
           const advanced = await getAdvancedMetrics(stats);
+          if (timingEnabled) {
+            channel.appendLine(`[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+          }
+
           const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
           const copilotMemoryDir = path.join(
             context.storageUri?.fsPath ?? "",
@@ -244,12 +331,16 @@ export function activate(context: vscode.ExtensionContext) {
             "memory-tool",
             "memories",
           );
+          phaseMs = performance.now();
           CopilotUsagePanel.createOrShow(
             context.extensionUri,
             stats,
             { ...advanced, logUri: context.logUri, hasMoreData: false, userPromptsDir, copilotMemoryDir },
             dbWorker,
           );
+          if (timingEnabled) {
+            channel.appendLine(`[TIMING] createOrShow (sync entry): ${(performance.now() - phaseMs).toFixed(1)}ms`);
+          }
         }
       },
     );

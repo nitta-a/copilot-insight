@@ -65,7 +65,18 @@ export function computeTrueAcceptanceRate(
   windowMs: number = DEFAULT_REVERT_WINDOW_MS,
 ): TrueAcceptanceResult {
   const accepts = events.filter((e) => e.eventType === "completionAccept");
-  const textChanges = events.filter((e) => e.eventType === "textChange");
+
+  // Pre-sort textChanges by timestamp and cache their ms values once.
+  // Binary search then locates the start index for each accept in O(log C)
+  // instead of scanning from the beginning on every iteration — O(A×C) → O(C log C + A log C).
+  const rawTextChanges = events.filter((e) => e.eventType === "textChange");
+  const textChangeTimes = rawTextChanges.map((c) => new Date(c.timestamp).getTime());
+  // Sort both arrays together by timestamp.
+  const changeOrder = Array.from({ length: rawTextChanges.length }, (_, i) => i).sort(
+    (a, b) => textChangeTimes[a] - textChangeTimes[b],
+  );
+  const textChanges = changeOrder.map((i) => rawTextChanges[i]);
+  const changeTimes = changeOrder.map((i) => textChangeTimes[i]);
 
   let revertedCount = 0;
 
@@ -76,19 +87,25 @@ export function computeTrueAcceptanceRate(
     const acceptTime = new Date(accept.timestamp).getTime();
     const threshold = accept.acceptedCharacters * REVERT_DELETION_THRESHOLD;
 
+    // Binary search: find first index where changeTimes[i] >= acceptTime.
+    let lo = 0;
+    let hi = changeTimes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (changeTimes[mid] < acceptTime) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+
     let deletedInWindow = 0;
-    for (const change of textChanges) {
-      if (change.eventType !== "textChange") {
-        continue;
-      }
-      const changeTime = new Date(change.timestamp).getTime();
-      if (changeTime < acceptTime) {
-        continue;
-      }
-      if (changeTime - acceptTime > windowMs) {
+    for (let i = lo; i < textChanges.length; i++) {
+      if (changeTimes[i] - acceptTime > windowMs) {
         break;
       }
-      if (change.languageId === accept.languageId) {
+      const change = textChanges[i];
+      if (change.eventType === "textChange" && change.languageId === accept.languageId) {
         deletedInWindow += change.charsDeleted;
       }
     }
@@ -116,9 +133,16 @@ function toSortedAccepts(events: TrackedEvent[]): CompletionAcceptEvent[] {
   );
 }
 
-function buildSegment(events: TrackedEvent[], totalShown: number, revertWindowMs: number): RefreshAnalysisSegment {
-  const sorted = toSortedEvents(events);
-  const result = computeTrueAcceptanceRate(sorted, totalShown, revertWindowMs);
+/**
+ * Build a RefreshAnalysisSegment from an already-sorted event slice.
+ * Callers must pass a timestamp-sorted array; no internal re-sort is performed.
+ */
+function buildSegment(
+  sortedEvents: TrackedEvent[],
+  totalShown: number,
+  revertWindowMs: number,
+): RefreshAnalysisSegment {
+  const result = computeTrueAcceptanceRate(sortedEvents, totalShown, revertWindowMs);
   return {
     turnCount: totalShown,
     rawAccepted: result.rawAccepted,
@@ -126,8 +150,8 @@ function buildSegment(events: TrackedEvent[], totalShown: number, revertWindowMs
     rawRate: result.rawRate,
     trueRate: result.trueRate,
     revertedCount: result.revertedCount,
-    windowStart: sorted[0]?.timestamp ?? null,
-    windowEnd: sorted.at(-1)?.timestamp ?? null,
+    windowStart: sortedEvents[0]?.timestamp ?? null,
+    windowEnd: sortedEvents.at(-1)?.timestamp ?? null,
   };
 }
 
@@ -286,48 +310,64 @@ export function computeVelocityAnalysis(
     return { timeSeries: [], averageKpm: 0, disruptionCount: 0 };
   }
 
-  const timestamps = events.map((e) => new Date(e.timestamp).getTime());
-  const minTime = Math.min(...timestamps);
-  const maxTime = Math.max(...timestamps);
+  // Pre-compute timestamps once and sort together with the event index.
+  // This avoids calling new Date() inside the hot double loop — O(W×E) → O(E log E + E + W).
+  const rawTimes = events.map((e) => new Date(e.timestamp).getTime());
+  const order = Array.from({ length: events.length }, (_, i) => i).sort((a, b) => rawTimes[a] - rawTimes[b]);
+  const sorted = order.map((i) => events[i]);
+  const times = order.map((i) => rawTimes[i]);
+
+  const minTime = times[0];
+  const maxTime = times[times.length - 1];
 
   if (maxTime - minTime < windowMs) {
-    const totalChars = events
-      .filter((e) => e.eventType === "textChange")
-      .reduce((sum, e) => sum + (e.eventType === "textChange" ? e.charsAdded : 0), 0);
+    let totalChars = 0;
+    let completionsAccepted = 0;
+    for (const e of sorted) {
+      if (e.eventType === "textChange") {
+        totalChars += e.charsAdded;
+      } else if (e.eventType === "completionAccept") {
+        completionsAccepted++;
+      }
+    }
     const minutes = Math.max((maxTime - minTime) / 60_000, 1);
-    const kpm = totalChars / minutes;
-    const completionsAccepted = events.filter((e) => e.eventType === "completionAccept").length;
     return {
-      timeSeries: [{ windowStart: new Date(minTime).toISOString(), kpm, completionsAccepted, flowDisrupted: false }],
-      averageKpm: kpm,
+      timeSeries: [
+        {
+          windowStart: new Date(minTime).toISOString(),
+          kpm: totalChars / minutes,
+          completionsAccepted,
+          flowDisrupted: false,
+        },
+      ],
+      averageKpm: totalChars / minutes,
       disruptionCount: 0,
     };
   }
 
   const series: KpmDataPoint[] = [];
-  const step = windowMs;
+  const minutesPerWindow = windowMs / 60_000;
+  let lo = 0; // sliding left boundary index into sorted[]
 
-  for (let windowStart = minTime; windowStart <= maxTime; windowStart += step) {
+  for (let windowStart = minTime; windowStart <= maxTime; windowStart += windowMs) {
     const windowEnd = windowStart + windowMs;
+    // Advance lo past events that are before this window.
+    while (lo < sorted.length && times[lo] < windowStart) {
+      lo++;
+    }
     let charsAdded = 0;
     let completionsInWindow = 0;
-
-    for (const e of events) {
-      const t = new Date(e.timestamp).getTime();
-      if (t < windowStart || t >= windowEnd) {
-        continue;
-      }
+    for (let i = lo; i < sorted.length && times[i] < windowEnd; i++) {
+      const e = sorted[i];
       if (e.eventType === "textChange") {
         charsAdded += e.charsAdded;
       } else if (e.eventType === "completionAccept") {
         completionsInWindow++;
       }
     }
-
-    const minutes = windowMs / 60_000;
     series.push({
       windowStart: new Date(windowStart).toISOString(),
-      kpm: charsAdded / minutes,
+      kpm: charsAdded / minutesPerWindow,
       completionsAccepted: completionsInWindow,
       flowDisrupted: false,
     });
