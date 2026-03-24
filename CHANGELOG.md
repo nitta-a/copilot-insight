@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.26] - 2026-03-24
+
+### Changed
+- 🔒 **Lit Web Component migration (security & modernisation)** — all remaining `innerHTML`-based HTML string builders in `htmlBuilders.ts` have been replaced with reactive [Lit](https://lit.dev/) Web Components, eliminating the entire class of stored-XSS vectors that arise from injecting unsanitised data into `innerHTML`; affected components:
+  - **`<copilot-summary-cards>`** (`SummaryCards.ts`) — replaces `buildSummaryCardsHtml`; renders the KPI stat-card grid with Lit templating
+  - **`<copilot-insights-list>`** (`InsightsList.ts`) — replaces `buildInsightsHtml`; renders the 💡 Insights section
+  - **`<copilot-refresh-analysis>`** (`RefreshAnalysis.ts`) — replaces `buildRefreshAnalysisHtml`; renders the Refresh ROI analysis table
+  - **`<copilot-agent-intelligence-overview>`** (`AgentIntelligenceOverview.ts`) — replaces `buildAgentIntelligenceOverviewHtml`; renders the full Agent Intelligence section including stat cards, model tables, CLI tool efficiency, agent types, feature signals, and planning metrics; uses light DOM so React chart containers remain discoverable via `document.getElementById`
+  - **`<copilot-thread-detail>`** (`ThreadDetail.ts`) — replaces `buildThreadDetailHtml`; renders the step timeline of a selected Copilot session thread; exports `getSelectableThreadsSorted` utility used by `dashboard.ts` to synchronise `selectedThreadId` state after fallback
+- 🗑️ **`htmlBuilders.ts` cleaned up** — functions migrated to Lit components have been removed from `htmlBuilders.ts`, shrinking the module by ~350 lines; remaining string-builder utilities that have no XSS risk (e.g. skeleton loaders, simple structural wrappers) are retained
+
 ## [1.0.25] - 2026-03-22
 
 ### Added
