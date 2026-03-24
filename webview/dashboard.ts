@@ -43,24 +43,22 @@ import {
 import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
+  AgentIntelligenceOverview,
   ContextCorrelationChart,
   ContextFreshnessMeter,
   ContextRichnessMeter,
   InsightsList,
   ProjectPlanList,
+  RefreshAnalysis,
   SummaryCards,
   TagCloud,
+  ThreadDetail,
   ThreadList,
   ThreadSelectDetail,
   WeeklyTrendCard,
 } from "./components/index";
+import { getSelectableThreadsSorted } from "./components/index";
 import "./components/index";
-import {
-  buildAgentIntelligenceOverviewHtml,
-  buildRefreshAnalysisHtml,
-  buildSelectedThreadHtml,
-  getSelectableThreadsSorted,
-} from "./htmlBuilders";
 import { captureAsPng } from "./utils/pngExport";
 
 // ---------------------------------------------------------------------------
@@ -519,7 +517,13 @@ function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysi
   if (!el) {
     return;
   }
-  el.innerHTML = buildRefreshAnalysisHtml(refreshAnalysis);
+  let comp = el.querySelector<RefreshAnalysis>("copilot-refresh-analysis");
+  if (!comp) {
+    comp = document.createElement("copilot-refresh-analysis") as RefreshAnalysis;
+    el.innerHTML = "";
+    el.appendChild(comp);
+  }
+  comp.refreshAnalysis = refreshAnalysis;
 }
 
 // ---------------------------------------------------------------------------
@@ -683,35 +687,24 @@ function setupTabChangeListener(): void {
 // Agent Intelligence Overview
 // ---------------------------------------------------------------------------
 
-function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agenticStats"]): void {
+async function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["agenticStats"]): Promise<void> {
   const el = document.getElementById("db-agent-intelligence-container");
   if (!el) {
     return;
   }
 
-  const { featureSignals, subagentRequests, agentIntelligenceOverview } = agenticStats;
-  const { browserTools, pluginOrSkills, memoryManagement, agentDebug } = featureSignals;
-  const hasFeatureSignals = [browserTools.total, pluginOrSkills.total, memoryManagement.total, agentDebug.total].some(
-    (total) => total > 0,
-  );
-
-  if (
-    subagentRequests === 0 &&
-    !hasFeatureSignals &&
-    agenticStats.cliToolExecutions.length === 0 &&
-    agenticStats.cliReasoningTokens === 0 &&
-    agenticStats.cliAgentTypes.length === 0
-  ) {
-    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
-    scatterPlotRoot = unmountRoot(scatterPlotRoot);
-    el.innerHTML = '<p class="no-data">No autonomous activity or 1.110 feature signals detected in this period.</p>';
-    return;
+  let comp = el.querySelector<AgentIntelligenceOverview>("copilot-agent-intelligence-overview");
+  if (!comp) {
+    comp = document.createElement("copilot-agent-intelligence-overview") as AgentIntelligenceOverview;
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
+  comp.agenticStats = agenticStats;
+  await comp.updateComplete;
 
-  el.innerHTML = buildAgentIntelligenceOverviewHtml(agenticStats);
-
-  // Mount React chart components into the containers just added.
-  const modelData = agentIntelligenceOverview.autonomousRatioByModel;
+  // The component only renders the chart container divs when there is
+  // sufficient agentic data.  Mount React charts into them if present.
+  const modelData = agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
 
   const depthEl = document.getElementById("db-model-depth-chart");
   if (depthEl && modelData.length > 0) {
@@ -817,22 +810,25 @@ function renderThreadDetail(): void {
   if (!el) {
     return;
   }
-  if (!selectedThreadId || !selectedThreadSessionId) {
-    el.innerHTML = '<div class="db-empty-panel">Select a thread to inspect its timeline.</div>';
-    return;
+
+  const detail = selectedThreadSessionId ? (allSessionDetails.get(selectedThreadSessionId) ?? null) : null;
+
+  // Sync selectedThreadId if the component would fall back to the first thread.
+  if (detail && selectedThreadId) {
+    const firstThread = getSelectableThreadsSorted(detail.threads)[0];
+    if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId && t.stepCount > 0)) {
+      selectedThreadId = firstThread.threadId;
+    }
   }
-  const detail = allSessionDetails.get(selectedThreadSessionId);
-  if (!detail) {
-    el.innerHTML = '<div class="db-empty-panel">Loading thread detail…</div>';
-    return;
+
+  let comp = el.querySelector<ThreadDetail>("copilot-thread-detail");
+  if (!comp) {
+    comp = document.createElement("copilot-thread-detail") as ThreadDetail;
+    el.innerHTML = "";
+    el.appendChild(comp);
   }
-  const html = buildSelectedThreadHtml(detail, selectedThreadId);
-  // Sync selectedThreadId if buildSelectedThreadHtml fell back to the first thread.
-  const firstThread = getSelectableThreadsSorted(detail.threads)[0];
-  if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId && t.stepCount > 0)) {
-    selectedThreadId = firstThread.threadId;
-  }
-  el.innerHTML = html;
+  comp.detail = detail;
+  comp.selectedThreadId = selectedThreadId;
 }
 
 // ---------------------------------------------------------------------------

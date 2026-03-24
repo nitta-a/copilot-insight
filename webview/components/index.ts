@@ -1,3 +1,4 @@
+export { AgentIntelligenceOverview } from "./AgentIntelligenceOverview";
 export { ContextCorrelationChart } from "./ContextCorrelationChart";
 export { ContextRichnessMeter } from "./ContextRichnessMeter";
 export { CopilotInsightCard } from "./CopilotInsightCard";
@@ -5,8 +6,11 @@ export { CopilotStatCard } from "./CopilotStatCard";
 export { ContextFreshnessMeter } from "./ContextFreshnessMeter";
 export { InsightsList } from "./InsightsList";
 export { ProjectPlanList } from "./ProjectPlanList";
+export { RefreshAnalysis } from "./RefreshAnalysis";
 export { SummaryCards } from "./SummaryCards";
 export { TagCloud } from "./TagCloud";
+export { ThreadDetail } from "./ThreadDetail";
+export { getSelectableThreadsSorted } from "./ThreadDetail";
 export { ThreadList } from "./ThreadList";
 export type { ThreadSelectDetail } from "./ThreadList";
 export { WeeklyTrendCard } from "./WeeklyTrendCard";
