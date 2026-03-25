@@ -2,12 +2,7 @@ import * as assert from "assert";
 import type { SessionSignalEvent } from "../../src/events/eventSchema";
 import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
-import {
-  buildContextRichness,
-  buildDashboardPayload,
-  buildPromptInsightsPayload,
-  buildSessionsPayload,
-} from "../../src/ui/dashboardPayload";
+import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "../../src/ui/dashboardPayload";
 
 function fmt(date: Date): string {
   const yyyy = date.getFullYear();
@@ -1457,82 +1452,7 @@ suite("buildPromptInsightsPayload — topKeywords", () => {
   });
 });
 
-suite("buildContextRichness", () => {
-  test("returns status=low and avgRefCount=0 when no sessions have referenceCount data", () => {
-    const stats = makeStats({
-      chatSessionStates: new Map([
-        ["s1", { sessionId: "s1", turnCount: 2, isAccepted: false }],
-        ["s2", { sessionId: "s2", turnCount: 1, isAccepted: true }],
-      ]),
-    });
-    const result = buildContextRichness(stats);
-    assert.strictEqual(result.status, "low");
-    assert.strictEqual(result.avgRefCount, 0);
-    assert.strictEqual(result.buckets.length, 5);
-    // Sessions where referenceCount is undefined are treated as 0 references
-    // and fall into the "0 sources" bucket (rather than being silently dropped).
-    assert.strictEqual(result.buckets[0].sessionCount, 2);
-    for (let i = 1; i < result.buckets.length; i++) {
-      assert.strictEqual(result.buckets[i].sessionCount, 0);
-    }
-  });
-
-  test("returns status=low when average is below 1", () => {
-    const states = new Map([
-      ["s1", { sessionId: "s1", turnCount: 1, isAccepted: false, referenceCount: 0 }],
-      ["s2", { sessionId: "s2", turnCount: 1, isAccepted: false, referenceCount: 0 }],
-      ["s3", { sessionId: "s3", turnCount: 1, isAccepted: true, referenceCount: 1 }],
-    ]);
-    const result = buildContextRichness(makeStats({ chatSessionStates: states }));
-    // Weighted avg = (0+0+1)/3 ≈ 0.33 → low
-    assert.strictEqual(result.status, "low");
-    assert.ok(result.avgRefCount > 0 && result.avgRefCount < 1);
-  });
-
-  test("returns status=medium when average is between 1 and 3", () => {
-    const states = new Map([
-      ["s1", { sessionId: "s1", turnCount: 1, isAccepted: true, referenceCount: 1 }],
-      ["s2", { sessionId: "s2", turnCount: 1, isAccepted: true, referenceCount: 2 }],
-      ["s3", { sessionId: "s3", turnCount: 1, isAccepted: false, referenceCount: 2 }],
-    ]);
-    const result = buildContextRichness(makeStats({ chatSessionStates: states }));
-    // Weighted avg = (1+2+2)/3 ≈ 1.67 → medium
-    assert.strictEqual(result.status, "medium");
-    assert.ok(result.avgRefCount >= 1 && result.avgRefCount < 3);
-  });
-
-  test("returns status=rich when average is 3 or more", () => {
-    const states = new Map([
-      ["s1", { sessionId: "s1", turnCount: 2, isAccepted: true, referenceCount: 3 }],
-      ["s2", { sessionId: "s2", turnCount: 1, isAccepted: true, referenceCount: 4 }],
-    ]);
-    const result = buildContextRichness(makeStats({ chatSessionStates: states }));
-    // Weighted avg: s1→3, s2→4+ bucket midpoint 5: (3+5)/2 = 4 → rich
-    assert.strictEqual(result.status, "rich");
-    assert.ok(result.avgRefCount >= 3);
-  });
-
-  test("skips sessions with turnCount=0", () => {
-    const states = new Map([
-      ["s1", { sessionId: "s1", turnCount: 0, isAccepted: false, referenceCount: 5 }],
-      ["s2", { sessionId: "s2", turnCount: 1, isAccepted: true, referenceCount: 0 }],
-    ]);
-    const result = buildContextRichness(makeStats({ chatSessionStates: states }));
-    // s1 is skipped (turnCount=0), only s2 counts → avgRefCount=0 → low
-    assert.strictEqual(result.status, "low");
-    assert.strictEqual(result.buckets[0].sessionCount, 1);
-    assert.strictEqual(result.buckets[4].sessionCount, 0);
-  });
-
-  test("buildDashboardPayload includes contextRichness field", () => {
-    const states = new Map([["s1", { sessionId: "s1", turnCount: 2, isAccepted: true, referenceCount: 2 }]]);
-    const payload = buildDashboardPayload(makeStats({ chatSessionStates: states }));
-    assert.ok(payload.contextRichness, "contextRichness should be present in payload");
-    assert.strictEqual(typeof payload.contextRichness.avgRefCount, "number");
-    assert.ok(["low", "medium", "rich"].includes(payload.contextRichness.status));
-    assert.strictEqual(payload.contextRichness.buckets.length, 5);
-  });
-
+suite("buildDashboardPayload – projectContextFiles", () => {
   test("buildDashboardPayload defaults projectContextFiles to empty array", () => {
     const payload = buildDashboardPayload(makeStats());
     assert.deepStrictEqual(payload.projectContextFiles, []);

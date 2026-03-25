@@ -13,19 +13,7 @@
  * Field names use camelCase, which NAPI-RS produces automatically from the
  * Rust snake_case field names.
  */
-export interface NativeRefCountStat {
-  /** Number of requests observed with this reference-count bucket. */
-  shown: number;
-  /** Number of requests in this bucket that were also accepted. */
-  accepted: number;
-}
-
 export interface NativeContextRichness {
-  /**
-   * Histogram: reference-count bucket label ("0"/"1"/"2"/"3"/"4+") → shown/accepted counts.
-   * Populated by the Rust parser when log entries carry array-valued reference fields.
-   */
-  byRefCount: Record<string, NativeRefCountStat>;
   /** Total character count of all prompt_text fields encountered. */
   totalPromptChars: number;
   /** Number of log entries that carried a non-empty prompt_text field. */

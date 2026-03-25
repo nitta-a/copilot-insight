@@ -84,7 +84,6 @@ suite("nativeBridge", () => {
       latencies: [120, 290, 450],
       byContextSource: { vscodePrompt: 4, activeDocument: 1 },
       contextRichness: {
-        byRefCount: { "0": { shown: 4, accepted: 1 }, "2": { shown: 3, accepted: 2 } },
         totalPromptChars: 800,
         promptCount: 4,
       },
@@ -111,7 +110,6 @@ suite("nativeBridge", () => {
     assert.strictEqual(sample.byContextSource["vscodePrompt"], 4);
     assert.strictEqual(sample.contextRichness.promptCount, 4);
     assert.strictEqual(sample.contextRichness.totalPromptChars, 800);
-    assert.strictEqual(sample.contextRichness.byRefCount["2"]?.shown, 3);
     assert.strictEqual(sample.autonomousDurationMs, 5000);
     assert.strictEqual(sample.subagentLoops, 2);
     assert.strictEqual(sample.executedPlanCount, 1);

@@ -280,8 +280,6 @@ export interface ChatSessionState {
   sessionId: string;
   turnCount: number;
   isAccepted: boolean;
-  /** Number of context references (files, workspace, etc.) attached to the most recent request. */
-  referenceCount?: number;
 }
 
 export interface CopilotUsageStats {
@@ -474,10 +472,4 @@ export interface ParsingContext extends CopilotUsageStats {
   autonomousDurationByDate: Map<string, number>;
   /** True when a plan has been proposed but not yet followed by an edit/patch action. */
   activePlanPending: boolean;
-  /**
-   * Reference-count histogram aggregated by the native Rust parser.
-   * Keys are bucket labels: "0" | "1" | "2" | "3" | "4+".
-   * Optional — only present when the native addon is used.
-   */
-  nativeRefCountBuckets?: Map<string, { shown: number; accepted: number }>;
 }

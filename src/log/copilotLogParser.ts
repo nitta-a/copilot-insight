@@ -437,6 +437,7 @@ export async function parseCopilotLogs(
   if (timingEnabled) {
     channel.appendLine(`[TIMING] parseCopilotLogs total: ${(performance.now() - parseStartMs).toFixed(1)}ms`);
   }
+
   return ctx;
 }
 

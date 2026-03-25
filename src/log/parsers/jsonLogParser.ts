@@ -141,17 +141,6 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       if (isChatTurn) {
         existing.turnCount++;
       }
-      // Record reference count from usedReferences (or similar fields) whenever
-      // the field is present in the log entry, independent of the event-name
-      // pattern match. This covers log formats where the event name is empty or
-      // uses an unrecognised pattern while still carrying context attachment data.
-      // `usedReferences` is the canonical field in recent Copilot log versions;
-      // `references` and `contextReferences` are observed in older log formats;
-      // `attachedFiles` appears in some CLI/agent session logs.
-      const usedRefs = data.usedReferences ?? data.references ?? data.contextReferences ?? data.attachedFiles;
-      if (usedRefs !== undefined) {
-        existing.referenceCount = Array.isArray(usedRefs) ? usedRefs.length : 0;
-      }
       if (isCodeAction) {
         existing.isAccepted = true;
       }

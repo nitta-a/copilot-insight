@@ -101,22 +101,6 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     ctx.byContextSource.set(src, (ctx.byContextSource.get(src) ?? 0) + count);
   }
 
-  // Merge context-richness reference-count histogram contributed by the Rust parser.
-  // The Rust path and JS path track different granularities (per-request vs per-session),
-  // but both increment the same bucket keys ("0"/"1"/"2"/"3"/"4+") so the histograms
-  // can be additively merged when both paths are used for the same corpus.
-  if (native.contextRichness) {
-    for (const [bucket, stat] of Object.entries(native.contextRichness.byRefCount)) {
-      const existing = ctx.nativeRefCountBuckets?.get(bucket) ?? { shown: 0, accepted: 0 };
-      existing.shown += stat.shown;
-      existing.accepted += stat.accepted;
-      if (!ctx.nativeRefCountBuckets) {
-        ctx.nativeRefCountBuckets = new Map();
-      }
-      ctx.nativeRefCountBuckets.set(bucket, existing);
-    }
-  }
-
   // Merge new NativeStats fields (default to zero in the Rust parser; non-zero
   // values are produced only when the addon has been updated to track them).
   if (native.autonomousDurationMs) {
