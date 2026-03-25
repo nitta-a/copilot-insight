@@ -468,8 +468,7 @@ export function getHtmlContent(
         <div style="width:100%">
           <div id="db-project-context-container"></div>
           <div id="db-prompt-insights-lazy" class="db-lazy-placeholder">
-            <p>Click to load Prompt Insights data.</p>
-            <button id="db-btn-load-prompt-insights" class="db-load-btn">📊 Load Prompt Insights</button>
+            <p><span class="db-loading-spinner"></span>Loading insights...</p>
           </div>
           <div id="db-prompt-insights-content" style="display:none">
             <div id="db-tag-cloud-container"></div>
