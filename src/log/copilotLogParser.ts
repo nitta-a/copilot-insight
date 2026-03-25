@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { ChatSessionRecord, ChatSessionTitleRecord, CopilotUsageStats, ParsingContext } from "../types";
 import { resolveLogSearchPaths } from "../utils/logPaths";
 import {
   discoverWindowsWorkspaceStorageRoots,
-  readChatSessionRecords,
-  readChatSessionTitleRecords,
+  readAllChatSessionData,
   resolveWorkspaceStorageRoot,
 } from "./chatSessionTitleReader";
 import { readCliStats } from "./cliLogReader";
@@ -21,6 +21,60 @@ import {
 } from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
+
+// ---------------------------------------------------------------------------
+// Workspace session cache (disk)
+// ---------------------------------------------------------------------------
+
+const WS_SESSION_CACHE_FILENAME = "ws-session-cache.json";
+/** Default TTL for the workspace session disk cache: 15 minutes. */
+const WS_SESSION_CACHE_TTL_MS = 15 * 60 * 1000;
+
+interface WsSessionCacheFile {
+  version: 1;
+  cachedAt: string;
+  chatSessionTitles: ChatSessionTitleRecord[];
+  chatSessions: ChatSessionRecord[];
+}
+
+async function loadWsSessionCache(
+  storagePath: string,
+  ttlMs: number,
+): Promise<{ chatSessionTitles: ChatSessionTitleRecord[]; chatSessions: ChatSessionRecord[] } | null> {
+  try {
+    const cacheFile = path.join(storagePath, WS_SESSION_CACHE_FILENAME);
+    const raw = await fs.readFile(cacheFile, "utf8");
+    const cache = JSON.parse(raw) as WsSessionCacheFile;
+    if (cache.version !== 1 || !cache.cachedAt) {
+      return null;
+    }
+    if (Date.now() - Date.parse(cache.cachedAt) > ttlMs) {
+      return null;
+    }
+    return { chatSessionTitles: cache.chatSessionTitles ?? [], chatSessions: cache.chatSessions ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+async function saveWsSessionCache(
+  storagePath: string,
+  chatSessionTitles: ChatSessionTitleRecord[],
+  chatSessions: ChatSessionRecord[],
+): Promise<void> {
+  try {
+    await fs.mkdir(storagePath, { recursive: true });
+    const cache: WsSessionCacheFile = {
+      version: 1,
+      cachedAt: new Date().toISOString(),
+      chatSessionTitles,
+      chatSessions,
+    };
+    await fs.writeFile(path.join(storagePath, WS_SESSION_CACHE_FILENAME), JSON.stringify(cache));
+  } catch {
+    // Non-fatal — cache is best-effort.
+  }
+}
 
 export interface ParseCopilotLogsOptions {
   scanAllSessions?: boolean;
@@ -413,31 +467,61 @@ export async function loadMoreCopilotLogs(logUri: vscode.Uri): Promise<CopilotUs
  * Sessions tab is first opened — and feed the results to the DB worker before
  * calling `getSessionList()`.
  */
-export async function readWorkspaceChatSessions(logBaseDir: string): Promise<{
+export async function readWorkspaceChatSessions(
+  logBaseDir: string,
+  options?: { skipWindowsRoots?: boolean; storagePath?: string; cacheTtlMs?: number },
+): Promise<{
   chatSessionTitles: ChatSessionTitleRecord[];
   chatSessions: ChatSessionRecord[];
 }> {
-  const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);
-  const winRoots = await discoverWindowsWorkspaceStorageRoots();
-  const allRoots = [wslRoot, ...winRoots];
+  const channel = getLogChannel();
+  const timingEnabled = isTimingLogsEnabled();
+  const t0 = timingEnabled ? performance.now() : 0;
 
-  // Merge title records from all roots, dedup by chatSessionId.
-  const allTitleRecords = await Promise.all(allRoots.map((root) => readChatSessionTitleRecords(root)));
+  // Fast path: return cached results when available and within TTL.
+  if (options?.storagePath) {
+    const ttl = options.cacheTtlMs ?? WS_SESSION_CACHE_TTL_MS;
+    const cached = await loadWsSessionCache(options.storagePath, ttl);
+    if (cached) {
+      if (timingEnabled) {
+        channel.appendLine(
+          `[TIMING] readWorkspaceChatSessions: cache hit (${(performance.now() - t0).toFixed(1)}ms) | titles=${cached.chatSessionTitles.length}, sessions=${cached.chatSessions.length}`,
+        );
+      }
+      return cached;
+    }
+  }
+
+  const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);
+  const winRoots = options?.skipWindowsRoots ? [] : await discoverWindowsWorkspaceStorageRoots();
+  const allRoots = [wslRoot, ...winRoots];
+  if (timingEnabled) {
+    channel.appendLine(
+      `[TIMING] readWorkspaceChatSessions.discoverRoots: ${(performance.now() - t0).toFixed(1)}ms | roots=${allRoots.length}, skipWindowsRoots=${options?.skipWindowsRoots ?? false}`,
+    );
+  }
+
+  const t1 = timingEnabled ? performance.now() : 0;
+  // Single-pass: scan each root once, deriving title records from session records.
+  const allResults = await Promise.all(allRoots.map((root) => readAllChatSessionData(root)));
+  if (timingEnabled) {
+    const totalFiles = allResults.reduce((s, r) => s + r.sessionRecords.length, 0);
+    channel.appendLine(
+      `[TIMING] readWorkspaceChatSessions.scanRoots: ${(performance.now() - t1).toFixed(1)}ms | sessions=${totalFiles}`,
+    );
+  }
+
+  // Merge across roots, dedup by chatSessionId.
   const titleMap = new Map<string, ChatSessionTitleRecord>();
-  for (const records of allTitleRecords) {
-    for (const rec of records) {
+  const sessionMap = new Map<string, ChatSessionRecord>();
+
+  for (const { titleRecords, sessionRecords } of allResults) {
+    for (const rec of titleRecords) {
       if (!titleMap.has(rec.chatSessionId)) {
         titleMap.set(rec.chatSessionId, rec);
       }
     }
-  }
-  const chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  // Merge session records, dedup by chatSessionId (keep most-recent lastMessageAt).
-  const allSessionRecords = await Promise.all(allRoots.map((root) => readChatSessionRecords(root)));
-  const sessionMap = new Map<string, ChatSessionRecord>();
-  for (const records of allSessionRecords) {
-    for (const rec of records) {
+    for (const rec of sessionRecords) {
       const existing = sessionMap.get(rec.chatSessionId);
       if (!existing) {
         sessionMap.set(rec.chatSessionId, rec);
@@ -448,7 +532,21 @@ export async function readWorkspaceChatSessions(logBaseDir: string): Promise<{
       sessionMap.set(rec.chatSessionId, candidateLast >= existingLast ? rec : existing);
     }
   }
+
+  const chatSessionTitles = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const chatSessions = [...sessionMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  if (timingEnabled) {
+    channel.appendLine(
+      `[TIMING] readWorkspaceChatSessions total: ${(performance.now() - t0).toFixed(1)}ms | ` +
+        `titles=${chatSessionTitles.length}, sessions=${chatSessions.length}`,
+    );
+  }
+
+  // Persist results to disk for fast retrieval on next open.
+  if (options?.storagePath) {
+    void saveWsSessionCache(options.storagePath, chatSessionTitles, chatSessions);
+  }
 
   return { chatSessionTitles, chatSessions };
 }

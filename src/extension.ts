@@ -289,7 +289,14 @@ export function activate(context: vscode.ExtensionContext) {
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
           stats,
-          { ...advanced, logUri: context.logUri, hasMoreData, userPromptsDir, copilotMemoryDir },
+          {
+            ...advanced,
+            logUri: context.logUri,
+            hasMoreData,
+            userPromptsDir,
+            copilotMemoryDir,
+            globalStoragePath: context.globalStorageUri.fsPath,
+          },
           dbWorker,
         );
         if (timingEnabled) {
@@ -335,7 +342,14 @@ export function activate(context: vscode.ExtensionContext) {
           CopilotUsagePanel.createOrShow(
             context.extensionUri,
             stats,
-            { ...advanced, logUri: context.logUri, hasMoreData: false, userPromptsDir, copilotMemoryDir },
+            {
+              ...advanced,
+              logUri: context.logUri,
+              hasMoreData: false,
+              userPromptsDir,
+              copilotMemoryDir,
+              globalStoragePath: context.globalStorageUri.fsPath,
+            },
             dbWorker,
           );
           if (timingEnabled) {

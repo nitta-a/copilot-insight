@@ -1641,10 +1641,11 @@ export function buildSessionList(
       }
       const threadDrilldown = buildThreadDrilldown(sessionId, sortedEvents, [], titleRecords, chatSessions);
       const title = chooseRepresentativeSessionTitle(threadDrilldown.threads);
-      if (!title) {
-        return null;
-      }
-      return buildSessionSummary(sessionId, sortedEvents, title);
+      // If no selectable title is available, fall back to the event date (YYYY-MM-DD).
+      // This matches the behaviour of buildFallbackSessionSummaries so that sessions
+      // always appear in the list even when workspaceStorage titles cannot be read.
+      const fallbackTitle = sortedEvents[0]?.timestamp.slice(0, 10) ?? sessionId;
+      return buildSessionSummary(sessionId, sortedEvents, title ?? fallbackTitle);
     })
     .filter((session): session is SessionSummary => session !== null)
     .sort((a, b) => b.date.localeCompare(a.date) || b.totalActions - a.totalActions);
