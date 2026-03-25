@@ -24,6 +24,14 @@ import { getPromptLengthBucket } from "../types";
 // Public API
 // ---------------------------------------------------------------------------
 
+/** In-process cache for CLI stats: invalidated when the session-state dir mtime changes. */
+interface CliStatsCache {
+  stats: CliStats;
+  rootDir: string;
+  dirMtimeMs: number;
+}
+let _cliStatsCache: CliStatsCache | null = null;
+
 export interface CliStats {
   /** Per-date CLI interaction statistics (prompts + output tokens). */
   byDate: Map<string, CliDateStat>;
@@ -61,6 +69,16 @@ export interface CliStats {
  */
 export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot CLI"): Promise<CliStats> {
   const rootDir = cliLogDir?.trim() ? cliLogDir.trim() : path.join(os.homedir(), ".copilot", "session-state");
+
+  // Check mtime-based in-memory cache: skip full scan when directory hasn't changed.
+  try {
+    const dirStat = await fs.stat(rootDir);
+    if (_cliStatsCache && _cliStatsCache.rootDir === rootDir && _cliStatsCache.dirMtimeMs === dirStat.mtimeMs) {
+      return _cliStatsCache.stats;
+    }
+  } catch {
+    // rootDir doesn't exist — fall through to return empty stats
+  }
 
   const byDate = new Map<string, CliDateStat>();
   const interactionsByModel = new Map<string, number>();
@@ -148,7 +166,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     }
   }
 
-  return {
+  const result: CliStats = {
     byDate,
     totalInteractions,
     interactionsByModel,
@@ -160,6 +178,16 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     turnCount,
     modelChanges,
   };
+
+  // Update in-memory cache.
+  try {
+    const dirStat = await fs.stat(rootDir);
+    _cliStatsCache = { stats: result, rootDir, dirMtimeMs: dirStat.mtimeMs };
+  } catch {
+    // Non-fatal — cache will simply be absent.
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

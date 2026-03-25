@@ -673,6 +673,113 @@ export async function discoverWindowsWorkspaceStorageRoots(): Promise<string[]> 
   return roots;
 }
 
+/**
+ * Concurrency-limited async pool.  Runs at most `concurrency` tasks at a time.
+ * Preserves insertion order of results.
+ */
+async function asyncPool<T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    while (next < tasks.length) {
+      const index = next++;
+      results[index] = await tasks[index]();
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  return results;
+}
+
+/**
+ * Single-pass scan of `workspaceStorageRoot` returning both full session records and
+ * derived title records.  Workspaces and their files are processed with bounded
+ * concurrency to avoid overwhelming WSL/cross-filesystem bridges.
+ */
+export async function readAllChatSessionData(workspaceStorageRoot: string): Promise<{
+  titleRecords: ChatSessionTitleRecord[];
+  sessionRecords: ChatSessionRecord[];
+}> {
+  let workspaceEntries: Dirent[] = [];
+  try {
+    workspaceEntries = await fs.readdir(workspaceStorageRoot, { withFileTypes: true });
+  } catch {
+    return { titleRecords: [], sessionRecords: [] };
+  }
+
+  const dirEntries = workspaceEntries.filter((e) => e.isDirectory());
+
+  // Process all workspaces with bounded concurrency (8) to avoid overwhelming
+  // cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
+  const workspaceResults = await asyncPool(
+    dirEntries.map((workspaceEntry) => async () => {
+      const workspaceId = workspaceEntry.name;
+      const chatSessionsDir = path.join(workspaceStorageRoot, workspaceId, "chatSessions");
+      let files: Dirent[] = [];
+      try {
+        files = await fs.readdir(chatSessionsDir, { withFileTypes: true });
+      } catch {
+        return [] as (ChatSessionRecord | null)[];
+      }
+
+      // Process all files in the same workspace in parallel.
+      return Promise.all(
+        files
+          .filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")))
+          .map((file) => {
+            const filePath = path.join(chatSessionsDir, file.name);
+            return file.name.endsWith(".jsonl")
+              ? parseJsonlChatSessionRecord(filePath, workspaceId)
+              : parseJsonChatSessionRecord(filePath, workspaceId);
+          }),
+      );
+    }),
+    8,
+  );
+
+  // Deduplicate by chatSessionId, keeping the most-recent lastMessageAt.
+  const sessionMap = new Map<string, ChatSessionRecord>();
+  const titleMap = new Map<string, ChatSessionTitleRecord>();
+
+  for (const records of workspaceResults) {
+    for (const record of records) {
+      if (!record) {
+        continue;
+      }
+
+      // Merge session.
+      const existingSession = sessionMap.get(record.chatSessionId);
+      if (!existingSession) {
+        sessionMap.set(record.chatSessionId, record);
+      } else {
+        const existingLast = existingSession.lastMessageAt ? Date.parse(existingSession.lastMessageAt) : 0;
+        const candidateLast = record.lastMessageAt ? Date.parse(record.lastMessageAt) : 0;
+        sessionMap.set(record.chatSessionId, candidateLast >= existingLast ? record : existingSession);
+      }
+
+      // Derive title record (only when title is present).
+      if (record.title) {
+        const titleRecord: ChatSessionTitleRecord = {
+          chatSessionId: record.chatSessionId,
+          workspaceId: record.workspaceId,
+          title: record.title,
+          createdAt: record.createdAt,
+          lastMessageAt: record.lastMessageAt,
+          firstRequestText: record.firstRequestText,
+        };
+        const existingTitle = titleMap.get(record.chatSessionId);
+        titleMap.set(record.chatSessionId, existingTitle ? mergeTitleRecords(existingTitle, titleRecord) : titleRecord);
+      }
+    }
+  }
+
+  const sessionRecords = [...sessionMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const titleRecords = [...titleMap.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  return { titleRecords, sessionRecords };
+}
+
 export async function readChatSessionTitleRecords(workspaceStorageRoot: string): Promise<ChatSessionTitleRecord[]> {
   const merged = new Map<string, ChatSessionTitleRecord>();
   let workspaceEntries: Dirent[] = [];

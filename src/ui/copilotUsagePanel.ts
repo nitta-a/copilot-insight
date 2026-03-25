@@ -44,6 +44,8 @@ export interface AdvancedMetrics {
   userPromptsDir?: string;
   /** Path to the Copilot Plan Agent session memory directory (for context file discovery). */
   copilotMemoryDir?: string;
+  /** Extension global storage path, used to cache workspace session scan results between runs. */
+  globalStoragePath?: string;
 }
 
 export class CopilotUsagePanel {
@@ -184,7 +186,9 @@ export class CopilotUsagePanel {
       return;
     }
     try {
-      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir);
+      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+        storagePath: this._advanced.globalStoragePath,
+      });
       this._stats.chatSessionTitles = chatSessionTitles;
       this._stats.chatSessions = chatSessions;
     } catch {
@@ -198,8 +202,28 @@ export class CopilotUsagePanel {
    * Separated so `_handleWebviewMessage` can fire-and-forget with `void`.
    */
   private async _handlePromptInsightsTabRequest(): Promise<void> {
+    const timingEnabled = isTimingLogsEnabled();
+    const channel = getLogChannel();
+    const t0 = timingEnabled ? performance.now() : 0;
+
     await this._ensureChatSessionsLoaded();
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] promptInsights.ensureChatSessionsLoaded: ${(performance.now() - t0).toFixed(1)}ms | ` +
+          `titles=${this._stats.chatSessionTitles?.length ?? 0}, sessions=${this._stats.chatSessions?.length ?? 0}`,
+      );
+    }
+
+    const t1 = timingEnabled ? performance.now() : 0;
     const payload = buildPromptInsightsPayload(this._stats);
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] promptInsights.buildPayload: ${(performance.now() - t1).toFixed(1)}ms | ` +
+          `keywords=${payload.topKeywords?.length ?? 0}`,
+      );
+      channel.appendLine(`[TIMING] promptInsights total: ${(performance.now() - t0).toFixed(1)}ms`);
+    }
+
     void this._panel.webview.postMessage({ type: "tabData", tab: "promptInsights", payload });
   }
 
@@ -232,9 +256,14 @@ export class CopilotUsagePanel {
     await this._ensureChatSessionsLoaded();
     if (this._advanced.logBaseDir && this._dbWorker) {
       const { chatSessionTitles, chatSessions } =
-        this._stats.chatSessionTitles && this._stats.chatSessions
-          ? { chatSessionTitles: this._stats.chatSessionTitles, chatSessions: this._stats.chatSessions }
-          : await readWorkspaceChatSessions(this._advanced.logBaseDir);
+        (this._stats.chatSessionTitles?.length ?? 0) > 0 || (this._stats.chatSessions?.length ?? 0) > 0
+          ? {
+              chatSessionTitles: this._stats.chatSessionTitles ?? [],
+              chatSessions: this._stats.chatSessions ?? [],
+            }
+          : await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+              storagePath: this._advanced.globalStoragePath,
+            });
       if (timingEnabled) {
         channel.appendLine(
           `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,

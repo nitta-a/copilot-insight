@@ -110,11 +110,15 @@ suite("dbWorker session detail", () => {
 
     assert.deepStrictEqual(
       summaries.map((summary) => ({ sessionId: summary.sessionId, title: summary.title })),
-      [{ sessionId: "session-titled", title: "Implement session list title filtering" }],
+      [
+        { sessionId: "session-titled", title: "Implement session list title filtering" },
+        // session-untitled has no matched chat title, so it falls back to the event date
+        { sessionId: "session-untitled", title: "2026-03-08" },
+      ],
     );
   });
 
-  test("buildSessionList excludes titled sessions that still have no visible steps", () => {
+  test("buildSessionList falls back to event date when no selectable title is found", () => {
     const events: TrackedEvent[] = [
       {
         ...makeSignal({
@@ -151,7 +155,11 @@ suite("dbWorker session detail", () => {
       ],
     );
 
-    assert.deepStrictEqual(summaries, []);
+    // After the fallback-title fix, sessions with actionable events but no chatSession
+    // steps now appear with a date-based title rather than being dropped.
+    assert.strictEqual(summaries.length, 1);
+    assert.strictEqual(summaries[0]?.sessionId, "session-empty-steps");
+    assert.strictEqual(summaries[0]?.title, "2026-03-08");
   });
 
   test("keeps post-loop human confirmation inside the same episode", () => {

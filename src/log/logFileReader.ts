@@ -13,6 +13,9 @@ function getMaxSessionDirs(): number {
 /** Files that take longer than this threshold (ms) are logged as slow. */
 const SLOW_FILE_THRESHOLD_MS = 100;
 
+/** Files in remote exthost directories larger than this limit are skipped (10 MB). */
+const MAX_REMOTE_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
 interface SessionDirOptions {
   limit?: number;
 }
@@ -96,6 +99,7 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
     if (!entries) {
       return;
     }
+    const subDirs: string[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) {
         continue;
@@ -103,9 +107,10 @@ export async function findCopilotDirs(rootDir: string, maxDepth = 5): Promise<st
       if (entry.name.toLowerCase().includes("github.copilot")) {
         results.push(path.join(dir, entry.name));
       } else {
-        await search(path.join(dir, entry.name), depth + 1);
+        subDirs.push(path.join(dir, entry.name));
       }
     }
+    await Promise.all(subDirs.map((subDir) => search(subDir, depth + 1)));
   }
   await search(rootDir, 0);
   return results;
@@ -169,6 +174,17 @@ export async function parseRemoteExthostLog(
       const results = await Promise.all(
         logFiles.map(async (e) => {
           const filePath = path.join(exthostDir, e.name);
+          // Skip very large files that are unlikely to contain Copilot signals and
+          // that would dominate parse time in remote/WSL environments.
+          const fileStat = await fs.stat(filePath).catch(() => null);
+          if (fileStat && fileStat.size > MAX_REMOTE_LOG_FILE_SIZE_BYTES) {
+            if (timingEnabled) {
+              getLogChannel().appendLine(
+                `[TIMING] skipping large file (${(fileStat.size / 1024 / 1024).toFixed(1)} MB): ${filePath}`,
+              );
+            }
+            return null;
+          }
           const result = await parseLogFile(filePath, ctx);
           if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
             getLogChannel().appendLine(
@@ -178,7 +194,7 @@ export async function parseRemoteExthostLog(
           return result;
         }),
       );
-      const parsed = results.filter((r) => r.success).length;
+      const parsed = results.filter((r) => r !== null && r.success).length;
       if (timingEnabled) {
         getLogChannel().appendLine(
           `[TIMING] exthost dir: ${(performance.now() - dirStartMs).toFixed(1)}ms | ${parsed}/${logFiles.length} file(s): ${exthostDir}`,
