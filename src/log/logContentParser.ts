@@ -178,6 +178,11 @@ export interface ParseLogFileResult {
   usedNative: boolean;
 }
 
+export interface ParseLogFileOptions {
+  /** When set, skip to this byte offset before parsing (tail-read optimisation). */
+  startByte?: number;
+}
+
 /**
  * Parse a log file, using the native addon when available for performance.
  *
@@ -186,13 +191,24 @@ export interface ParseLogFileResult {
  * reading the file. When the addon is absent the file is streamed line-by-line
  * via `readline` to keep memory usage bounded.
  *
+ * When `opts.startByte` is provided the native path is skipped (it always reads
+ * the whole file) and the JS readline path opens a stream starting at the given
+ * byte offset.  The first (potentially partial) line is silently discarded by
+ * the per-line parsers.
+ *
  * Returns a `ParseLogFileResult` describing whether parsing succeeded, how long
  * it took (in ms), and which code path was used (native vs. JS).
  */
-export async function parseLogFile(filePath: string, ctx: ParsingContext): Promise<ParseLogFileResult> {
+export async function parseLogFile(
+  filePath: string,
+  ctx: ParsingContext,
+  opts?: ParseLogFileOptions,
+): Promise<ParseLogFileResult> {
   const startMs = performance.now();
-  // Check if the native addon is available (cheap after the first call — result is cached).
-  if (loadNativeModule()) {
+  // When a byte offset is supplied we must use the JS readline path because the
+  // native addon always reads from the beginning of the file.
+  const useNative = !opts?.startByte && loadNativeModule();
+  if (useNative) {
     try {
       const nativeResult = parseLogFileNative(filePath);
       if (nativeResult) {
@@ -211,7 +227,11 @@ export async function parseLogFile(filePath: string, ctx: ParsingContext): Promi
 
   // Fallback: readline streaming (memory-efficient, full detail).
   return new Promise<ParseLogFileResult>((resolve) => {
-    const stream = fsSync.createReadStream(filePath, { encoding: "utf-8" });
+    const streamOpts: { encoding: BufferEncoding; start?: number } = { encoding: "utf-8" };
+    if (opts?.startByte) {
+      streamOpts.start = opts.startByte;
+    }
+    const stream = fsSync.createReadStream(filePath, streamOpts);
     stream.on("error", () => resolve({ success: false, elapsedMs: performance.now() - startMs, usedNative: false }));
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     rl.on("line", (line) => {

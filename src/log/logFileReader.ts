@@ -16,6 +16,9 @@ const SLOW_FILE_THRESHOLD_MS = 100;
 /** Files in remote exthost directories larger than this limit are skipped (10 MB). */
 const MAX_REMOTE_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+/** For large exthost files, only parse the last TAIL_BYTES to reduce CPU time. */
+const TAIL_BYTES = 2 * 1024 * 1024;
+
 interface SessionDirOptions {
   limit?: number;
 }
@@ -185,10 +188,14 @@ export async function parseRemoteExthostLog(
             }
             return null;
           }
-          const result = await parseLogFile(filePath, ctx);
+          // For files larger than TAIL_BYTES, read only the tail to save CPU time.
+          // The first (potentially partial) line at the offset is silently discarded
+          // by the per-line parsers.
+          const startByte = fileStat && fileStat.size > TAIL_BYTES ? fileStat.size - TAIL_BYTES : undefined;
+          const result = await parseLogFile(filePath, ctx, startByte ? { startByte } : undefined);
           if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
             getLogChannel().appendLine(
-              `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
+              `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]${startByte ? " (tail)" : ""}`,
             );
           }
           return result;
