@@ -23,12 +23,23 @@ import {
 export type { CopilotUsageStats, DateStat } from "../types";
 
 // ---------------------------------------------------------------------------
-// Workspace session cache (disk)
+// Workspace session cache (disk + in-memory)
 // ---------------------------------------------------------------------------
 
 const WS_SESSION_CACHE_FILENAME = "ws-session-cache.json";
 /** Default TTL for the workspace session disk cache: 15 minutes. */
 const WS_SESSION_CACHE_TTL_MS = 15 * 60 * 1000;
+
+/** Module-level in-memory cache so repeated calls skip disk I/O entirely. */
+let wsSessionMemCache: {
+  data: { chatSessionTitles: ChatSessionTitleRecord[]; chatSessions: ChatSessionRecord[] };
+  cachedAt: number;
+} | null = null;
+
+/** @internal Exported for testing only. */
+export function clearWsSessionMemoryCache(): void {
+  wsSessionMemCache = null;
+}
 
 interface WsSessionCacheFile {
   version: 1;
@@ -62,6 +73,8 @@ async function saveWsSessionCache(
   chatSessionTitles: ChatSessionTitleRecord[],
   chatSessions: ChatSessionRecord[],
 ): Promise<void> {
+  // Always update the in-memory cache so the next call returns instantly.
+  wsSessionMemCache = { data: { chatSessionTitles, chatSessions }, cachedAt: Date.now() };
   try {
     await fs.mkdir(storagePath, { recursive: true });
     const cache: WsSessionCacheFile = {
@@ -242,12 +255,12 @@ export async function parseCopilotLogs(
           if (timingEnabled) {
             sessionPhaseMs = performance.now();
           }
-          for (const copilotLogDir of copilotDirs) {
-            channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
-            const beforeFiles = ctx.logFilesFound;
-            await parseLogDirectory(copilotLogDir, ctx);
-            channel.appendLine(`    Parsed ${ctx.logFilesFound - beforeFiles} file(s)`);
-          }
+          await Promise.all(
+            copilotDirs.map(async (copilotLogDir) => {
+              channel.appendLine(`  Found Copilot log dir: ${copilotLogDir}`);
+              await parseLogDirectory(copilotLogDir, ctx);
+            }),
+          );
           if (timingEnabled) {
             channel.appendLine(
               `[TIMING]   parseLogDirectories: ${(performance.now() - sessionPhaseMs).toFixed(1)}ms (${copilotDirs.length} copilot dir(s))`,
@@ -478,6 +491,17 @@ export async function readWorkspaceChatSessions(
   const channel = getLogChannel();
   const timingEnabled = isTimingLogsEnabled();
   const t0 = timingEnabled ? performance.now() : 0;
+
+  // Fastest path: module-level in-memory cache (no disk I/O at all).
+  const memTtl = options?.cacheTtlMs ?? WS_SESSION_CACHE_TTL_MS;
+  if (wsSessionMemCache && Date.now() - wsSessionMemCache.cachedAt <= memTtl) {
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] readWorkspaceChatSessions: memory cache hit (${(performance.now() - t0).toFixed(1)}ms) | titles=${wsSessionMemCache.data.chatSessionTitles.length}, sessions=${wsSessionMemCache.data.chatSessions.length}`,
+      );
+    }
+    return wsSessionMemCache.data;
+  }
 
   // Fast path: return cached results when available and within TTL.
   if (options?.storagePath) {

@@ -105,6 +105,9 @@ export class CopilotUsagePanel {
     this._advanced = advanced;
     this._dbWorker = dbWorker;
     void this._update();
+    // Pre-fetch workspaceStorage chat sessions so data is ready when the user
+    // opens the Prompt Insights or Sessions tab (fire-and-forget).
+    void this._ensureChatSessionsLoaded();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     // Handle messages from the WebView

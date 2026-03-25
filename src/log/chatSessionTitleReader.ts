@@ -612,6 +612,15 @@ export function resolveWorkspaceStorageRoot(logBaseDir: string): string {
   return path.join(path.dirname(logBaseDir), "User", "workspaceStorage");
 }
 
+/** Module-level cache for Windows workspace storage roots (WSL /mnt crawl is expensive). */
+const WIN_ROOTS_CACHE_TTL_MS = 5 * 60 * 1000;
+let winRootsCache: { roots: string[]; cachedAt: number } | null = null;
+
+/** @internal Exported for testing only. */
+export function clearWindowsRootsCache(): void {
+  winRootsCache = null;
+}
+
 /**
  * Discovers Windows-side VS Code workspaceStorage roots when running under WSL.
  *
@@ -626,6 +635,10 @@ export function resolveWorkspaceStorageRoot(logBaseDir: string): string {
 export async function discoverWindowsWorkspaceStorageRoots(): Promise<string[]> {
   if (process.platform !== "linux") {
     return [];
+  }
+  // Return cached results within TTL.
+  if (winRootsCache && Date.now() - winRootsCache.cachedAt <= WIN_ROOTS_CACHE_TTL_MS) {
+    return winRootsCache.roots;
   }
   const roots: string[] = [];
   let driveEntries: Dirent[] = [];
@@ -670,6 +683,7 @@ export async function discoverWindowsWorkspaceStorageRoots(): Promise<string[]> 
       }
     }
   }
+  winRootsCache = { roots, cachedAt: Date.now() };
   return roots;
 }
 
