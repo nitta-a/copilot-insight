@@ -15,22 +15,10 @@ pub struct NativeDateStat {
     pub accepted: u32,
 }
 
-/// Per-bucket shown/accepted counts used in the context-richness histogram.
-#[napi(object)]
-#[derive(Default, Clone)]
-pub struct NativeRefCountStat {
-    /// Number of requests observed with this reference-count bucket.
-    pub shown: u32,
-    /// Number of requests in this bucket that were also accepted.
-    pub accepted: u32,
-}
-
 /// Aggregated context-richness metrics produced by the native parser.
 #[napi(object)]
 #[derive(Default)]
 pub struct NativeContextRichness {
-    /// Histogram: reference-count bucket label ("0"/"1"/"2"/"3"/"4+") → shown/accepted counts.
-    pub by_ref_count: HashMap<String, NativeRefCountStat>,
     /// Total character count of all prompt_text fields encountered (for avg prompt length).
     pub total_prompt_chars: u32,
     /// Number of log entries that carried a non-empty prompt_text field.
@@ -163,10 +151,6 @@ struct LogEntry {
     latency_ms: Option<u32>,
     /// Context source identifier (e.g. "vscodePrompt", "activeDocument").
     context_source: Option<String>,
-    /// Array of file references attached to the request (usedReferences / attachedFiles / contextReferences).
-    #[serde(alias = "attachedFiles", alias = "contextReferences")]
-    #[serde(rename = "usedReferences")]
-    used_refs_raw: Option<serde_json::Value>,
     /// User prompt text for prompt-length tracking.
     #[serde(alias = "query")]
     #[serde(rename = "userMessage")]
@@ -370,27 +354,6 @@ where
                             .entry(src.to_string())
                             .or_insert(0) += 1;
                     }
-                }
-
-                // Context-richness: tally reference counts from array-valued fields.
-                let ref_count: u32 = match entry.used_refs_raw.as_ref() {
-                    Some(serde_json::Value::Array(arr)) => arr.len() as u32,
-                    Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0) as u32,
-                    _ => 0,
-                };
-                let ref_bucket = if ref_count == 0 { "0" }
-                    else if ref_count == 1 { "1" }
-                    else if ref_count == 2 { "2" }
-                    else if ref_count == 3 { "3" }
-                    else { "4+" };
-                let bucket_stat = stats
-                    .context_richness
-                    .by_ref_count
-                    .entry(ref_bucket.to_string())
-                    .or_default();
-                bucket_stat.shown += 1;
-                if is_accepted {
-                    bucket_stat.accepted += 1;
                 }
 
                 // Prompt-length tracking.

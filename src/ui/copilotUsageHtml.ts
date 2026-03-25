@@ -430,8 +430,6 @@ export function getHtmlContent(
           <div id="db-weekly-trend-container"></div>
           <div id="db-agent-intelligence-container"></div>
           <div id="db-autonomy-evolution-container"></div>
-          <div id="db-context-richness-container"></div>
-          <div id="db-context-correlation-container"></div>
         </div>
       </div>
 
@@ -481,7 +479,6 @@ export function getHtmlContent(
             </div>
             <div id="db-finish-reason-container"></div>
             <div id="db-turn-churn-container"></div>
-            <div id="db-context-leverage-container"></div>
           </div>
         </div>
       </div>

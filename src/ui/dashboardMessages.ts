@@ -252,29 +252,6 @@ export interface TurnBucket {
   acceptedCount: number;
 }
 
-/** A single bucket in the Context Leverage analysis (context reference count distribution). */
-export interface ContextBucket {
-  /** Human-readable label for the source-count bucket (e.g. "0 sources", "1 source", "4+ sources"). */
-  referenceCount: string;
-  /** Total number of chat sessions in this bucket. */
-  sessionCount: number;
-  /** Number of sessions in this bucket where code was accepted. */
-  acceptedCount: number;
-}
-
-/**
- * Context richness summary derived from per-session file-reference counts.
- * Displayed in the Overview tab as a badge + progress meter.
- */
-export interface ContextRichnessData {
-  /** Average number of file references attached per tracked session (0 if no data). */
-  avgRefCount: number;
-  /** Qualitative status derived from avgRefCount. */
-  status: "low" | "medium" | "rich";
-  /** Reference-count distribution buckets (reuses ContextBucket shape). */
-  buckets: ContextBucket[];
-}
-
 /**
  * Lazy-loaded payload for the Prompt Insights tab.
  * Requested on demand when the user clicks "Load Data" on the Prompt Insights tab.
@@ -303,11 +280,6 @@ export interface PromptInsightsData {
    * Used to render the Turn Churn mixed chart in the Prompt Insights tab.
    */
   turnStats: TurnBucket[];
-  /**
-   * Context reference-count distribution for chat sessions, bucketed into five ranges.
-   * Used to render the Context Leverage mixed chart in the Prompt Insights tab.
-   */
-  contextStats: ContextBucket[];
 }
 
 /**
@@ -354,11 +326,6 @@ export interface DashboardPayload {
   refreshAnalysis: RefreshAnalysis[];
   /** Current-session context freshness, or null when unsupported by logs. */
   freshness: ContextFreshness | null;
-  /**
-   * Context richness summary derived from per-session file-reference counts.
-   * Displayed in the Overview tab as a badge + progress meter with correlation chart.
-   */
-  contextRichness: ContextRichnessData;
   /**
    * True when only a limited number of recent sessions were parsed during the
    * initial load.  The WebView should show a "Load Historical Data" button that

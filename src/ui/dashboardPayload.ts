@@ -23,9 +23,7 @@ import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
-  ContextBucket,
   ContextFreshness,
-  ContextRichnessData,
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
@@ -488,7 +486,6 @@ export function buildDashboardPayload(
   };
 
   const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
-  const contextRichness = buildContextRichness(stats);
 
   return {
     days: timeline.length,
@@ -502,7 +499,6 @@ export function buildDashboardPayload(
     agenticStats,
     refreshAnalysis,
     freshness,
-    contextRichness,
     hasMoreData,
     projectContextFiles,
   };
@@ -536,69 +532,6 @@ function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
       }
       return buckets[3];
     })();
-    b.sessionCount++;
-    if (state.isAccepted) {
-      b.acceptedCount++;
-    }
-  }
-
-  return buckets;
-}
-
-/**
- * Build the `ContextRichnessData` object for the Overview tab.
- *
- * Reuses `buildContextStats()` to bucket sessions by reference count, then
- * derives an average and a qualitative status label from those buckets.
- *
- * Status thresholds:
- *  - "low":    avgRefCount < 1
- *  - "medium": avgRefCount < 3
- *  - "rich":   avgRefCount >= 3
- */
-export function buildContextRichness(stats: CopilotUsageStats): ContextRichnessData {
-  const buckets = buildContextStats(stats);
-
-  // Compute weighted average: midpoint for 4+ bucket is approximated as 5.
-  const midpoints = [0, 1, 2, 3, 5];
-  let totalSessions = 0;
-  let weightedSum = 0;
-  for (let i = 0; i < buckets.length; i++) {
-    totalSessions += buckets[i].sessionCount;
-    weightedSum += buckets[i].sessionCount * midpoints[i];
-  }
-  const avgRefCount = totalSessions > 0 ? weightedSum / totalSessions : 0;
-  const status: ContextRichnessData["status"] = avgRefCount >= 3 ? "rich" : avgRefCount >= 1 ? "medium" : "low";
-
-  return { avgRefCount, status, buckets };
-}
-
-/**
- * Aggregate `chatSessionStates` into five source-count buckets for the
- * Context Leverage mixed chart in the Prompt Insights tab.
- * Sources = any files, code snippets, or context items attached to a chat session.
- *
- * Buckets: "0 sources" | "1 source" | "2 sources" | "3 sources" | "4+ sources"
- */
-function buildContextStats(stats: CopilotUsageStats): ContextBucket[] {
-  const buckets: ContextBucket[] = [
-    { referenceCount: "0 sources", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "1 source", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "2 sources", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "3 sources", sessionCount: 0, acceptedCount: 0 },
-    { referenceCount: "4+ sources", sessionCount: 0, acceptedCount: 0 },
-  ];
-
-  for (const state of stats.chatSessionStates.values()) {
-    if (state.turnCount <= 0) {
-      continue;
-    }
-    // Sessions parsed before referenceCount tracking was introduced (e.g. from
-    // legacy snapshots or logs where the event name was not detected as a chat
-    // turn) have referenceCount === undefined. Treat them as having 0 references
-    // so they still contribute to the histogram rather than being silently dropped.
-    const refCount = state.referenceCount ?? 0;
-    const b = refCount < 4 ? buckets[refCount] : buckets[4];
     b.sessionCount++;
     if (state.isAccepted) {
       b.acceptedCount++;
@@ -735,7 +668,6 @@ export function buildPromptInsightsPayload(stats: CopilotUsageStats): PromptInsi
     promptLengthScatterData: buildPromptLengthScatterData(stats.promptEffectiveness),
     topKeywords,
     turnStats: buildTurnStats(stats),
-    contextStats: buildContextStats(stats),
   };
 }
 

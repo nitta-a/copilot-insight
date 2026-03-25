@@ -21,7 +21,6 @@ import { createRoot, type Root } from "react-dom/client";
 import type { SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   ContextFreshness,
-  ContextRichnessData,
   DashboardPayload,
   HostToWebviewMessage,
   PromptInsightsData,
@@ -34,7 +33,6 @@ import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterP
 import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import {
   buildDonutChart,
-  createContextLeverageChart,
   createPromptLengthScatterChart,
   createTimelineChart,
   createTurnChurnChart,
@@ -44,9 +42,7 @@ import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
   AgentIntelligenceOverview,
-  ContextCorrelationChart,
   ContextFreshnessMeter,
-  ContextRichnessMeter,
   InsightsList,
   ProjectPlanList,
   RefreshAnalysis,
@@ -89,7 +85,6 @@ let intentDonutChart: Chart | null = null;
 let commandDonutChart: Chart | null = null;
 let promptLengthScatterChart: Chart | null = null;
 let turnChurnChart: Chart | null = null;
-let contextLeverageChart: Chart | null = null;
 let currentTab = "overview";
 let currentPayload: DashboardPayload | null = null;
 let selectedThreadId = "";
@@ -373,48 +368,6 @@ function renderTurnChurnChart(turnStats: PromptInsightsData["turnStats"]): void 
 }
 
 // ---------------------------------------------------------------------------
-// Context Leverage Mixed Chart (context reference-count distribution)
-// ---------------------------------------------------------------------------
-
-function renderContextLeverageChart(contextStats: PromptInsightsData["contextStats"]): void {
-  const container = document.getElementById("db-context-leverage-container");
-  if (!container) {
-    return;
-  }
-
-  const hasData = contextStats.some((b) => b.sessionCount > 0);
-  if (!hasData) {
-    container.innerHTML = "";
-    if (contextLeverageChart) {
-      contextLeverageChart.destroy();
-      contextLeverageChart = null;
-    }
-    return;
-  }
-
-  container.innerHTML = `
-    <hr class="db-section-sep">
-    <h2>📎 Context Leverage — Reference Count vs Acceptance Rate</h2>
-    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
-      Bars show session volume per reference-count bucket. The line shows the acceptance rate
-      (% of sessions where code was accepted) for each bucket.
-    </p>
-    <div class="chart-container" style="min-height:300px;max-height:320px">
-      <canvas id="db-context-leverage-chart"></canvas>
-    </div>`;
-
-  const canvas = document.getElementById("db-context-leverage-chart") as HTMLCanvasElement | null;
-  if (!canvas) {
-    return;
-  }
-
-  if (contextLeverageChart) {
-    contextLeverageChart.destroy();
-  }
-  contextLeverageChart = createContextLeverageChart(canvas, contextStats, getColors());
-}
-
-// ---------------------------------------------------------------------------
 // Model Autonomy Leverage Map
 // ---------------------------------------------------------------------------
 
@@ -482,34 +435,6 @@ function renderContextFreshness(
   }
   comp.freshness = freshness;
   comp.refreshAnalysis = refreshAnalysis;
-}
-
-function renderContextRichness(richness: ContextRichnessData): void {
-  const el = document.getElementById("db-context-richness-container");
-  if (!el) {
-    return;
-  }
-  let comp = el.querySelector<ContextRichnessMeter>("copilot-richness-meter");
-  if (!comp) {
-    comp = document.createElement("copilot-richness-meter") as ContextRichnessMeter;
-    el.innerHTML = "";
-    el.appendChild(comp);
-  }
-  comp.richness = richness;
-}
-
-function renderContextCorrelation(richness: ContextRichnessData): void {
-  const el = document.getElementById("db-context-correlation-container");
-  if (!el) {
-    return;
-  }
-  let comp = el.querySelector<ContextCorrelationChart>("copilot-context-correlation");
-  if (!comp) {
-    comp = document.createElement("copilot-context-correlation") as ContextCorrelationChart;
-    el.innerHTML = "";
-    el.appendChild(comp);
-  }
-  comp.buckets = richness.buckets;
 }
 
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
@@ -656,7 +581,6 @@ function onTabChange(tabId: string): void {
     commandDonutChart?.resize();
     promptLengthScatterChart?.resize();
     turnChurnChart?.resize();
-    contextLeverageChart?.resize();
   }
 }
 
@@ -892,14 +816,12 @@ function renderPromptInsightsData(data: PromptInsightsData): void {
   renderPromptLengthScatterChart(data.promptLengthScatterData);
   renderFinishReasonBreakdown(data.finishReasonBreakdown);
   renderTurnChurnChart(data.turnStats);
-  renderContextLeverageChart(data.contextStats);
   // Trigger resize so charts render correctly after becoming visible.
   if (currentTab === "prompt-insights") {
     intentDonutChart?.resize();
     commandDonutChart?.resize();
     promptLengthScatterChart?.resize();
     turnChurnChart?.resize();
-    contextLeverageChart?.resize();
   }
 }
 
@@ -960,8 +882,6 @@ function render(payload: DashboardPayload): void {
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderContextFreshness(payload.freshness, payload.refreshAnalysis);
-  renderContextRichness(payload.contextRichness);
-  renderContextCorrelation(payload.contextRichness);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
