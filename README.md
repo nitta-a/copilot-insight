@@ -54,6 +54,7 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 | `copilot-insight.cliLogPath` | `""` | Path to the GitHub Copilot CLI session-state directory |
 | `copilot-insight.cliRoiMinutesPerInteraction` | `30` | Estimated minutes saved per GitHub Copilot CLI interaction |
 | `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | Fallback model name label for CLI interactions |
+| `copilot-insight.enableTimingLogs` | `false` | Emit detailed `[TIMING]` entries to the Output panel during log parsing (intended for troubleshooting slow parses) |
 
 ### Installing from VSIX (local build)
 
@@ -129,6 +130,7 @@ AIが本当に開発を高速化しているのかを推測するのはやめま
 | `copilot-insight.cliLogPath` | `""` | GitHub Copilot CLI セッション状態ディレクトリのパス |
 | `copilot-insight.cliRoiMinutesPerInteraction` | `30` | CLI インタラクション 1 回あたりの推定節約時間 (分) |
 | `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | CLI ログからモデル名を検出できない場合のフォールバック |
+| `copilot-insight.enableTimingLogs` | `false` | ログ解析中に詳細な `[TIMING]` エントリを Output パネルへ出力する（低速な解析のトラブルシューティング用） |
 
 ### VSIX からのインストール (ローカルビルド)
 

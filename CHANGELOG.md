@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.0] - 2026-03-25
+
+### Added
+- ⏱️ **Timing diagnostics** — new `copilot-insight.enableTimingLogs` setting (default: `false`) emits detailed `[TIMING]` entries to the **Copilot Insight** Output panel during log parsing; each phase is individually timed (session discovery, per-file parse, CLI stats, DB operations, advanced-metrics computation) so slow parses can be pinpointed quickly; slow files exceeding 100 ms are flagged with their path and whether the native or JS parser was used
+
+### Changed
+- ♻️ **Shared `OutputChannel` singleton** — `getOutputChannel()` extracted into a new `src/log/logChannel.ts` module (`getLogChannel()` / `isTimingLogsEnabled()`) shared by `copilotLogParser.ts`, `logFileReader.ts`, and `extension.ts`, eliminating duplicate channel-creation logic
+- ⚡ **`computeTrueAcceptanceRate` — O(A×C) → O(C log C + A log C)** — `textChanges` array is now pre-sorted by timestamp and a binary-search locates the window start index for each accepted completion, eliminating the inner linear scan over all change events; `Date` parsing is performed once per event rather than on every comparison
+- ⚡ **`computeVelocityAnalysis` — sliding-window optimisation** — event timestamps are pre-computed and the sorted event list is shared across all KPM windows; a single left-boundary pointer advances monotonically instead of filtering the full event list on every iteration; `windowMs / 60_000` is hoisted out of the loop
+- ⚡ **`parseLogDirectory` / `parseRemoteExthostLog` result shape** — `parseLogFile` now returns `{ success, elapsedMs, usedNative }` instead of a bare `boolean`; callers use the structured result to count parsed files and, when timing is enabled, surface slow-file warnings per directory
+
 ## [1.0.26] - 2026-03-24
 
 ### Changed
