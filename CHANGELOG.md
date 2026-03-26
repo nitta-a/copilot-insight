@@ -3,6 +3,12 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+
+## [1.1.4] - 2026-03-26
+
+### Changed
+- 🔢 **Version normalised to proper semver** — the intermediate `1.1.3-1` patch identifier has been folded into the `1.1.4` release so that the VS Code Marketplace, `npm version`, and the GitHub release workflow all see a clean, valid semver string
+
 ## [1.1.3-1] - 2026-03-26
 
 ### Fixed
