@@ -526,7 +526,7 @@ async function exportFullDashboard(): Promise<void> {
     return;
   }
   if (currentTab === "prompt-insights" && !promptInsightsLoaded) {
-    showExportError('Please click \"Load Prompt Insights\" to load data before exporting.');
+    showExportError("Prompt Insights data is not yet available. Please ensure the data has loaded before exporting.");
     return;
   }
 
@@ -571,6 +571,12 @@ const VALID_TABS = new Set(["overview", "health", "flow", "prompt-insights", "se
 function onTabChange(tabId: string): void {
   currentTab = tabId;
   vscode.setState({ currentTab: tabId });
+
+  // Auto-load Prompt Insights the first time the tab becomes active.
+  if (tabId === "prompt-insights" && !promptInsightsLoaded && !pendingTabRequests.has("promptInsights")) {
+    pendingTabRequests.add("promptInsights");
+    requestTabData("promptInsights");
+  }
 
   // Trigger resize so Chart.js renders correctly after becoming visible.
   if (tabId === "health" && timelineChart) {
@@ -760,7 +766,6 @@ function renderThreadDetail(): void {
 // ---------------------------------------------------------------------------
 
 const LOAD_BTN_LABELS: Record<string, string> = {
-  "db-btn-load-prompt-insights": "📊 Load Prompt Insights",
   "db-btn-load-sessions": "📂 Load Sessions",
   "db-btn-load-historical": "🕐 Load Historical Data",
 };
@@ -860,7 +865,6 @@ function attachLazyLoadButton(btnId: string, tab: "promptInsights" | "sessions",
 }
 
 function setupLazyLoadButtons(): void {
-  attachLazyLoadButton("db-btn-load-prompt-insights", "promptInsights", () => promptInsightsLoaded);
   attachLazyLoadButton("db-btn-load-sessions", "sessions", () => sessionsLoaded);
 
   document.getElementById("db-btn-load-historical")?.addEventListener("click", () => {
@@ -908,6 +912,21 @@ function render(payload: DashboardPayload): void {
   allSessionDetails.clear();
   sessionLoadQueue.length = 0;
   isBackgroundLoading = false;
+
+  // Reset Prompt Insights DOM to spinner state so it reloads on next activation.
+  const piLazy = document.getElementById("db-prompt-insights-lazy");
+  const piContent = document.getElementById("db-prompt-insights-content");
+  if (piLazy) {
+    piLazy.style.display = "";
+  }
+  if (piContent) {
+    piContent.style.display = "none";
+  }
+  // If already on the Prompt Insights tab, trigger an immediate reload.
+  if (currentTab === "prompt-insights") {
+    pendingTabRequests.add("promptInsights");
+    requestTabData("promptInsights");
+  }
 }
 
 // ---------------------------------------------------------------------------
