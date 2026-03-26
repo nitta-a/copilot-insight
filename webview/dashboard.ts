@@ -522,7 +522,7 @@ async function exportFullDashboard(): Promise<void> {
 
   // Guard: lazy-loaded tabs must have their data visible before capturing.
   if (currentTab === "sessions" && !sessionsLoaded) {
-    showExportError('Please click \"Load Sessions\" to load session data before exporting.');
+    showExportError("Sessions data has not yet loaded. Please switch to the Sessions tab to load the data before exporting.");
     return;
   }
   if (currentTab === "prompt-insights" && !promptInsightsLoaded) {
@@ -576,6 +576,12 @@ function onTabChange(tabId: string): void {
   if (tabId === "prompt-insights" && !promptInsightsLoaded && !pendingTabRequests.has("promptInsights")) {
     pendingTabRequests.add("promptInsights");
     requestTabData("promptInsights");
+  }
+
+  // Auto-load Sessions the first time the tab becomes active.
+  if (tabId === "sessions" && !sessionsLoaded && !pendingTabRequests.has("sessions")) {
+    pendingTabRequests.add("sessions");
+    requestTabData("sessions");
   }
 
   // Trigger resize so Chart.js renders correctly after becoming visible.
@@ -766,7 +772,6 @@ function renderThreadDetail(): void {
 // ---------------------------------------------------------------------------
 
 const LOAD_BTN_LABELS: Record<string, string> = {
-  "db-btn-load-sessions": "📂 Load Sessions",
   "db-btn-load-historical": "🕐 Load Historical Data",
 };
 
@@ -847,26 +852,7 @@ function requestTabData(tab: "promptInsights" | "sessions"): void {
   vscode.postMessage({ type: "requestTabData", tab } satisfies WebviewToHostMessage);
 }
 
-/**
- * Attach a click handler to a lazy-load button that:
- * 1. Guards against duplicate in-flight requests.
- * 2. Shows a loading spinner while the request is pending.
- * 3. Posts the requestTabData message to the host.
- */
-function attachLazyLoadButton(btnId: string, tab: "promptInsights" | "sessions", isLoaded: () => boolean): void {
-  document.getElementById(btnId)?.addEventListener("click", () => {
-    if (isLoaded() || pendingTabRequests.has(tab)) {
-      return;
-    }
-    pendingTabRequests.add(tab);
-    setLoadButtonState(btnId, true);
-    requestTabData(tab);
-  });
-}
-
 function setupLazyLoadButtons(): void {
-  attachLazyLoadButton("db-btn-load-sessions", "sessions", () => sessionsLoaded);
-
   document.getElementById("db-btn-load-historical")?.addEventListener("click", () => {
     if (historicalDataPending) {
       return;
@@ -926,6 +912,21 @@ function render(payload: DashboardPayload): void {
   if (currentTab === "prompt-insights") {
     pendingTabRequests.add("promptInsights");
     requestTabData("promptInsights");
+  }
+
+  // Reset Sessions DOM to spinner state so it reloads on next activation.
+  const sessionsLazy = document.getElementById("db-sessions-lazy");
+  const sessionsContent = document.getElementById("db-sessions-content");
+  if (sessionsLazy) {
+    sessionsLazy.style.display = "";
+  }
+  if (sessionsContent) {
+    sessionsContent.style.display = "none";
+  }
+  // If already on the Sessions tab, trigger an immediate reload.
+  if (currentTab === "sessions") {
+    pendingTabRequests.add("sessions");
+    requestTabData("sessions");
   }
 }
 

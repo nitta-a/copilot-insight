@@ -485,8 +485,7 @@ export function getHtmlContent(
       <div class="db-panel-view" id="db-tab-sessions">
         <div style="width:100%">
           <div id="db-sessions-lazy" class="db-lazy-placeholder">
-            <p>Click to load Sessions data.</p>
-            <button id="db-btn-load-sessions" class="db-load-btn">📂 Load Sessions</button>
+            <p><span class="db-loading-spinner"></span>Loading sessions...</p>
           </div>
           <div id="db-sessions-content" style="display:none">
             <div class="db-session-layout">
