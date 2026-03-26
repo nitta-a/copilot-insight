@@ -3,6 +3,13 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.1.3-1] - 2026-03-26
+
+### Fixed
+- 🦀 **Native parser path corrected** — the `require.resolve` path in `nativeBridge.ts` was updated from `../../native-parser/` to `../native-parser/`, matching the actual location relative to the bundled `dist/extension.js`; this makes the NAPI-RS native addon load correctly at runtime in the packaged extension
+- 📋 **Native parser binding loader** — added `native-parser/index.js`, a platform-aware binding loader that selects the correct pre-built `.node` file for the current OS and architecture (Windows x64, macOS x64/arm64, Linux x64/arm64 with glibc or musl)
+- 🔍 **Native module load diagnostics** — `getNativeLoadError()` exported from `nativeBridge.ts` exposes the error message when the native addon fails to load; `extension.ts` now logs `[native-parser] loaded` or `[native-parser] unavailable: <reason>` to the Output panel on activation, making it easy to diagnose missing addon builds
+
 ## [1.1.3] - 2026-03-26
 
 ### Reverted
