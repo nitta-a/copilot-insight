@@ -9,7 +9,7 @@ import {
   parseLogChunkNative,
   parseLogFileNative,
   resetNativeModule,
-  setNativeModuleLoaderForTest,
+  setNativeModuleLoaderForTesting,
 } from "../../src/log/nativeBridge";
 
 type ShowWarningMessage = typeof vscode.window.showWarningMessage;
@@ -76,6 +76,7 @@ const sampleReportInput: NativeReportInput = {
 suite("nativeBridge", () => {
   let originalShowWarningMessage: ShowWarningMessage;
   let originalConsoleWarn: typeof console.warn;
+  let logChannelModule: typeof import("../../src/log/logChannel");
   let originalGetLogChannel: typeof import("../../src/log/logChannel").getLogChannel;
   let warningMessages: string[];
   let consoleWarnings: string[];
@@ -83,14 +84,14 @@ suite("nativeBridge", () => {
 
   setup(() => {
     resetNativeModule();
-    setNativeModuleLoaderForTest(undefined);
+    setNativeModuleLoaderForTesting(undefined);
     warningMessages = [];
     consoleWarnings = [];
     channelMessages = [];
 
     originalShowWarningMessage = vscode.window.showWarningMessage;
     originalConsoleWarn = console.warn;
-    const logChannelModule = require("../../src/log/logChannel") as typeof import("../../src/log/logChannel");
+    logChannelModule = require("../../src/log/logChannel") as typeof import("../../src/log/logChannel");
     originalGetLogChannel = logChannelModule.getLogChannel;
 
     console.warn = (...args: unknown[]) => {
@@ -114,19 +115,18 @@ suite("nativeBridge", () => {
   });
 
   teardown(() => {
-    const logChannelModule = require("../../src/log/logChannel") as typeof import("../../src/log/logChannel");
     console.warn = originalConsoleWarn;
     Object.defineProperty(vscode.window, "showWarningMessage", {
       configurable: true,
       value: originalShowWarningMessage,
     });
     logChannelModule.getLogChannel = originalGetLogChannel;
-    setNativeModuleLoaderForTest(undefined);
+    setNativeModuleLoaderForTesting(undefined);
     resetNativeModule();
   });
 
   test("loadNativeModule warns only once when native addon loading fails", () => {
-    setNativeModuleLoaderForTest(() => {
+    setNativeModuleLoaderForTesting(() => {
       throw new Error("boom");
     });
 
@@ -140,8 +140,7 @@ suite("nativeBridge", () => {
       "Rust native parser failed to load. Falling back to slow JS parser. Please run 'npm run build:native'.",
     );
     assert.strictEqual(consoleWarnings.length, 1);
-    assert.match(consoleWarnings[0] ?? "", /Rust native parser failed to load/);
-    assert.match(consoleWarnings[0] ?? "", /boom/);
+    assert.match(consoleWarnings[0] ?? "", /Rust native parser failed to load.*boom/s);
     assert.strictEqual(channelMessages.length, 1);
     assert.match(channelMessages[0] ?? "", /\[native-parser\]/);
     assert.match(channelMessages[0] ?? "", /boom/);
@@ -149,7 +148,7 @@ suite("nativeBridge", () => {
   });
 
   test("parse helpers use the loaded native module", () => {
-    setNativeModuleLoaderForTest(() => ({
+    setNativeModuleLoaderForTesting(() => ({
       parseLogChunk: () => sampleParseResult,
       parseLogFileNative: () => sampleParseResult,
       generateMarkdownReportNative: () => "# report",
@@ -187,7 +186,7 @@ suite("nativeBridge", () => {
   });
 
   test("resetNativeModule clears cached failure state", () => {
-    setNativeModuleLoaderForTest(() => {
+    setNativeModuleLoaderForTesting(() => {
       throw new Error("boom");
     });
 

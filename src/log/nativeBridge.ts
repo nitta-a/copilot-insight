@@ -139,7 +139,7 @@ export function getNativeLoadError(): string | undefined {
   return nativeLoadError;
 }
 
-export function setNativeModuleLoaderForTest(loader: (() => NativeModule) | undefined): void {
+export function setNativeModuleLoaderForTesting(loader: (() => NativeModule) | undefined): void {
   nativeModuleLoader = loader;
   resetNativeModule();
 }
