@@ -346,6 +346,14 @@ export class CopilotUsagePanel {
       const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
       this._stats = fullStats;
       this._advanced = { ...this._advanced, hasMoreData: false };
+      // Prewarm the chat-session cache in the background. The full log parse has
+      // just released disk I/O, so this scan runs without contention. By the time
+      // the user opens the Sessions or Prompt Insights tab the cache will be warm.
+      if (this._advanced.logBaseDir) {
+        void readWorkspaceChatSessions(this._advanced.logBaseDir, {
+          storagePath: this._advanced.globalStoragePath,
+        });
+      }
       await this._update();
     } catch (err) {
       vscode.window.showWarningMessage(
