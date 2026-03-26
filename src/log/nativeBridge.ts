@@ -116,6 +116,7 @@ interface NativeModule {
 
 /** Cached module reference — `undefined` means "not yet attempted". */
 let nativeModule: NativeModule | null | undefined;
+let nativeModuleLoader: (() => NativeModule) | undefined;
 
 /**
  * Try to load the native `.node` module. Returns the module on success, or
@@ -125,6 +126,10 @@ let nativeModule: NativeModule | null | undefined;
  * The result is cached so that subsequent calls are essentially free.
  */
 let nativeLoadError: string | undefined;
+let nativeLoadWarningShown = false;
+
+const NATIVE_LOAD_WARNING =
+  "Rust native parser failed to load. Falling back to slow JS parser. Please run 'npm run build:native'.";
 
 /**
  * Returns the error message from the last failed `loadNativeModule()` call,
@@ -134,25 +139,60 @@ export function getNativeLoadError(): string | undefined {
   return nativeLoadError;
 }
 
+export function setNativeModuleLoaderForTest(loader: (() => NativeModule) | undefined): void {
+  nativeModuleLoader = loader;
+  resetNativeModule();
+}
+
+function warnNativeLoadFailureOnce(errorMessage: string): void {
+  if (nativeLoadWarningShown) {
+    return;
+  }
+
+  nativeLoadWarningShown = true;
+  const detailedMessage = `${NATIVE_LOAD_WARNING} ${errorMessage}`;
+  console.warn(detailedMessage);
+
+  try {
+    const { getLogChannel } = require("./logChannel") as typeof import("./logChannel");
+    getLogChannel().appendLine(`[native-parser] ${detailedMessage}`);
+  } catch {
+    // Best-effort only: warning should not break non-extension contexts.
+  }
+
+  try {
+    const vscode = require("vscode") as typeof import("vscode");
+    void vscode.window.showWarningMessage(NATIVE_LOAD_WARNING);
+  } catch {
+    // Best-effort only: warning should not break non-extension contexts.
+  }
+}
+
 export function loadNativeModule(): NativeModule | null {
   if (nativeModule !== undefined) {
     return nativeModule;
   }
 
   try {
-    // The NAPI-RS output lives at <project-root>/native-parser/.
-    // From dist/extension.js (one level below the project root) the correct
-    // relative path is ../native-parser/, not ../../native-parser/.
-    // We use `require()` instead of a static `import` because:
-    //  1. The `.node` artefact may not exist yet (optional build step).
-    //  2. Dynamic `require()` lets the extension start gracefully even when
-    //     the native addon has not been compiled.
-    const nativePath = require.resolve("../native-parser/");
-    const mod = require(nativePath) as NativeModule;
+    const mod =
+      nativeModuleLoader?.() ??
+      (() => {
+        // The NAPI-RS output lives at <project-root>/native-parser/.
+        // From dist/extension.js (one level below the project root) the correct
+        // relative path is ../native-parser/, not ../../native-parser/.
+        // We use `require()` instead of a static `import` because:
+        //  1. The `.node` artefact may not exist yet (optional build step).
+        //  2. Dynamic `require()` lets the extension start gracefully even when
+        //     the native addon has not been compiled.
+        const nativePath = require.resolve("../native-parser/");
+        return require(nativePath) as NativeModule;
+      })();
+    nativeLoadError = undefined;
     nativeModule = mod;
     return nativeModule;
   } catch (err) {
     nativeLoadError = err instanceof Error ? err.message : String(err);
+    warnNativeLoadFailureOnce(nativeLoadError);
     nativeModule = null;
     return null;
   }
@@ -223,4 +263,6 @@ export function generateMarkdownReportNative(input: NativeReportInput, period: s
  */
 export function resetNativeModule(): void {
   nativeModule = undefined;
+  nativeLoadError = undefined;
+  nativeLoadWarningShown = false;
 }
