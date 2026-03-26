@@ -4,6 +4,12 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.1] - 2026-03-26
+
+### Changed
+- ⚡ **Prompt Insights tab — lazy auto-load** — the manual "Load Prompt Insights" button has been removed; the tab now auto-loads its data the first time it is activated, matching the UX pattern of the other tabs and eliminating an unnecessary extra click
+- ⚡ **Sessions tab — lazy auto-load** — the manual "Load Sessions" button has been removed; session data is fetched automatically when the Sessions tab is first opened, keeping the experience consistent and reducing friction when drilling into chat threads
+
 ## [1.1.0] - 2026-03-25
 
 ### Added
