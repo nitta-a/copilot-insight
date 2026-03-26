@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.2] - 2026-03-26
+
+### Fixed
+- 🔒 **Serialized concurrent log parses** — a new `_parseInFlight` mutex prevents two simultaneous `parseCopilotLogs` calls (e.g. initial limited parse followed immediately by an auto-triggered full load) from competing for disk I/O; on network or FUSE filesystems simultaneous parses were inflating individual file parse times by 40–60×
+- 📂 **Incorrect native-module path from bundled extension** — `loadNativeModule()` was resolving `../../native-parser/` which, from `dist/extension.js`, pointed one level above the project root; corrected to `../native-parser/` so the compiled NAPI-RS addon is found correctly at runtime
+- 🗓️ **`readWorkspaceChatSessions` now waits for any in-flight log parse** — the workspace-storage scan defers until `parseCopilotLogs` has finished, preventing the two I/O-heavy operations from running concurrently and causing slow scans
+
+### Added
+- 🔍 **Native-parser diagnostics on startup** — extension activation logs a `[native-parser] loaded` or `[native-parser] unavailable: <reason>` line to the **Copilot Insight** Output panel so the runtime parser path is always visible without requiring a manual parse
+- 🏎️ **Background chat-session cache prewarm** — after a full log parse completes, `CopilotUsagePanel` proactively warms the chat-session cache in the background; the Sessions and Prompt Insights tabs become responsive immediately the first time they are opened
+
 ## [1.1.1] - 2026-03-26
 
 ### Changed
