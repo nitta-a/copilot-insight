@@ -1,3 +1,5 @@
+import type { SessionActor, SessionPhase, SessionSignalType } from "../events/eventSchema";
+
 /**
  * Native bridge — thin wrapper around the NAPI-RS compiled native addon.
  *
@@ -18,6 +20,25 @@ export interface NativeContextRichness {
   totalPromptChars: number;
   /** Number of log entries that carried a non-empty prompt_text field. */
   promptCount: number;
+}
+
+export interface NativeSessionSignal {
+  timestamp: string;
+  signalType: SessionSignalType;
+  actor: SessionActor;
+  phase: SessionPhase;
+  intent: string;
+  rawText: string;
+  modelName: string;
+  latencyMs: number;
+  success: boolean;
+  sessionId: string;
+}
+
+export interface NativeChatSessionState {
+  sessionId: string;
+  turnCount: number;
+  isAccepted: boolean;
 }
 
 export interface NativeParseResult {
@@ -64,6 +85,10 @@ export interface NativeParseResult {
    * Each value is a two-element array: `[promptTokens, completionTokens]`.
    */
   tokensByModel: Record<string, number[]>;
+  /** Session-level signal events extracted by the native parser. */
+  sessionSignals: NativeSessionSignal[];
+  /** Per-chat-session turn/acceptance state extracted by the native parser. */
+  chatSessionStates: Record<string, NativeChatSessionState>;
 }
 
 /**

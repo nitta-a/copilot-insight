@@ -1,8 +1,10 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 import {
+  type NativeChatSessionState,
   type NativeParseResult,
   type NativeReportInput,
+  type NativeSessionSignal,
   generateMarkdownReportNative,
   getNativeLoadError,
   loadNativeModule,
@@ -13,6 +15,25 @@ import {
 } from "../../src/log/nativeBridge";
 
 type ShowWarningMessage = typeof vscode.window.showWarningMessage;
+
+const sampleSessionSignal: NativeSessionSignal = {
+  timestamp: "2026-03-26T12:00:00Z",
+  signalType: "plan-proposal",
+  actor: "ai",
+  phase: "planning",
+  intent: "agent/plan",
+  rawText: "agent/plan",
+  modelName: "gpt-4o",
+  latencyMs: 0,
+  success: true,
+  sessionId: "vscode-session-1",
+};
+
+const sampleChatSessionState: NativeChatSessionState = {
+  sessionId: "chat-session-1",
+  turnCount: 2,
+  isAccepted: true,
+};
 
 const sampleParseResult: NativeParseResult = {
   totalShown: 10,
@@ -38,6 +59,8 @@ const sampleParseResult: NativeParseResult = {
   totalPromptTokens: 1500,
   totalCompletionTokens: 200,
   tokensByModel: { "gpt-4o": [1200, 150] },
+  sessionSignals: [sampleSessionSignal],
+  chatSessionStates: { [sampleChatSessionState.sessionId]: sampleChatSessionState },
 };
 
 const sampleReportInput: NativeReportInput = {
@@ -183,6 +206,8 @@ suite("nativeBridge", () => {
     assert.strictEqual(sampleParseResult.executedPlanCount, 1);
     assert.strictEqual(sampleParseResult.browserToolsByType["screenshot"], 3);
     assert.strictEqual(sampleParseResult.errorsByType["HTTP 429"], 1);
+    assert.strictEqual(sampleParseResult.sessionSignals[0]?.intent, "agent/plan");
+    assert.strictEqual(sampleParseResult.chatSessionStates["chat-session-1"]?.turnCount, 2);
   });
 
   test("resetNativeModule clears cached failure state", () => {

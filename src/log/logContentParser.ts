@@ -135,6 +135,34 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     existing.completionTokens += ct ?? 0;
     ctx.tokensByModel.set(model, existing);
   }
+
+  for (const signal of native.sessionSignals ?? []) {
+    ctx.sessionSignals.push({
+      eventType: "sessionSignal",
+      sessionId: signal.sessionId || ctx.currentSessionId,
+      languageId: "",
+      timestamp: signal.timestamp,
+      signalType: signal.signalType,
+      actor: signal.actor,
+      phase: signal.phase,
+      intent: signal.intent,
+      rawText: signal.rawText,
+      modelName: signal.modelName,
+      latencyMs: signal.latencyMs,
+      success: signal.success,
+    });
+  }
+
+  for (const [sessionId, state] of Object.entries(native.chatSessionStates ?? {})) {
+    const existing = ctx.chatSessionStates.get(sessionId) ?? {
+      sessionId,
+      turnCount: 0,
+      isAccepted: false,
+    };
+    existing.turnCount += state.turnCount;
+    existing.isAccepted = existing.isAccepted || state.isAccepted;
+    ctx.chatSessionStates.set(sessionId, existing);
+  }
 }
 
 /**
