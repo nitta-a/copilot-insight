@@ -8,6 +8,9 @@
  * working with the JS readline fallback.
  */
 
+import * as vscode from "vscode";
+import { getLogChannel } from "./logChannel";
+
 /**
  * Shape returned to callers from the native module.
  * Field names use camelCase, which NAPI-RS produces automatically from the
@@ -117,6 +120,9 @@ interface NativeModule {
 /** Cached module reference — `undefined` means "not yet attempted". */
 let nativeModule: NativeModule | null | undefined;
 
+/** Ensures the "native parser unavailable" warning is shown at most once per session. */
+let _nativeLoadWarningSent = false;
+
 /**
  * Try to load the native `.node` module. Returns the module on success, or
  * `null` when the package has not been built yet (or any other import error
@@ -141,6 +147,15 @@ export function loadNativeModule(): NativeModule | null {
     return nativeModule;
   } catch {
     nativeModule = null;
+    if (!_nativeLoadWarningSent) {
+      _nativeLoadWarningSent = true;
+      const msg =
+        "Rust native parser failed to load. Falling back to slow JS parser." +
+        " If you are developing this extension, run 'npm run build:native' to compile it." +
+        " If you installed the extension from the marketplace, please reinstall or file a bug report.";
+      getLogChannel().appendLine(`[warn] ${msg}`);
+      void vscode.window.showWarningMessage(msg);
+    }
     return null;
   }
 }
@@ -210,4 +225,5 @@ export function generateMarkdownReportNative(input: NativeReportInput, period: s
  */
 export function resetNativeModule(): void {
   nativeModule = undefined;
+  _nativeLoadWarningSent = false;
 }

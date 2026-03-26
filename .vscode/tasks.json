@@ -4,8 +4,20 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+            "type": "npm",
+            "script": "build:native",
+            "label": "npm: build:native",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "watch",
             "dependsOn": [
+                "npm: build:native",
                 "npm: watch:tsc",
                 "npm: watch:esbuild"
             ],
