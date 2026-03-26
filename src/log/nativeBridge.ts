@@ -124,6 +124,16 @@ let nativeModule: NativeModule | null | undefined;
  *
  * The result is cached so that subsequent calls are essentially free.
  */
+let nativeLoadError: string | undefined;
+
+/**
+ * Returns the error message from the last failed `loadNativeModule()` call,
+ * or `undefined` if the module loaded successfully or has not been attempted.
+ */
+export function getNativeLoadError(): string | undefined {
+  return nativeLoadError;
+}
+
 export function loadNativeModule(): NativeModule | null {
   if (nativeModule !== undefined) {
     return nativeModule;
@@ -131,15 +141,18 @@ export function loadNativeModule(): NativeModule | null {
 
   try {
     // The NAPI-RS output lives at <project-root>/native-parser/.
+    // From dist/extension.js (one level below the project root) the correct
+    // relative path is ../native-parser/, not ../../native-parser/.
     // We use `require()` instead of a static `import` because:
     //  1. The `.node` artefact may not exist yet (optional build step).
     //  2. Dynamic `require()` lets the extension start gracefully even when
     //     the native addon has not been compiled.
-    const nativePath = require.resolve("../../native-parser/");
+    const nativePath = require.resolve("../native-parser/");
     const mod = require(nativePath) as NativeModule;
     nativeModule = mod;
     return nativeModule;
-  } catch {
+  } catch (err) {
+    nativeLoadError = err instanceof Error ? err.message : String(err);
     nativeModule = null;
     return null;
   }
