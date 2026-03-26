@@ -102,37 +102,7 @@ export interface ParseCopilotLogsOptions {
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
 const MAX_LATENCY_SAMPLES = 10_000;
 
-/**
- * In-flight parseCopilotLogs promise. Serializes concurrent callers so they
- * don't compete for disk I/O — simultaneous parses inflate individual file
- * parse times by 40-60x on network or FUSE filesystems.
- *
- * Also consulted by readWorkspaceChatSessions to defer expensive workspace
- * storage scans until the log parse has released the filesystem.
- */
-let _parseInFlight: Promise<CopilotUsageStats> | null = null;
-
-/**
- * Parse Copilot log files, serializing concurrent invocations so that two
- * simultaneous parses (e.g. initial limited parse + auto-triggered loadMoreData)
- * do not saturate the filesystem. Each caller that arrives while a parse is
- * running waits for the current run to complete, then starts its own fresh run.
- */
 export async function parseCopilotLogs(
-  logUri: vscode.Uri,
-  options?: ParseCopilotLogsOptions,
-): Promise<CopilotUsageStats> {
-  while (_parseInFlight) {
-    await _parseInFlight.catch(() => {});
-  }
-  try {
-    return await (_parseInFlight = _parseCopilotLogsImpl(logUri, options));
-  } finally {
-    _parseInFlight = null;
-  }
-}
-
-async function _parseCopilotLogsImpl(
   logUri: vscode.Uri,
   options?: ParseCopilotLogsOptions,
 ): Promise<CopilotUsageStats> {
@@ -545,13 +515,6 @@ export async function readWorkspaceChatSessions(
       }
       return cached;
     }
-  }
-
-  // Yield to any concurrent log parse before reading workspace storage.
-  // Running both simultaneously saturates disk I/O and expands a ~5 s scan
-  // into a 90+ s one.
-  while (_parseInFlight) {
-    await _parseInFlight.catch(() => {});
   }
 
   const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);

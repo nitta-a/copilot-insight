@@ -7,7 +7,6 @@ import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { getSortedSessionDirs } from "./log/logFileReader";
-import { getNativeLoadError, loadNativeModule } from "./log/nativeBridge";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
 import {
   computeModelPerformance,
@@ -96,17 +95,6 @@ export function activate(context: vscode.ExtensionContext) {
   const statusBarTimer = setInterval(() => {
     statusBar.update(inlineTracker.stats);
   }, statusBarRefreshMs);
-
-  // Log native-parser availability for diagnostics (deferred so activation is non-blocking).
-  setImmediate(() => {
-    const channel = getLogChannel();
-    if (loadNativeModule()) {
-      channel.appendLine("[native-parser] loaded — using native Rust parser for log files");
-    } else {
-      const err = getNativeLoadError();
-      channel.appendLine(`[native-parser] unavailable${err ? `: ${err}` : ""} — using JS fallback`);
-    }
-  });
 
   const treeProvider = new CopilotUsageTreeProvider();
 
