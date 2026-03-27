@@ -3,6 +3,11 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.1.6] - 2026-03-27
+
+### Changed
+- 🚀 **Release workflow — GitHub Release trigger with pre-release support** — the `release.yml` CI workflow now triggers on the `published` event of a GitHub Release instead of a tag push; when the release is marked as a pre-release, `vsce publish --pre-release` is used automatically so pre-release builds reach the VS Code Marketplace correctly
+
 ## [1.1.3] - 2026-03-26
 
 ### Reverted
