@@ -1173,14 +1173,29 @@ pub fn parse_log_chunk(input: String) -> NativeStats {
 ///
 /// File I/O is performed entirely in Rust using `std::fs::File` and
 /// `BufReader`, eliminating the need for Node.js to read the file first.
-/// Returns a NAPI `Error` if the file cannot be opened.
+/// Returns a NAPI `Error` if the file cannot be opened or if the parser panics.
 #[napi]
 pub fn parse_log_file_native(path: String) -> napi::Result<NativeStats> {
     let file = File::open(&path)
         .map_err(|e| napi::Error::from_reason(format!("Failed to open {path}: {e}")))?;
+    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    eprintln!("[native-parser] start: {path} ({file_size} bytes)");
     let reader = BufReader::new(file);
     let lines = reader.lines().filter_map(|l| l.ok());
-    Ok(parse_lines(lines))
+    let path_for_err = path.clone();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Ok(parse_lines(lines)))).unwrap_or_else(
+        |e| {
+            let msg = e
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| e.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("unknown panic");
+            eprintln!("[native-parser] PANIC in {path_for_err}: {msg}");
+            Err(napi::Error::from_reason(format!(
+                "native parser panicked on {path_for_err}: {msg}"
+            )))
+        },
+    )
 }
 
 #[cfg(test)]

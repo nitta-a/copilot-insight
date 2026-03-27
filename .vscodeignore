@@ -14,4 +14,5 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+native-parser/target/**
 images/icon.svg

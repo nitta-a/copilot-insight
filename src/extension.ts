@@ -7,7 +7,7 @@ import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { getSortedSessionDirs } from "./log/logFileReader";
-import { loadNativeModule } from "./log/nativeBridge";
+import { getNativeLoadError, loadNativeModule } from "./log/nativeBridge";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
 import {
   computeModelPerformance,
@@ -107,6 +107,9 @@ export function activate(context: vscode.ExtensionContext) {
     const channel = getLogChannel();
     if (loadNativeModule()) {
       channel.appendLine("[native-parser] loaded — using native Rust parser for log files");
+    } else {
+      const err = getNativeLoadError();
+      channel.appendLine(`[native-parser] unavailable${err ? `: ${err}` : ""} — using JS fallback`);
     }
   });
 
@@ -169,6 +172,11 @@ export function activate(context: vscode.ExtensionContext) {
     const logBaseDir = resolveLogSearchPaths(context.logUri.fsPath).logBaseDir;
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
+    if (timingEnabled) {
+      channel.appendLine(
+        `[TIMING] getAdvancedMetrics start | trackedDates=${dates.length}, events=${allEvents.length}, sessionSignals=${stats.sessionSignals.length}, dbWorker=${dbWorker ? "enabled" : "disabled"}`,
+      );
+    }
     if (allEvents.length === 0) {
       if (timingEnabled) {
         channel.appendLine(
@@ -276,13 +284,17 @@ export function activate(context: vscode.ExtensionContext) {
         let phaseMs = performance.now();
         const { stats, hasMoreData } = await getInitialStats();
         if (timingEnabled) {
-          channel.appendLine(`[TIMING] getInitialStats: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+          channel.appendLine(
+            `[TIMING] getInitialStats: ${(performance.now() - phaseMs).toFixed(1)}ms | shown=${stats.totalShown}, accepted=${stats.totalAccepted}, chat=${stats.totalChat}, sessionSignals=${stats.sessionSignals.length}, hasMoreData=${hasMoreData}`,
+          );
         }
 
         phaseMs = performance.now();
         const advanced = await getAdvancedMetrics(stats);
         if (timingEnabled) {
-          channel.appendLine(`[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+          channel.appendLine(
+            `[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms | trueAcceptance=${advanced.trueAcceptance ? "yes" : "no"}, velocity=${advanced.velocity ? "yes" : "no"}, modelPerformance=${advanced.modelPerformance ? "yes" : "no"}, refreshAnalysis=${advanced.refreshAnalysis?.length ?? 0}`,
+          );
         }
 
         const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
@@ -294,6 +306,11 @@ export function activate(context: vscode.ExtensionContext) {
           "memories",
         );
         phaseMs = performance.now();
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] createOrShow start | userPromptsDir=${userPromptsDir}, copilotMemoryDir=${copilotMemoryDir}`,
+          );
+        }
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
           stats,

@@ -83,6 +83,15 @@ export class DbWorkerClientImpl implements DbWorkerClient {
       }
       this._pending.clear();
     });
+    this._worker.on("exit", (code) => {
+      if (code !== 0 && this._pending.size > 0) {
+        const err = new Error(`Worker exited with code ${code}`);
+        for (const entry of this._pending.values()) {
+          entry.reject(err);
+        }
+        this._pending.clear();
+      }
+    });
   }
 
   /** Send a typed message and wait for the correlated response. */

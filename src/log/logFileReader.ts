@@ -19,6 +19,40 @@ const MAX_REMOTE_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 /** For large exthost files, only parse the last TAIL_BYTES to reduce CPU time. */
 const TAIL_BYTES = 2 * 1024 * 1024;
 
+/**
+ * Maximum number of exthost directories to parse simultaneously inside
+ * `parseRemoteExthostLog`. Without this cap VS Code sessions with many exthost
+ * dirs (e.g. 20+ on long-running dev machines) spawn dozens of concurrent
+ * native-parser invocations that exhaust the extension host heap and cause a
+ * hard crash/restart. 4 dirs × ≤2 files = at most 8 concurrent native calls.
+ */
+const MAX_CONCURRENT_EXTHOST_DIRS = 4;
+
+/**
+ * Maximum number of VS Code session directories to process simultaneously in
+ * `parseCopilotLogs`. Each session spawns up to MAX_CONCURRENT_EXTHOST_DIRS
+ * concurrent native-parser calls, so the combined peak is
+ * MAX_CONCURRENT_SESSIONS × MAX_CONCURRENT_EXTHOST_DIRS × ≤2 files.
+ */
+export const MAX_CONCURRENT_SESSIONS = 2;
+
+/**
+ * Run `tasks` with at most `concurrency` running simultaneously.
+ * Results are returned in the same order as the input tasks.
+ */
+export async function runWithConcurrency<T>(tasks: ReadonlyArray<() => Promise<T>>, concurrency: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length) as T[];
+  let nextIdx = 0;
+  async function worker(): Promise<void> {
+    while (nextIdx < tasks.length) {
+      const idx = nextIdx++;
+      results[idx] = await tasks[idx]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
+  return results;
+}
+
 interface SessionDirOptions {
   limit?: number;
 }
@@ -166,8 +200,8 @@ export async function parseRemoteExthostLog(
 ): Promise<{ matchedDirs: number; parsedFiles: number }> {
   const timingEnabled = isTimingLogsEnabled();
   const exthostDirs = await findExthostDirs(sessionDir);
-  const countsByDir = await Promise.all(
-    exthostDirs.map(async (exthostDir) => {
+  const countsByDir = await runWithConcurrency(
+    exthostDirs.map((exthostDir) => async () => {
       const dirStartMs = timingEnabled ? performance.now() : 0;
       const entries = await fs.readdir(exthostDir, { withFileTypes: true }).catch(() => null);
       if (!entries) {
@@ -209,6 +243,7 @@ export async function parseRemoteExthostLog(
       }
       return parsed;
     }),
+    MAX_CONCURRENT_EXTHOST_DIRS,
   );
   const parsedFiles = countsByDir.reduce((sum, n) => sum + n, 0);
   ctx.logFilesFound += parsedFiles;

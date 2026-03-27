@@ -184,13 +184,6 @@ function warnNativeLoadFailureOnce(errorMessage: string): void {
   } catch {
     // Best-effort only: warning should not break non-extension contexts.
   }
-
-  try {
-    const vscode = require("vscode") as typeof import("vscode");
-    void vscode.window.showWarningMessage(NATIVE_LOAD_WARNING);
-  } catch {
-    // Best-effort only: warning should not break non-extension contexts.
-  }
 }
 
 export function loadNativeModule(): NativeModule | null {

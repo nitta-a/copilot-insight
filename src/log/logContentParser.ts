@@ -209,6 +209,12 @@ export interface ParseLogFileResult {
 export interface ParseLogFileOptions {
   /** When set, skip to this byte offset before parsing (tail-read optimisation). */
   startByte?: number;
+  /**
+   * When `true`, always use the JS readline path even if the native addon is
+   * available. Use this for log files whose content may trigger edge-case
+   * behaviour in the Rust parser, such as exthost system logs.
+   */
+  forceJs?: boolean;
 }
 
 /**
@@ -233,9 +239,9 @@ export async function parseLogFile(
   opts?: ParseLogFileOptions,
 ): Promise<ParseLogFileResult> {
   const startMs = performance.now();
-  // When a byte offset is supplied we must use the JS readline path because the
-  // native addon always reads from the beginning of the file.
-  const useNative = !opts?.startByte && loadNativeModule();
+  // When a byte offset is supplied, or when forceJs is set, use the JS readline
+  // path. The native addon always reads from the beginning of the file.
+  const useNative = !opts?.startByte && !opts?.forceJs && loadNativeModule();
   if (useNative) {
     try {
       const nativeResult = parseLogFileNative(filePath);
