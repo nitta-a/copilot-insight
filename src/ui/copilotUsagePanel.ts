@@ -388,9 +388,7 @@ export class CopilotUsagePanel {
       projectContextFiles,
     );
     if (timingEnabled) {
-      channel.appendLine(
-        `[TIMING] _update.buildPayload: ${(performance.now() - phaseMs).toFixed(1)}ms | timeline=${payload.timeline.length}, velocityPoints=${payload.velocityPoints.length}, evolutionData=${payload.evolutionData.length}, autonomousRatioByModel=${payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel.length}, projectContextFiles=${payload.projectContextFiles.length}`,
-      );
+      channel.appendLine(`[TIMING] _update.buildPayload: ${(performance.now() - phaseMs).toFixed(1)}ms`);
     }
 
     phaseMs = performance.now();

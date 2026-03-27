@@ -2,7 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
-  "version": "1.1.5",
+  "version": "1.1.3",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {
@@ -13,9 +13,7 @@
     "vscode": "^1.105.0",
     "node": ">=22.22.0"
   },
-  "categories": [
-    "Other"
-  ],
+  "categories": ["Other"],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
@@ -121,11 +119,7 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [
-            7,
-            14,
-            30
-          ],
+          "enum": [7, 14, 30],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.enableAdvancedAnalysis": {
@@ -160,18 +154,13 @@
     "mcpServers": {
       "copilot-insight": {
         "command": "node",
-        "args": [
-          "${extensionPath}/bin/mcp-server.js",
-          "--storage",
-          "${globalStoragePath}"
-        ]
+        "args": ["${extensionPath}/bin/mcp-server.js", "--storage", "${globalStoragePath}"]
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "postinstall": "npm run build:native || true",
-    "compile": "npm run build:native && npm run check-types && npm run lint && node esbuild.js",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",

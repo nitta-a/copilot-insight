@@ -539,7 +539,6 @@ export function maybeRecordFeatureSignals(raw: string, ctx: ParsingContext, time
     lower.includes("browsertool") ||
     lower.includes("browser-") ||
     lower.includes("browser_") ||
-    lower.includes("browser") ||
     lower.includes("screenshot");
   if (hasBrowserSignal) {
     recordBrowserToolSignal(ctx, raw, timestamp);
