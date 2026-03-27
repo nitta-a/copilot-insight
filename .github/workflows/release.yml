@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
 
 jobs:
   release:
@@ -24,7 +23,12 @@ jobs:
       - name: Build
         run: npm run package
 
-      - name: Publish pre-release to VS Code Marketplace
-        run: npm run vsce:publish
+      - name: Publish to VS Code Marketplace
+        run: |
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            npx vsce publish --pre-release -p $VSCE_PAT
+          else
+            npx vsce publish -p $VSCE_PAT
+          fi
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
