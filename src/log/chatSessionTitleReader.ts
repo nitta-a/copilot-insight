@@ -724,7 +724,7 @@ export async function readAllChatSessionData(workspaceStorageRoot: string): Prom
 
   const dirEntries = workspaceEntries.filter((e) => e.isDirectory());
 
-  // Process all workspaces with bounded concurrency (8) to avoid overwhelming
+  // Process all workspaces with bounded concurrency (4) to avoid overwhelming
   // cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
   const workspaceResults = await asyncPool(
     dirEntries.map((workspaceEntry) => async () => {
@@ -737,19 +737,20 @@ export async function readAllChatSessionData(workspaceStorageRoot: string): Prom
         return [] as (ChatSessionRecord | null)[];
       }
 
-      // Process all files in the same workspace in parallel.
-      return Promise.all(
-        files
-          .filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")))
-          .map((file) => {
-            const filePath = path.join(chatSessionsDir, file.name);
-            return file.name.endsWith(".jsonl")
-              ? parseJsonlChatSessionRecord(filePath, workspaceId)
-              : parseJsonChatSessionRecord(filePath, workspaceId);
-          }),
+      // Process files with bounded concurrency (4) to cap total concurrent I/O
+      // at 4 (outer) × 4 (inner) = 16 instead of unbounded Promise.all.
+      const filteredFiles = files.filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")));
+      return asyncPool(
+        filteredFiles.map((file) => () => {
+          const filePath = path.join(chatSessionsDir, file.name);
+          return file.name.endsWith(".jsonl")
+            ? parseJsonlChatSessionRecord(filePath, workspaceId)
+            : parseJsonChatSessionRecord(filePath, workspaceId);
+        }),
+        4,
       );
     }),
-    8,
+    4,
   );
 
   // Deduplicate by chatSessionId, keeping the most-recent lastMessageAt.

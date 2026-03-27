@@ -59,6 +59,8 @@ export class CopilotUsagePanel {
   private _dbWorker: DbWorkerClient | undefined;
   /** Guard against reading workspaceStorage chat sessions more than once. */
   private _chatSessionsLoaded = false;
+  /** In-flight promise returned by _ensureChatSessionsLoaded — deduplicates concurrent callers. */
+  private _chatSessionsLoadingPromise: Promise<void> | null = null;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -179,25 +181,33 @@ export class CopilotUsagePanel {
 
   /**
    * Read workspaceStorage chat session data once and cache it into `this._stats`.
-   * Idempotent — subsequent calls are no-ops.
+   * Idempotent — concurrent callers share the same in-flight promise so only one
+   * filesystem scan ever runs at a time.
    */
-  private async _ensureChatSessionsLoaded(): Promise<void> {
+  private _ensureChatSessionsLoaded(): Promise<void> {
     if (this._chatSessionsLoaded) {
-      return;
+      return Promise.resolve();
     }
     if (!this._advanced.logBaseDir) {
-      return;
+      return Promise.resolve();
     }
-    try {
-      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir, {
-        storagePath: this._advanced.globalStoragePath,
-      });
-      this._stats.chatSessionTitles = chatSessionTitles;
-      this._stats.chatSessions = chatSessions;
-    } catch {
-      // Non-fatal — workspace storage may not exist in all environments.
+    if (this._chatSessionsLoadingPromise) {
+      return this._chatSessionsLoadingPromise;
     }
-    this._chatSessionsLoaded = true;
+    this._chatSessionsLoadingPromise = (async () => {
+      try {
+        const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+          storagePath: this._advanced.globalStoragePath,
+        });
+        this._stats.chatSessionTitles = chatSessionTitles;
+        this._stats.chatSessions = chatSessions;
+      } catch {
+        // Non-fatal — workspace storage may not exist in all environments.
+      }
+      this._chatSessionsLoaded = true;
+      this._chatSessionsLoadingPromise = null;
+    })();
+    return this._chatSessionsLoadingPromise;
   }
 
   /**
@@ -342,6 +352,9 @@ export class CopilotUsagePanel {
     if (!this._advanced.logUri) {
       return;
     }
+    // Wait for any in-flight chat-session scan before starting the full
+    // log re-parse so both don't compete for filesystem I/O.
+    await this._ensureChatSessionsLoaded();
     try {
       const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
       this._stats = fullStats;

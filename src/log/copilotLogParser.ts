@@ -482,12 +482,16 @@ export async function loadMoreCopilotLogs(logUri: vscode.Uri): Promise<CopilotUs
  * calling `getSessionList()`.
  */
 export async function readWorkspaceChatSessions(
-  logBaseDir: string,
+  logBaseDir?: string,
   options?: { skipWindowsRoots?: boolean; storagePath?: string; cacheTtlMs?: number },
 ): Promise<{
   chatSessionTitles: ChatSessionTitleRecord[];
   chatSessions: ChatSessionRecord[];
 }> {
+  if (!logBaseDir) {
+    return { chatSessionTitles: [], chatSessions: [] };
+  }
+
   const channel = getLogChannel();
   const timingEnabled = isTimingLogsEnabled();
   const t0 = timingEnabled ? performance.now() : 0;

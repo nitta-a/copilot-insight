@@ -217,6 +217,18 @@ export async function parseRemoteExthostLog(
 
 export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {
   const terminalLogPath = path.join(sessionDir, "terminal.log");
+  // Fast existence check: avoid opening a readline stream for a missing file
+  // (~100-500ms per session when the file doesn't exist).
+  const exists = await fs.access(terminalLogPath).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) {
+    if (isTimingLogsEnabled()) {
+      getLogChannel().appendLine(`[TIMING] terminal.log: 0.0ms [skip] | missing: ${terminalLogPath}`);
+    }
+    return false;
+  }
   const result = await parseLogFile(terminalLogPath, ctx);
   if (result.success) {
     ctx.logFilesFound++;
