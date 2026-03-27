@@ -1,4 +1,5 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
+import { getLogChannel, isTimingLogsEnabled } from "../log/logChannel";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, UsageStatCount } from "../types";
 import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
@@ -968,10 +969,20 @@ function buildScriptTags(nonce: string, scriptUri: string, payload?: DashboardPa
   if (!nonce || !scriptUri || !payload) {
     return "";
   }
+  const timingEnabled = isTimingLogsEnabled();
+  const channel = timingEnabled ? getLogChannel() : null;
+  if (timingEnabled && channel) {
+    channel.appendLine(
+      `[TIMING] buildScriptTags start | timeline=${payload.timeline.length}, velocityPoints=${payload.velocityPoints.length}, evolutionData=${payload.evolutionData.length}, autonomousRatioByModel=${payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel.length}, projectContextFiles=${payload.projectContextFiles.length}`,
+    );
+  }
   // Escape sequences that could break out of a <script> block:
   // - `</` → `<\/`  (prevent premature </script>)
   // - `<!--` → `<\!--`  (prevent HTML comment injection)
   const json = JSON.stringify(payload).replace(/<\//g, "<\\/").replace(/<!--/g, "<\\!--");
+  if (timingEnabled && channel) {
+    channel.appendLine(`[TIMING] buildScriptTags jsonLength: ${Buffer.byteLength(json, "utf8")} bytes`);
+  }
   return `<script nonce="${nonce}">window.__dashboardData=${json};</script>
 <script nonce="${nonce}" src="${scriptUri}"></script>`;
 }

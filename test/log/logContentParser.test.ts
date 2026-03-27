@@ -12,6 +12,7 @@ import {
   processJsonEntry,
   tryParseJsonLogLine,
 } from "../../src/log/logContentParser";
+import { resetNativeModule, setNativeModuleLoaderForTesting } from "../../src/log/nativeBridge";
 import type { ParsingContext } from "../../src/types";
 
 function makeEmptyStats(): ParsingContext {
@@ -97,6 +98,11 @@ function makeEmptyStats(): ParsingContext {
 }
 
 suite("logContentParser", () => {
+  teardown(() => {
+    setNativeModuleLoaderForTesting(undefined);
+    resetNativeModule();
+  });
+
   suite("incrementStatCount", () => {
     test("increments shown count for new key", () => {
       const map = new Map();
@@ -307,6 +313,88 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.totalPromptTokens, 0);
       assert.strictEqual(stats.totalCompletionTokens, 0);
       assert.strictEqual(stats.tokensByModel.size, 0);
+    });
+  });
+
+  test("parseLogContent merges native session signals and chat session states", async () => {
+    const stats = makeEmptyStats();
+    stats.currentSessionId = "vscode-session-fallback";
+    stats.chatSessionStates.set("chat-session-1", {
+      sessionId: "chat-session-1",
+      turnCount: 1,
+      isAccepted: false,
+    });
+
+    setNativeModuleLoaderForTesting(() => ({
+      parseLogChunk: () => ({
+        totalShown: 0,
+        totalAccepted: 0,
+        totalChat: 0,
+        subagentRequests: 0,
+        planCount: 0,
+        byModelShown: {},
+        byModelAccepted: {},
+        byDate: {},
+        byHour: {},
+        latencies: [],
+        byContextSource: {},
+        contextRichness: { totalPromptChars: 0, promptCount: 0 },
+        autonomousDurationMs: 0,
+        subagentLoops: 0,
+        executedPlanCount: 0,
+        browserToolsByType: {},
+        errorsByType: {},
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0,
+        tokensByModel: {},
+        sessionSignals: [
+          {
+            timestamp: "2026-03-26T12:00:00Z",
+            signalType: "plan-proposal",
+            actor: "ai",
+            phase: "planning",
+            intent: "agent/plan",
+            rawText: "agent/plan",
+            modelName: "gpt-4o",
+            latencyMs: 0,
+            success: true,
+            sessionId: "",
+          },
+        ],
+        chatSessionStates: {
+          "chat-session-1": {
+            sessionId: "chat-session-1",
+            turnCount: 2,
+            isAccepted: true,
+          },
+          "chat-session-2": {
+            sessionId: "chat-session-2",
+            turnCount: 1,
+            isAccepted: false,
+          },
+        },
+      }),
+      parseLogFileNative: () => {
+        throw new Error("not used");
+      },
+      generateMarkdownReportNative: () => "",
+    }));
+
+    await parseLogContent("ignored because native parser is mocked", stats);
+
+    assert.strictEqual(stats.sessionSignals.length, 1);
+    assert.strictEqual(stats.sessionSignals[0]?.sessionId, "vscode-session-fallback");
+    assert.strictEqual(stats.sessionSignals[0]?.signalType, "plan-proposal");
+
+    assert.deepStrictEqual(stats.chatSessionStates.get("chat-session-1"), {
+      sessionId: "chat-session-1",
+      turnCount: 3,
+      isAccepted: true,
+    });
+    assert.deepStrictEqual(stats.chatSessionStates.get("chat-session-2"), {
+      sessionId: "chat-session-2",
+      turnCount: 1,
+      isAccepted: false,
     });
   });
 

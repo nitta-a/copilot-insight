@@ -135,6 +135,34 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     existing.completionTokens += ct ?? 0;
     ctx.tokensByModel.set(model, existing);
   }
+
+  for (const signal of native.sessionSignals ?? []) {
+    ctx.sessionSignals.push({
+      eventType: "sessionSignal",
+      sessionId: signal.sessionId || ctx.currentSessionId,
+      languageId: "",
+      timestamp: signal.timestamp,
+      signalType: signal.signalType,
+      actor: signal.actor,
+      phase: signal.phase,
+      intent: signal.intent,
+      rawText: signal.rawText,
+      modelName: signal.modelName,
+      latencyMs: signal.latencyMs,
+      success: signal.success,
+    });
+  }
+
+  for (const [sessionId, state] of Object.entries(native.chatSessionStates ?? {})) {
+    const existing = ctx.chatSessionStates.get(sessionId) ?? {
+      sessionId,
+      turnCount: 0,
+      isAccepted: false,
+    };
+    existing.turnCount += state.turnCount;
+    existing.isAccepted = existing.isAccepted || state.isAccepted;
+    ctx.chatSessionStates.set(sessionId, existing);
+  }
 }
 
 /**
@@ -181,6 +209,12 @@ export interface ParseLogFileResult {
 export interface ParseLogFileOptions {
   /** When set, skip to this byte offset before parsing (tail-read optimisation). */
   startByte?: number;
+  /**
+   * When `true`, always use the JS readline path even if the native addon is
+   * available. Use this for log files whose content may trigger edge-case
+   * behaviour in the Rust parser, such as exthost system logs.
+   */
+  forceJs?: boolean;
 }
 
 /**
@@ -205,9 +239,9 @@ export async function parseLogFile(
   opts?: ParseLogFileOptions,
 ): Promise<ParseLogFileResult> {
   const startMs = performance.now();
-  // When a byte offset is supplied we must use the JS readline path because the
-  // native addon always reads from the beginning of the file.
-  const useNative = !opts?.startByte && loadNativeModule();
+  // When a byte offset is supplied, or when forceJs is set, use the JS readline
+  // path. The native addon always reads from the beginning of the file.
+  const useNative = !opts?.startByte && !opts?.forceJs && loadNativeModule();
   if (useNative) {
     try {
       const nativeResult = parseLogFileNative(filePath);
