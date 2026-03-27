@@ -3,30 +3,6 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [1.1.5] - 2026-03-27
-
-### Added
-- 🔄 **Auto-build native parser on install** — `postinstall` script now runs `npm run build:native` automatically so the NAPI-RS native addon is compiled right after `npm install` without any manual step
-- ⚠️ **JS fallback warning** — when the native `.node` addon cannot be loaded, a single one-shot warning is emitted to the Output panel (`"Rust native parser failed to load. Falling back to slow JS parser. Please run 'npm run build:native'."`) so users know how to restore full performance
-- 🔌 **Native session-signal extraction** — the native parser now extracts `sessionSignals` and `chatSessionStates` directly from Rust; `logContentParser.ts` merges these into `ParsingContext` when native parsing succeeds, removing the need for a duplicate JS pass over session events
-
-### Changed
-- ⚡ **Bounded concurrency for exthost log parsing** — `runWithConcurrency` helper (exported from `logFileReader.ts`) caps simultaneous native-parser invocations at `MAX_CONCURRENT_EXTHOST_DIRS` (4) per session and `MAX_CONCURRENT_SESSIONS` (2) across sessions, preventing heap exhaustion on machines with many long-running VS Code sessions
-- 🏗️ **`compile` script now builds native addon first** — `npm run compile` runs `build:native` before type-checking and bundling, ensuring the native module is always up-to-date for local development builds
-
-## [1.1.4] - 2026-03-26
-
-### Changed
-- 🔢 **Version normalised to proper semver** — the intermediate `1.1.3-1` patch identifier has been folded into the `1.1.4` release so that the VS Code Marketplace, `npm version`, and the GitHub release workflow all see a clean, valid semver string
-
-## [1.1.3-1] - 2026-03-26
-
-### Fixed
-- 🦀 **Native parser path corrected** — the `require.resolve` path in `nativeBridge.ts` was updated from `../../native-parser/` to `../native-parser/`, matching the actual location relative to the bundled `dist/extension.js`; this makes the NAPI-RS native addon load correctly at runtime in the packaged extension
-- 📋 **Native parser binding loader** — added `native-parser/index.js`, a platform-aware binding loader that selects the correct pre-built `.node` file for the current OS and architecture (Windows x64, macOS x64/arm64, Linux x64/arm64 with glibc or musl)
-- 🔍 **Native module load diagnostics** — `getNativeLoadError()` exported from `nativeBridge.ts` exposes the error message when the native addon fails to load; `extension.ts` now logs `[native-parser] loaded` or `[native-parser] unavailable: <reason>` to the Output panel on activation, making it easy to diagnose missing addon builds
-
 ## [1.1.3] - 2026-03-26
 
 ### Reverted

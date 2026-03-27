@@ -25,31 +25,6 @@ pub struct NativeContextRichness {
     pub prompt_count: u32,
 }
 
-/// Session-level signal event returned from the native parser.
-#[napi(object)]
-#[derive(Clone, Default)]
-pub struct NativeSessionSignal {
-    pub timestamp: String,
-    pub signal_type: String,
-    pub actor: String,
-    pub phase: String,
-    pub intent: String,
-    pub raw_text: String,
-    pub model_name: String,
-    pub latency_ms: u32,
-    pub success: bool,
-    pub session_id: String,
-}
-
-/// Per-chat-session turn/acceptance state extracted from JSON logs.
-#[napi(object)]
-#[derive(Clone, Default)]
-pub struct NativeChatSessionState {
-    pub session_id: String,
-    pub turn_count: u32,
-    pub is_accepted: bool,
-}
-
 /// Aggregated statistics produced by parsing a log file or chunk.
 /// Field names are automatically converted from snake_case to camelCase
 /// by NAPI-RS when exposed to JavaScript.
@@ -97,10 +72,6 @@ pub struct NativeStats {
     /// Per-model prompt and completion token totals.
     /// Keys are normalised model names; values are `[promptTokens, completionTokens]`.
     pub tokens_by_model: HashMap<String, Vec<u32>>,
-    /// Session-level signal events extracted from JSON and plain-text logs.
-    pub session_signals: Vec<NativeSessionSignal>,
-    /// Per-chat-session turn/acceptance state keyed by session identifier.
-    pub chat_session_states: HashMap<String, NativeChatSessionState>,
 }
 
 /// All data required to produce a Markdown report.
@@ -196,12 +167,6 @@ struct LogEntry {
     #[serde(alias = "total_tokens")]
     #[serde(rename = "totalTokens")]
     total_tokens: Option<u32>,
-    #[serde(rename = "sessionId")]
-    session_id: Option<String>,
-    #[serde(rename = "chatSessionId")]
-    chat_session_id: Option<String>,
-    #[serde(rename = "conversationId")]
-    conversation_id: Option<String>,
 }
 
 /// Extract the first `{ … }` JSON object slice from a log line.
@@ -262,321 +227,6 @@ fn extract_latency_from_text(line: &str) -> Option<u32> {
     None
 }
 
-fn normalize_timestamp(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    if trimmed.len() >= 19
-        && trimmed.as_bytes().get(4) == Some(&b'-')
-        && trimmed.as_bytes().get(7) == Some(&b'-')
-        && trimmed.as_bytes().get(10) == Some(&b' ')
-        && trimmed.as_bytes().get(13) == Some(&b':')
-        && trimmed.as_bytes().get(16) == Some(&b':')
-    {
-        let suffix = trimmed.as_bytes().get(19).copied();
-        if !matches!(suffix, Some(b'Z' | b'+' | b'-' | b'a'..=b'z' | b'A'..=b'Z')) {
-            let mut out = trimmed.to_string();
-            out.replace_range(10..11, "T");
-            return out;
-        }
-    }
-
-    trimmed.to_string()
-}
-
-fn extract_timestamp_from_text(raw: &str) -> Option<String> {
-    let bytes = raw.as_bytes();
-    let min_len = 19;
-    if bytes.len() < min_len {
-        return None;
-    }
-
-    for start in 0..=bytes.len() - min_len {
-        let candidate = &raw[start..];
-        if candidate.len() < min_len {
-            break;
-        }
-        let probe = &candidate[..min_len];
-        let probe_bytes = probe.as_bytes();
-        let matches_date_time = probe_bytes.get(4) == Some(&b'-')
-            && probe_bytes.get(7) == Some(&b'-')
-            && matches!(probe_bytes.get(10), Some(b'T' | b' '))
-            && probe_bytes.get(13) == Some(&b':')
-            && probe_bytes.get(16) == Some(&b':')
-            && probe_bytes
-                .iter()
-                .enumerate()
-                .all(|(idx, byte)| match idx {
-                    4 | 7 => *byte == b'-',
-                    10 => *byte == b'T' || *byte == b' ',
-                    13 | 16 => *byte == b':',
-                    _ => byte.is_ascii_digit(),
-                });
-        if !matches_date_time {
-            continue;
-        }
-
-        let mut end = start + min_len;
-        while let Some(byte) = bytes.get(end) {
-            if byte.is_ascii_digit() || matches!(*byte, b'.' | b'Z' | b'+' | b'-' | b':') {
-                end += 1;
-            } else {
-                break;
-            }
-        }
-        return Some(normalize_timestamp(&raw[start..end]));
-    }
-
-    None
-}
-
-fn resolve_session_id(entry: &LogEntry) -> Option<&str> {
-    entry
-        .session_id
-        .as_deref()
-        .or(entry.chat_session_id.as_deref())
-        .or(entry.conversation_id.as_deref())
-}
-
-fn is_chat_turn_event(event_lower: &str) -> bool {
-    event_lower.contains("chat/request")
-        || event_lower.contains("chat.request")
-        || event_lower.contains("chatrequest")
-        || event_lower.contains("message.sent")
-        || event_lower.contains("conversation.request")
-}
-
-fn is_code_action_event(event_lower: &str) -> bool {
-    event_lower.contains("code.copy")
-        || event_lower.contains("codeblock.copy")
-        || event_lower.contains(".copy")
-        || event_lower.contains("code.apply")
-        || event_lower.contains("apply_patch")
-        || event_lower.contains("workspace/editfile")
-        || event_lower.contains("code.insert")
-        || event_lower.contains(".insert")
-}
-
-fn parse_browser_tool_type(raw: &str) -> &'static str {
-    let lower = raw.to_ascii_lowercase();
-    if lower.contains("screenshot") {
-        return "screenshot";
-    }
-    if lower.contains("navigate") {
-        return "navigate";
-    }
-    if lower.contains("click") {
-        return "click";
-    }
-    if lower.contains("type") || lower.contains("fill") {
-        return "type";
-    }
-    if lower.contains("scroll") {
-        return "scroll";
-    }
-    if lower.contains("browser") {
-        return "browser";
-    }
-    "playwright"
-}
-
-fn parse_memory_management_type(raw: &str) -> &'static str {
-    let lower = raw.to_ascii_lowercase();
-    if lower.contains("/compact") {
-        return "compact";
-    }
-    if lower.contains("session memory") || lower.contains("session_memory") {
-        return "session-memory";
-    }
-    if lower.contains("context_limit_reached")
-        || lower.contains("truncating_history")
-        || lower.contains("truncating history")
-        || lower.contains("context_limit")
-        || lower.contains("context limit")
-    {
-        return "context-limit";
-    }
-    if lower.contains("summarize_context") || lower.contains("summarize context") {
-        return "summarize";
-    }
-    if lower.contains("compaction") {
-        return "compaction";
-    }
-    "memory"
-}
-
-fn push_session_signal(
-    stats: &mut NativeStats,
-    timestamp: &str,
-    signal_type: &str,
-    actor: &str,
-    phase: &str,
-    intent: &str,
-    raw_text: &str,
-    model_name: &str,
-    latency_ms: u32,
-    success: bool,
-    session_id: &str,
-) {
-    if timestamp.is_empty() {
-        return;
-    }
-
-    stats.session_signals.push(NativeSessionSignal {
-        timestamp: timestamp.to_string(),
-        signal_type: signal_type.to_string(),
-        actor: actor.to_string(),
-        phase: phase.to_string(),
-        intent: intent.to_string(),
-        raw_text: raw_text.to_string(),
-        model_name: model_name.to_string(),
-        latency_ms,
-        success,
-        session_id: session_id.to_string(),
-    });
-}
-
-fn update_chat_session_state(stats: &mut NativeStats, session_id: &str, turn_delta: u32, accepted: bool) {
-    if session_id.is_empty() {
-        return;
-    }
-
-    let state = stats
-        .chat_session_states
-        .entry(session_id.to_string())
-        .or_insert_with(|| NativeChatSessionState {
-            session_id: session_id.to_string(),
-            ..NativeChatSessionState::default()
-        });
-    state.turn_count = state.turn_count.saturating_add(turn_delta);
-    state.is_accepted = state.is_accepted || accepted;
-}
-
-fn record_feature_signals(
-    stats: &mut NativeStats,
-    raw: &str,
-    timestamp: &str,
-    session_id: &str,
-    model_name: &str,
-    latency_ms: u32,
-) {
-    let lower = raw.to_ascii_lowercase();
-
-    let has_browser_signal = lower.contains("playwright")
-        || lower.contains("browser tool")
-        || lower.contains("browsertool")
-        || lower.contains("browser-")
-        || lower.contains("browser_")
-        || lower.contains("browser")
-        || lower.contains("screenshot");
-    if has_browser_signal {
-        let tool_type = parse_browser_tool_type(raw);
-        *stats
-            .browser_tools_by_type
-            .entry(tool_type.to_string())
-            .or_insert(0) += 1;
-        push_session_signal(
-            stats,
-            timestamp,
-            "chat-request",
-            "ai",
-            "research",
-            &format!("browser/{}", tool_type),
-            raw,
-            model_name,
-            latency_ms,
-            true,
-            session_id,
-        );
-    }
-
-    let has_memory_signal = lower.contains("/compact")
-        || lower.contains("session memory")
-        || lower.contains("session_memory")
-        || lower.contains("context_limit_reached")
-        || lower.contains("truncating_history")
-        || lower.contains("truncating history")
-        || lower.contains("context_limit")
-        || lower.contains("context limit")
-        || lower.contains("summarize_context")
-        || lower.contains("summarize context")
-        || lower.contains("compaction");
-    if has_memory_signal {
-        push_session_signal(
-            stats,
-            timestamp,
-            "memory-boundary",
-            "system",
-            "memory",
-            parse_memory_management_type(raw),
-            raw,
-            model_name,
-            latency_ms,
-            true,
-            session_id,
-        );
-    }
-}
-
-fn record_plan_signals(
-    stats: &mut NativeStats,
-    lower: &str,
-    timestamp: &str,
-    session_id: &str,
-    raw_text: &str,
-    model_name: &str,
-    latency_ms: u32,
-    active_plan_pending: &mut bool,
-) {
-    if lower.contains("agent/plan") || lower.contains("strategy/propose") {
-        stats.plan_count = stats.plan_count.saturating_add(1);
-        *active_plan_pending = true;
-        push_session_signal(
-            stats,
-            timestamp,
-            "plan-proposal",
-            "ai",
-            "planning",
-            if lower.contains("strategy/propose") {
-                "strategy/propose"
-            } else {
-                "agent/plan"
-            },
-            raw_text,
-            model_name,
-            latency_ms,
-            true,
-            session_id,
-        );
-    }
-
-    if lower.contains("workspace/editfile") || lower.contains("apply_patch") {
-        if *active_plan_pending {
-            stats.executed_plan_count = stats.executed_plan_count.saturating_add(1);
-            *active_plan_pending = false;
-        }
-        push_session_signal(
-            stats,
-            timestamp,
-            "chat-request",
-            "ai",
-            "execution",
-            if lower.contains("apply_patch") {
-                "apply_patch"
-            } else {
-                "workspace/editfile"
-            },
-            raw_text,
-            model_name,
-            latency_ms,
-            true,
-            session_id,
-        );
-    }
-}
-
 /// Core parsing logic: process each line and accumulate into `NativeStats`.
 fn parse_lines<I, S>(lines: I) -> NativeStats
 where
@@ -604,10 +254,7 @@ where
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
         tokens_by_model: HashMap::new(),
-        session_signals: Vec::new(),
-        chat_session_states: HashMap::new(),
     };
-    let mut active_plan_pending = false;
 
     for line in lines {
         let trimmed = line.as_ref().trim();
@@ -634,22 +281,14 @@ where
                     .or(entry.engine_name.as_deref())
                     .or(entry.engine.as_deref())
                     .unwrap_or("");
-                let model_name = normalize_model(resolved_model);
 
-                let normalized_timestamp = entry
-                    .time
-                    .as_deref()
-                    .map(normalize_timestamp)
-                    .filter(|ts| !ts.is_empty())
-                    .or_else(|| extract_timestamp_from_text(trimmed));
-                let ts_opt = normalized_timestamp.as_deref();
+                let ts_opt = entry.time.as_deref();
                 let date_key: Option<&str> = ts_opt.and_then(|ts| {
                     if ts.len() >= 10 { Some(&ts[0..10]) } else { None }
                 });
                 let hour_key: Option<&str> = ts_opt.and_then(|ts| {
                     if ts.len() >= 13 { Some(&ts[11..13]) } else { None }
                 });
-                let session_id = resolve_session_id(&entry).unwrap_or("");
 
                 let is_shown = event_lower.contains("shown")
                     || event_lower.contains("displayed")
@@ -752,60 +391,19 @@ where
                     }
                 }
 
-                if is_chat_turn_event(&event_lower) {
-                    update_chat_session_state(&mut stats, session_id, 1, false);
-                }
-                if is_code_action_event(&event_lower) {
-                    update_chat_session_state(&mut stats, session_id, 0, true);
-                }
-
-                let timestamp = ts_opt.unwrap_or("");
-                let latency_ms = entry.latency_ms.unwrap_or(0);
-                record_plan_signals(
-                    &mut stats,
-                    &event_lower,
-                    timestamp,
-                    session_id,
-                    event,
-                    &model_name,
-                    latency_ms,
-                    &mut active_plan_pending,
-                );
-                record_feature_signals(
-                    &mut stats,
-                    json_str,
-                    timestamp,
-                    session_id,
-                    &model_name,
-                    latency_ms,
-                );
-
                 continue;
             }
         }
 
         // ── Plain-text path ────────────────────────────────────────────────
-        let timestamp = extract_timestamp_from_text(trimmed).unwrap_or_default();
-        let latency_ms = extract_latency_from_text(trimmed).unwrap_or(0);
         if ascii_ci_contains(trimmed, "[fetchcompletions]")
             || ascii_ci_contains(trimmed, "ccreq:")
         {
             stats.total_shown += 1;
-            if latency_ms > 0 {
-                stats.latencies.push(latency_ms);
+            if let Some(lat) = extract_latency_from_text(trimmed) {
+                stats.latencies.push(lat);
             }
         }
-        record_plan_signals(
-            &mut stats,
-            &trimmed.to_ascii_lowercase(),
-            &timestamp,
-            "",
-            trimmed,
-            "",
-            latency_ms,
-            &mut active_plan_pending,
-        );
-        record_feature_signals(&mut stats, trimmed, &timestamp, "", "", latency_ms);
     }
 
     stats
@@ -1173,29 +771,14 @@ pub fn parse_log_chunk(input: String) -> NativeStats {
 ///
 /// File I/O is performed entirely in Rust using `std::fs::File` and
 /// `BufReader`, eliminating the need for Node.js to read the file first.
-/// Returns a NAPI `Error` if the file cannot be opened or if the parser panics.
+/// Returns a NAPI `Error` if the file cannot be opened.
 #[napi]
 pub fn parse_log_file_native(path: String) -> napi::Result<NativeStats> {
     let file = File::open(&path)
         .map_err(|e| napi::Error::from_reason(format!("Failed to open {path}: {e}")))?;
-    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    eprintln!("[native-parser] start: {path} ({file_size} bytes)");
     let reader = BufReader::new(file);
     let lines = reader.lines().filter_map(|l| l.ok());
-    let path_for_err = path.clone();
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Ok(parse_lines(lines)))).unwrap_or_else(
-        |e| {
-            let msg = e
-                .downcast_ref::<&str>()
-                .copied()
-                .or_else(|| e.downcast_ref::<String>().map(String::as_str))
-                .unwrap_or("unknown panic");
-            eprintln!("[native-parser] PANIC in {path_for_err}: {msg}");
-            Err(napi::Error::from_reason(format!(
-                "native parser panicked on {path_for_err}: {msg}"
-            )))
-        },
-    )
+    Ok(parse_lines(lines))
 }
 
 #[cfg(test)]
@@ -1392,8 +975,6 @@ mod tests {
         assert_eq!(s.total_prompt_tokens, 0);
         assert_eq!(s.total_completion_tokens, 0);
         assert!(s.tokens_by_model.is_empty());
-        assert!(s.session_signals.is_empty());
-        assert!(s.chat_session_states.is_empty());
     }
 
     #[test]
@@ -1427,44 +1008,6 @@ mod tests {
         let s = parse(input);
         assert_eq!(s.total_prompt_tokens, 0);
         assert_eq!(s.total_completion_tokens, 300);
-    }
-
-    #[test]
-    fn captures_chat_session_state_from_json_events() {
-        let input = concat!(
-            r#"{"event":"chat/request","sessionId":"chat-1"}"#,
-            "\n",
-            r#"{"event":"message.sent","chatSessionId":"chat-1"}"#,
-            "\n",
-            r#"{"event":"workspace/editfile","conversationId":"chat-1"}"#,
-        );
-        let s = parse(input);
-        let state = s.chat_session_states.get("chat-1").unwrap();
-        assert_eq!(state.turn_count, 2);
-        assert!(state.is_accepted);
-    }
-
-    #[test]
-    fn captures_plan_and_feature_session_signals() {
-        let input = concat!(
-            r#"{"event":"agent/plan","timestamp":"2026-03-26T12:00:00Z","sessionId":"chat-1","modelId":"gpt-4o"}"#,
-            "\n",
-            r#"{"event":"workspace/editfile","timestamp":"2026-03-26T12:00:01Z","sessionId":"chat-1","modelId":"gpt-4o"}"#,
-            "\n",
-            r#"{"event":"tool_call","timestamp":"2026-03-26T12:00:02Z","sessionId":"chat-1","toolName":"screenshot"}"#,
-            "\n",
-            r#"{"event":"context_limit_reached","timestamp":"2026-03-26T12:00:03Z","sessionId":"chat-1"}"#,
-        );
-        let s = parse(input);
-        assert_eq!(s.plan_count, 1);
-        assert_eq!(s.executed_plan_count, 1);
-        assert_eq!(s.browser_tools_by_type.get("screenshot"), Some(&1));
-        assert_eq!(s.session_signals.len(), 4);
-        assert_eq!(s.session_signals[0].signal_type, "plan-proposal");
-        assert_eq!(s.session_signals[0].model_name, "gpt-4o");
-        assert_eq!(s.session_signals[1].phase, "execution");
-        assert_eq!(s.session_signals[2].intent, "browser/screenshot");
-        assert_eq!(s.session_signals[3].signal_type, "memory-boundary");
     }
 
     // ── generate_markdown_report_native tests ─────────────────────────────────

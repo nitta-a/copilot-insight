@@ -21,12 +21,7 @@ import {
   trackPlanningStats,
 } from "./parserHelpers";
 
-export function processJsonEntry(
-  data: Record<string, unknown>,
-  ctx: ParsingContext,
-  fallbackTimestamp = "",
-  rawJsonStr = "",
-): void {
+export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingContext, fallbackTimestamp = ""): void {
   const event = (data.event as string | undefined) ?? (data.eventName as string | undefined) ?? "";
   const timestamp = normalizeTimestamp((data.timestamp as string | undefined) ?? fallbackTimestamp);
   const dateKey = timestamp ? timestamp.substring(0, 10) : "";
@@ -102,9 +97,8 @@ export function processJsonEntry(
     }
   }
 
-  const signalInput = featureText || rawJsonStr;
-  if (signalInput) {
-    maybeRecordFeatureSignals(signalInput, ctx, timestamp);
+  if (featureText) {
+    maybeRecordFeatureSignals(featureText, ctx, timestamp);
   }
 
   // Planning & Execution: check event name for plan/execution signals.
@@ -208,7 +202,7 @@ export function tryParseJsonLogLine(line: string, ctx: ParsingContext): boolean 
         recordThreadTitleSignal(ctx, threadTitle, timestamp);
       }
     }
-    processJsonEntry(data, ctx, timestamp, jsonMatch[0]);
+    processJsonEntry(data, ctx, timestamp);
     return true;
   } catch {
     return false;

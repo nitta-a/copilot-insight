@@ -1,5 +1,3 @@
-import type { SessionActor, SessionPhase, SessionSignalType } from "../events/eventSchema";
-
 /**
  * Native bridge — thin wrapper around the NAPI-RS compiled native addon.
  *
@@ -20,25 +18,6 @@ export interface NativeContextRichness {
   totalPromptChars: number;
   /** Number of log entries that carried a non-empty prompt_text field. */
   promptCount: number;
-}
-
-export interface NativeSessionSignal {
-  timestamp: string;
-  signalType: SessionSignalType;
-  actor: SessionActor;
-  phase: SessionPhase;
-  intent: string;
-  rawText: string;
-  modelName: string;
-  latencyMs: number;
-  success: boolean;
-  sessionId: string;
-}
-
-export interface NativeChatSessionState {
-  sessionId: string;
-  turnCount: number;
-  isAccepted: boolean;
 }
 
 export interface NativeParseResult {
@@ -85,10 +64,6 @@ export interface NativeParseResult {
    * Each value is a two-element array: `[promptTokens, completionTokens]`.
    */
   tokensByModel: Record<string, number[]>;
-  /** Session-level signal events extracted by the native parser. */
-  sessionSignals: NativeSessionSignal[];
-  /** Per-chat-session turn/acceptance state extracted by the native parser. */
-  chatSessionStates: Record<string, NativeChatSessionState>;
 }
 
 /**
@@ -141,7 +116,6 @@ interface NativeModule {
 
 /** Cached module reference — `undefined` means "not yet attempted". */
 let nativeModule: NativeModule | null | undefined;
-let nativeModuleLoader: (() => NativeModule) | undefined;
 
 /**
  * Try to load the native `.node` module. Returns the module on success, or
@@ -150,67 +124,22 @@ let nativeModuleLoader: (() => NativeModule) | undefined;
  *
  * The result is cached so that subsequent calls are essentially free.
  */
-let nativeLoadError: string | undefined;
-let nativeLoadWarningShown = false;
-
-const NATIVE_LOAD_WARNING =
-  "Rust native parser failed to load. Falling back to slow JS parser. Please run 'npm run build:native'.";
-
-/**
- * Returns the error message from the last failed `loadNativeModule()` call,
- * or `undefined` if the module loaded successfully or has not been attempted.
- */
-export function getNativeLoadError(): string | undefined {
-  return nativeLoadError;
-}
-
-export function setNativeModuleLoaderForTesting(loader: (() => NativeModule) | undefined): void {
-  nativeModuleLoader = loader;
-  resetNativeModule();
-}
-
-function warnNativeLoadFailureOnce(errorMessage: string): void {
-  if (nativeLoadWarningShown) {
-    return;
-  }
-
-  nativeLoadWarningShown = true;
-  const detailedMessage = `${NATIVE_LOAD_WARNING} ${errorMessage}`;
-  console.warn(detailedMessage);
-
-  try {
-    const { getLogChannel } = require("./logChannel") as typeof import("./logChannel");
-    getLogChannel().appendLine(`[native-parser] ${detailedMessage}`);
-  } catch {
-    // Best-effort only: warning should not break non-extension contexts.
-  }
-}
-
 export function loadNativeModule(): NativeModule | null {
   if (nativeModule !== undefined) {
     return nativeModule;
   }
 
   try {
-    const mod =
-      nativeModuleLoader?.() ??
-      (() => {
-        // The NAPI-RS output lives at <project-root>/native-parser/.
-        // From dist/extension.js (one level below the project root) the correct
-        // relative path is ../native-parser/, not ../../native-parser/.
-        // We use `require()` instead of a static `import` because:
-        //  1. The `.node` artefact may not exist yet (optional build step).
-        //  2. Dynamic `require()` lets the extension start gracefully even when
-        //     the native addon has not been compiled.
-        const nativePath = require.resolve("../native-parser/");
-        return require(nativePath) as NativeModule;
-      })();
-    nativeLoadError = undefined;
+    // The NAPI-RS output lives at <project-root>/native-parser/.
+    // We use `require()` instead of a static `import` because:
+    //  1. The `.node` artefact may not exist yet (optional build step).
+    //  2. Dynamic `require()` lets the extension start gracefully even when
+    //     the native addon has not been compiled.
+    const nativePath = require.resolve("../../native-parser/");
+    const mod = require(nativePath) as NativeModule;
     nativeModule = mod;
     return nativeModule;
-  } catch (err) {
-    nativeLoadError = err instanceof Error ? err.message : String(err);
-    warnNativeLoadFailureOnce(nativeLoadError);
+  } catch {
     nativeModule = null;
     return null;
   }
@@ -281,6 +210,4 @@ export function generateMarkdownReportNative(input: NativeReportInput, period: s
  */
 export function resetNativeModule(): void {
   nativeModule = undefined;
-  nativeLoadError = undefined;
-  nativeLoadWarningShown = false;
 }

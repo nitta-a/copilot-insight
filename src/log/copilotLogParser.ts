@@ -15,11 +15,9 @@ import {
   findCopilotDirs,
   getAllSessionDirs,
   getSortedSessionDirs,
-  MAX_CONCURRENT_SESSIONS,
   parseLogDirectory,
   parseRemoteExthostLog,
   parseSessionTerminalLog,
-  runWithConcurrency,
 } from "./logFileReader";
 
 export type { CopilotUsageStats, DateStat } from "../types";
@@ -104,23 +102,7 @@ export interface ParseCopilotLogsOptions {
 /** Maximum number of latency samples to retain per category to prevent unbounded memory growth. */
 const MAX_LATENCY_SAMPLES = 10_000;
 
-let _parseInFlight: Promise<CopilotUsageStats> | null = null;
-
 export async function parseCopilotLogs(
-  logUri: vscode.Uri,
-  options?: ParseCopilotLogsOptions,
-): Promise<CopilotUsageStats> {
-  while (_parseInFlight) {
-    await _parseInFlight.catch(() => {});
-  }
-  try {
-    return await (_parseInFlight = _parseCopilotLogsImpl(logUri, options));
-  } finally {
-    _parseInFlight = null;
-  }
-}
-
-async function _parseCopilotLogsImpl(
   logUri: vscode.Uri,
   options?: ParseCopilotLogsOptions,
 ): Promise<CopilotUsageStats> {
@@ -247,14 +229,13 @@ async function _parseCopilotLogsImpl(
       );
     }
 
-    // Process all session directories with bounded parallelism. Running every
-    // session concurrently multiplies native-parser calls across sessions and
-    // exhausts the extension-host heap on machines with many session dirs.
-    // MAX_CONCURRENT_SESSIONS × MAX_CONCURRENT_EXTHOST_DIRS × 2 files bounds
-    // peak concurrent native calls to a manageable level.
+    // Process all session directories in parallel. Note: ctx.currentSessionId is
+    // shared state set per-session below; when sessions run concurrently it acts
+    // as a best-effort fallback — most log lines embed their own session ID in
+    // the JSON payload and do not rely on this field.
     const sessionsStartMs = timingEnabled ? performance.now() : 0;
-    await runWithConcurrency(
-      sessionDirs.map((sessDir) => async () => {
+    await Promise.all(
+      sessionDirs.map(async (sessDir) => {
         try {
           ctx.currentSessionId = path.basename(sessDir);
           const sessionStartMs = timingEnabled ? performance.now() : 0;
@@ -315,7 +296,6 @@ async function _parseCopilotLogsImpl(
           channel.appendLine(`  Skipped: could not read session directory ${sessDir}`);
         }
       }),
-      MAX_CONCURRENT_SESSIONS,
     );
     if (timingEnabled) {
       channel.appendLine(
@@ -351,11 +331,6 @@ async function _parseCopilotLogsImpl(
 
   // Compute per-model agentic depth statistics from accumulated data.
   const allModelKeys = new Set([...ctx.loopsStartedByModel.keys(), ...ctx.loopsCompletedByModel.keys()]);
-  if (timingEnabled) {
-    channel.appendLine(
-      `[TIMING] post-processing.agenticDepthByModel start | models=${allModelKeys.size}, loopsStarted=${ctx.loopsStartedByModel.size}, loopsCompleted=${ctx.loopsCompletedByModel.size}`,
-    );
-  }
   for (const model of allModelKeys) {
     const started = ctx.loopsStartedByModel.get(model) ?? 0;
     const completed = ctx.loopsCompletedByModel.get(model) ?? 0;
@@ -375,16 +350,8 @@ async function _parseCopilotLogsImpl(
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
     });
   }
-  if (timingEnabled) {
-    channel.appendLine(`[TIMING] post-processing.agenticDepthByModel end | stored=${ctx.agenticDepthByModel.size}`);
-  }
 
   const allDateKeys = new Set([...ctx.loopsStartedByDate.keys(), ...ctx.loopsCompletedByDate.keys()]);
-  if (timingEnabled) {
-    channel.appendLine(
-      `[TIMING] post-processing.byDateAgenticDepth start | dates=${allDateKeys.size}, loopsStartedByDate=${ctx.loopsStartedByDate.size}, loopsCompletedByDate=${ctx.loopsCompletedByDate.size}`,
-    );
-  }
   for (const date of allDateKeys) {
     const started = ctx.loopsStartedByDate.get(date) ?? 0;
     const completed = ctx.loopsCompletedByDate.get(date) ?? 0;
@@ -403,9 +370,6 @@ async function _parseCopilotLogsImpl(
       completionRate: started > 0 ? (completed / started) * 100 : 0,
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
     });
-  }
-  if (timingEnabled) {
-    channel.appendLine(`[TIMING] post-processing.byDateAgenticDepth end | stored=${ctx.byDateAgenticDepth.size}`);
   }
 
   if (ctx.latencies.length > MAX_LATENCY_SAMPLES) {
@@ -438,11 +402,6 @@ async function _parseCopilotLogsImpl(
     const config = vscode.workspace.getConfiguration("copilot-insight");
     const cliLogPath = config.get<string>("cliLogPath") || undefined;
     const cliDefaultModel = config.get<string>("cliDefaultModel")?.trim() || "Copilot CLI";
-    if (timingEnabled) {
-      channel.appendLine(
-        `[TIMING] readCliStats start | cliLogPath=${cliLogPath ?? "<auto>"}, cliDefaultModel=${cliDefaultModel}`,
-      );
-    }
     const cliResult = await readCliStats(cliLogPath, cliDefaultModel);
     for (const [date, stat] of cliResult.byDate) {
       const existing = ctx.cliByDate.get(date) ?? { prompts: 0, outputTokens: 0 };
@@ -489,9 +448,6 @@ async function _parseCopilotLogsImpl(
   }
 
   if (timingEnabled) {
-    channel.appendLine(
-      `[TIMING] parseCopilotLogs return | shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}, byModel=${ctx.byModel.size}, byChatModel=${ctx.byChatModel.size}, sessionSignals=${ctx.sessionSignals.length}`,
-    );
     channel.appendLine(`[TIMING] parseCopilotLogs total: ${(performance.now() - parseStartMs).toFixed(1)}ms`);
   }
 
@@ -559,11 +515,6 @@ export async function readWorkspaceChatSessions(
       }
       return cached;
     }
-  }
-
-  // Wait for any in-flight log parse to complete before performing heavy I/O.
-  while (_parseInFlight) {
-    await _parseInFlight.catch(() => {});
   }
 
   const wslRoot = resolveWorkspaceStorageRoot(logBaseDir);

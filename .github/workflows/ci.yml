@@ -19,14 +19,6 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: native-parser
-
       - name: Install dependencies
         run: npm ci
 
@@ -40,7 +32,7 @@ jobs:
         run: npm run format
 
       - name: Build
-        run: npm run package
+        run: node esbuild.js
 
       - name: Prepare VS Code binaries before firewall
         run: |
