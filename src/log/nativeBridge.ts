@@ -118,6 +118,20 @@ interface NativeModule {
 let nativeModule: NativeModule | null | undefined;
 
 /**
+ * Human-readable reason why `loadNativeModule()` returned `null`.
+ * `null` means the module loaded successfully or has not been attempted yet.
+ */
+let nativeLoadError: string | null = null;
+
+/**
+ * Return the error message from the last failed `loadNativeModule()` call,
+ * or `null` when the native addon loaded successfully or has not been tried.
+ */
+export function getNativeLoadError(): string | null {
+  return nativeLoadError;
+}
+
+/**
  * Try to load the native `.node` module. Returns the module on success, or
  * `null` when the package has not been built yet (or any other import error
  * occurs).
@@ -138,8 +152,10 @@ export function loadNativeModule(): NativeModule | null {
     const nativePath = require.resolve("../../native-parser/");
     const mod = require(nativePath) as NativeModule;
     nativeModule = mod;
+    nativeLoadError = null;
     return nativeModule;
-  } catch {
+  } catch (err) {
+    nativeLoadError = err instanceof Error ? err.message : String(err);
     nativeModule = null;
     return null;
   }

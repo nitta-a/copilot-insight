@@ -25,7 +25,11 @@ import type { ParsingContext } from "../types";
 import { tryParseJsonLogLine } from "./parsers/jsonLogParser";
 import { parseTextLogLine } from "./parsers/textLogParser";
 import type { NativeParseResult } from "./nativeBridge";
-import { loadNativeModule, parseLogChunkNative, parseLogFileNative } from "./nativeBridge";
+import { getNativeLoadError, loadNativeModule, parseLogChunkNative, parseLogFileNative } from "./nativeBridge";
+import { getLogChannel } from "./logChannel";
+
+/** Emit the native-unavailable reason at most once per extension session. */
+let nativeStatusLogged = false;
 
 // Re-export public API from sub-modules so that existing consumers keep working
 // without changing their import paths.
@@ -208,6 +212,11 @@ export async function parseLogFile(
   // When a byte offset is supplied we must use the JS readline path because the
   // native addon always reads from the beginning of the file.
   const useNative = !opts?.startByte && loadNativeModule();
+  if (!useNative && !nativeStatusLogged) {
+    nativeStatusLogged = true;
+    const reason = getNativeLoadError() ?? "native addon not built (run `npm run build:native`)";
+    getLogChannel().appendLine(`[native] falling back to JS parser — ${reason}`);
+  }
   if (useNative) {
     try {
       const nativeResult = parseLogFileNative(filePath);

@@ -2,7 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {
@@ -179,6 +179,7 @@
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
     "vsce:publish": "vsce publish",
     "in": "code --install-extension ",
+    "inf": "code --force --install-extension ",
     "p": "npm run package && npm run vsce:package",
     "build:native": "cd native-parser && napi build --platform --release --js index.js --dts index.d.ts"
   },

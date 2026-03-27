@@ -27,8 +27,8 @@ export type { CopilotUsageStats, DateStat } from "../types";
 // ---------------------------------------------------------------------------
 
 const WS_SESSION_CACHE_FILENAME = "ws-session-cache.json";
-/** Default TTL for the workspace session disk cache: 15 minutes. */
-const WS_SESSION_CACHE_TTL_MS = 15 * 60 * 1000;
+/** Default TTL for the workspace session disk cache: 60 minutes. */
+const WS_SESSION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Module-level in-memory cache so repeated calls skip disk I/O entirely. */
 let wsSessionMemCache: {
@@ -532,7 +532,11 @@ export async function readWorkspaceChatSessions(
 
   const t1 = timingEnabled ? performance.now() : 0;
   // Single-pass: scan each root once, deriving title records from session records.
-  const allResults = await Promise.all(allRoots.map((root) => readAllChatSessionData(root)));
+  // Limit to the 200 most recently active workspaces within the last 90 days to
+  // avoid exhaustive scans on slow cross-filesystem bridges (e.g. WSL ↔ Windows).
+  const allResults = await Promise.all(
+    allRoots.map((root) => readAllChatSessionData(root, { maxWorkspaces: 200, workspaceRecencyDays: 90 })),
+  );
   if (timingEnabled) {
     const totalFiles = allResults.reduce((s, r) => s + r.sessionRecords.length, 0);
     channel.appendLine(
