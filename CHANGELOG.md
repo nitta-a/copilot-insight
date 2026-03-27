@@ -4,6 +4,17 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.5] - 2026-03-27
+
+### Added
+- 🔄 **Auto-build native parser on install** — `postinstall` script now runs `npm run build:native` automatically so the NAPI-RS native addon is compiled right after `npm install` without any manual step
+- ⚠️ **JS fallback warning** — when the native `.node` addon cannot be loaded, a single one-shot warning is emitted to the Output panel (`"Rust native parser failed to load. Falling back to slow JS parser. Please run 'npm run build:native'."`) so users know how to restore full performance
+- 🔌 **Native session-signal extraction** — the native parser now extracts `sessionSignals` and `chatSessionStates` directly from Rust; `logContentParser.ts` merges these into `ParsingContext` when native parsing succeeds, removing the need for a duplicate JS pass over session events
+
+### Changed
+- ⚡ **Bounded concurrency for exthost log parsing** — `runWithConcurrency` helper (exported from `logFileReader.ts`) caps simultaneous native-parser invocations at `MAX_CONCURRENT_EXTHOST_DIRS` (4) per session and `MAX_CONCURRENT_SESSIONS` (2) across sessions, preventing heap exhaustion on machines with many long-running VS Code sessions
+- 🏗️ **`compile` script now builds native addon first** — `npm run compile` runs `build:native` before type-checking and bundling, ensuring the native module is always up-to-date for local development builds
+
 ## [1.1.4] - 2026-03-26
 
 ### Changed
