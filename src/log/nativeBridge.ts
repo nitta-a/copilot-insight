@@ -64,6 +64,28 @@ export interface NativeParseResult {
    * Each value is a two-element array: `[promptTokens, completionTokens]`.
    */
   tokensByModel: Record<string, number[]>;
+  /** Total non-empty log lines processed by the parser (diagnostic). */
+  linesParsed: number;
+  /** Lines handled by the JSON parsing path; `linesParsed - jsonLines` = plain-text lines. */
+  jsonLines: number;
+  /** Per-model count of all chat and agentic requests (normalised model name → count). */
+  byChatModel: Record<string, number>;
+  /** Per-model count of subagent-initiated requests only (agentic intents). */
+  subagentByModel: Record<string, number>;
+  /** Per-model accumulated latency for agentic-intent requests (ms); proxy for autonomous duration. */
+  autonomousDurationByModel: Record<string, number>;
+  /** Per-date count of chat and agentic requests ("YYYY-MM-DD" → count). */
+  chatByDate: Record<string, number>;
+  /** Completion finish-reason distribution ("[streamChoices] finish reason: XXX"). */
+  finishReasonCounts: Record<string, number>;
+  /** Number of agentic (ToolCallingLoop) episodes that were started. */
+  subagentLoopsStarted: number;
+  /** Number of inline completions rejected by the user (AbortError in logs). */
+  totalRejected: number;
+  /** Per-model count of agentic episodes that completed. */
+  loopsCompletedByModel: Record<string, number>;
+  /** Per-model total agentic actions across all completed loops. */
+  totalLoopActionsByModel: Record<string, number>;
 }
 
 /**
@@ -145,12 +167,12 @@ export function loadNativeModule(): NativeModule | null {
 
   try {
     // The NAPI-RS output lives at <project-root>/native-parser/.
-    // We use `require()` instead of a static `import` because:
-    //  1. The `.node` artefact may not exist yet (optional build step).
-    //  2. Dynamic `require()` lets the extension start gracefully even when
-    //     the native addon has not been compiled.
-    const nativePath = require.resolve("../../native-parser/");
-    const mod = require(nativePath) as NativeModule;
+    // Use a direct `require` of the package path rather than `require.resolve`.
+    // Some environments can resolve the directory to the package.json file
+    // which would make `require(pathToPackageJson)` return the JSON object
+    // instead of the compiled addon. Requiring the package path lets Node's
+    // module resolver pick the package `main` entry or `index.js` correctly.
+    const mod = require("../../native-parser") as NativeModule;
     nativeModule = mod;
     nativeLoadError = null;
     return nativeModule;

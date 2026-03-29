@@ -129,10 +129,25 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
       logFiles.map(async (e) => {
         const filePath = path.join(logDir, e.name);
         const result = await parseLogFile(filePath, ctx);
-        if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
-          getLogChannel().appendLine(
-            `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
-          );
+        if (timingEnabled) {
+          if (result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
+            getLogChannel().appendLine(
+              `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
+            );
+          }
+          if (result.fileStats) {
+            const fs = result.fileStats;
+            const parts = [`shown=${fs.shown}`, `accepted=${fs.accepted}`, `chat=${fs.chat}`];
+            if (fs.agenticMs > 0) {
+              parts.push(`agenticMs=${fs.agenticMs}`);
+            }
+            if (fs.linesTotal !== undefined && fs.linesTotal > 0) {
+              parts.push(`jsonLines=${fs.linesJson ?? 0}/${fs.linesTotal}`);
+            }
+            getLogChannel().appendLine(
+              `[TIMING]   file [${result.usedNative ? "native" : "js"}]: ${parts.join(", ")} — ${path.basename(filePath)}`,
+            );
+          }
         }
         return result;
       }),

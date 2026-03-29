@@ -72,7 +72,18 @@ export class CopilotUsagePanel {
 
     if (CopilotUsagePanel.currentPanel) {
       CopilotUsagePanel.currentPanel._panel.reveal(column);
+      // Preserve any chat-session data already loaded into the old stats object
+      // so that the Prompt Insights and Sessions tabs do not lose their data
+      // when _stats is replaced with fresh parse results.
+      const prevTitles = CopilotUsagePanel.currentPanel._stats.chatSessionTitles;
+      const prevSessions = CopilotUsagePanel.currentPanel._stats.chatSessions;
       CopilotUsagePanel.currentPanel._stats = stats;
+      if ((prevTitles?.length ?? 0) > 0) {
+        CopilotUsagePanel.currentPanel._stats.chatSessionTitles = prevTitles;
+      }
+      if ((prevSessions?.length ?? 0) > 0) {
+        CopilotUsagePanel.currentPanel._stats.chatSessions = prevSessions;
+      }
       CopilotUsagePanel.currentPanel._advanced = advanced;
       CopilotUsagePanel.currentPanel._dbWorker = dbWorker;
       void CopilotUsagePanel.currentPanel._update();
@@ -378,17 +389,17 @@ export class CopilotUsagePanel {
     );
 
     let phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.collectContextFiles: start`);
     const projectContextFiles = await collectAllContextFiles(
       this._advanced.userPromptsDir,
       this._advanced.copilotMemoryDir,
     );
-    if (timingEnabled) {
-      channel.appendLine(
-        `[TIMING] _update.collectContextFiles: ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
-      );
-    }
+    channel.appendLine(
+      `[TIMING] _update.collectContextFiles: done | ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
+    );
 
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.buildPayload: start`);
     const payload = buildDashboardPayload(
       this._stats,
       this._advanced.trueAcceptance,
@@ -400,23 +411,18 @@ export class CopilotUsagePanel {
       this._advanced.hasMoreData ?? false,
       projectContextFiles,
     );
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.buildPayload: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update.buildPayload: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.setHtml: start`);
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.setHtml: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update.setHtml: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
     // Also push an update via postMessage so the WebView re-renders without
     // a full HTML reload (e.g. when only the period changes after first load).
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.postMessage: sending`);
     this._panel.webview.postMessage({ type: "dashboardData", payload });
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.postMessage: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-      channel.appendLine(`[TIMING] _update total: ${(performance.now() - updateStartMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update total: ${(performance.now() - updateStartMs).toFixed(1)}ms`);
   }
 }

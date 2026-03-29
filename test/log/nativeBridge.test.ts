@@ -95,6 +95,17 @@ suite("nativeBridge", () => {
       totalPromptTokens: 1500,
       totalCompletionTokens: 200,
       tokensByModel: { "gpt-4o": [1200, 150] },
+      linesParsed: 42,
+      jsonLines: 10,
+      byChatModel: { "gpt-4o": 3 },
+      subagentByModel: { "gpt-4o": 1 },
+      autonomousDurationByModel: { "gpt-4o": 500 },
+      chatByDate: { "2024-06-15": 3 },
+      finishReasonCounts: { stop: 2, length: 1 },
+      subagentLoopsStarted: 1,
+      totalRejected: 2,
+      loopsCompletedByModel: { "gpt-4o": 2 },
+      totalLoopActionsByModel: { "gpt-4o": 8 },
     };
     assert.strictEqual(sample.totalShown, 10);
     assert.strictEqual(sample.totalAccepted, 3);
@@ -115,6 +126,17 @@ suite("nativeBridge", () => {
     assert.strictEqual(sample.executedPlanCount, 1);
     assert.strictEqual(sample.browserToolsByType["screenshot"], 3);
     assert.strictEqual(sample.errorsByType["HTTP 429"], 1);
+    assert.strictEqual(sample.linesParsed, 42);
+    assert.strictEqual(sample.jsonLines, 10);
+    assert.strictEqual(sample.byChatModel["gpt-4o"], 3);
+    assert.strictEqual(sample.subagentByModel["gpt-4o"], 1);
+    assert.strictEqual(sample.autonomousDurationByModel["gpt-4o"], 500);
+    assert.strictEqual(sample.chatByDate["2024-06-15"], 3);
+    assert.strictEqual(sample.finishReasonCounts["stop"], 2);
+    assert.strictEqual(sample.subagentLoopsStarted, 1);
+    assert.strictEqual(sample.totalRejected, 2);
+    assert.strictEqual(sample.loopsCompletedByModel["gpt-4o"], 2);
+    assert.strictEqual(sample.totalLoopActionsByModel["gpt-4o"], 8);
   });
 
   test("resetNativeModule allows reloading the module cache", () => {

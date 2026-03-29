@@ -299,7 +299,7 @@ export async function parseCopilotLogs(
     );
     if (timingEnabled) {
       channel.appendLine(
-        `[TIMING] all sessions: ${(performance.now() - sessionsStartMs).toFixed(1)}ms | logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
+        `[TIMING] all sessions: ${(performance.now() - sessionsStartMs).toFixed(1)}ms | logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}, agenticMs=${Math.round(ctx.autonomousDurationMs)}`,
       );
     }
     // NOTE: SQLite workspace chat-session reads are intentionally deferred.

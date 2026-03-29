@@ -72,6 +72,31 @@ pub struct NativeStats {
     /// Per-model prompt and completion token totals.
     /// Keys are normalised model names; values are `[promptTokens, completionTokens]`.
     pub tokens_by_model: HashMap<String, Vec<u32>>,
+    /// Total number of non-empty log lines processed by the parser.
+    /// Exposed to JavaScript for diagnostic logging (e.g. "[TIMING] file [native]").
+    pub lines_parsed: u32,
+    /// Number of lines handled by the JSON parsing path.
+    /// `lines_parsed - json_lines` gives the count of plain-text path lines.
+    pub json_lines: u32,
+    /// Per-model count of all chat and agentic requests (normalised model name → count).
+    pub by_chat_model: HashMap<String, u32>,
+    /// Per-model count of subagent-initiated requests only (agentic intents).
+    pub subagent_by_model: HashMap<String, u32>,
+    /// Per-model accumulated latency for agentic-intent requests (milliseconds).
+    /// Used as a proxy for per-model autonomous duration.
+    pub autonomous_duration_by_model: HashMap<String, f64>,
+    /// Per-date count of chat and agentic requests ("YYYY-MM-DD" → count).
+    pub chat_by_date: HashMap<String, u32>,
+    /// Completion finish-reason distribution ("[streamChoices] finish reason: XXX").
+    pub finish_reason_counts: HashMap<String, u32>,
+    /// Number of agentic (ToolCallingLoop) episodes that were started.
+    pub subagent_loops_started: u32,
+    /// Number of inline completions rejected by the user (AbortError in logs).
+    pub total_rejected: u32,
+    /// Per-model count of agentic (ToolCallingLoop) episodes that completed.
+    pub loops_completed_by_model: HashMap<String, u32>,
+    /// Per-model total number of agentic actions executed across all completed loops.
+    pub total_loop_actions_by_model: HashMap<String, u32>,
 }
 
 /// All data required to produce a Markdown report.
@@ -227,6 +252,108 @@ fn extract_latency_from_text(line: &str) -> Option<u32> {
     None
 }
 
+/// Extract the date portion (YYYY-MM-DD) from a VS Code extension-host log line.
+///
+/// Every log line emitted by VS Code's extension host starts with a local-time
+/// timestamp of the form `YYYY-MM-DD HH:MM:SS.mmm [level] …`.  This function
+/// validates the first ten bytes against that pattern and returns a
+/// zero-allocation `&str` slice when they match, so callers can use the result
+/// directly as a `HashMap` key without extra allocation.
+fn line_date_key(trimmed: &str) -> Option<&str> {
+    let b = trimmed.as_bytes();
+    if b.len() < 10 {
+        return None;
+    }
+    if b[4] == b'-'
+        && b[7] == b'-'
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[2].is_ascii_digit()
+        && b[3].is_ascii_digit()
+        && b[5].is_ascii_digit()
+        && b[6].is_ascii_digit()
+        && b[8].is_ascii_digit()
+        && b[9].is_ascii_digit()
+    {
+        Some(&trimmed[0..10])
+    } else {
+        None
+    }
+}
+
+/// Extract the two-digit hour (HH) from a VS Code log line timestamp prefix.
+///
+/// Expects a valid `YYYY-MM-DD` prefix (validated by [`line_date_key`]) followed
+/// by a space character at byte 10 and two ASCII digits at bytes 11–12.
+/// Returns `Some(&line[11..13])` or `None`.
+fn line_hour_key(trimmed: &str) -> Option<&str> {
+    if line_date_key(trimmed).is_none() {
+        return None;
+    }
+    let b = trimmed.as_bytes();
+    if b.len() < 13 || b[10] != b' ' || !b[11].is_ascii_digit() || !b[12].is_ascii_digit() {
+        return None;
+    }
+    Some(&trimmed[11..13])
+}
+
+/// Extract the raw model name from a plain-text `ccreq:` success log line.
+///
+/// Expected format (after the optional VS Code timestamp prefix):
+/// ```text
+/// ccreq:HASH | success | MODEL_NAME | Nms | [INTENT]
+/// ```
+/// Locates the `| success |` marker case-insensitively, then returns the text
+/// between that marker and the following ` | ` separator.  Callers should pass
+/// the result through [`normalize_model`] before using it as a HashMap key.
+/// Returns `None` when the marker is absent or the model field is empty.
+fn extract_ccreq_model(trimmed: &str) -> Option<&str> {
+    const MARKER: &[u8] = b"| success |";
+    let b = trimmed.as_bytes();
+    let pos = b.windows(MARKER.len()).position(|w| {
+        w.iter()
+            .zip(MARKER)
+            .all(|(a, &m)| a.to_ascii_lowercase() == m)
+    })?;
+    let after = trimmed[pos + MARKER.len()..].trim_start();
+    let end = after.find(" | ").unwrap_or(after.len());
+    let model = after[..end].trim();
+    if model.is_empty() { None } else { Some(model) }
+}
+
+/// Return true when the plain-text log line ends with a known subagent intent tag.
+///
+/// Matches `[tool/runSubagent]`, `[tool/runSubagent-*]`, `[panel/editAgent]`, and
+/// `[tool/searchSubagentTool]` — the same set as `isSubagentIntent` in
+/// `parserHelpers.ts`.
+fn is_subagent_intent_line(trimmed: &str) -> bool {
+    ascii_ci_contains(trimmed, "[tool/runsubagent")
+        || ascii_ci_contains(trimmed, "[panel/editagent]")
+        || ascii_ci_contains(trimmed, "[tool/searchsubagent")
+}
+
+/// Extract the finish-reason string from a `[streamChoices]` log line.
+///
+/// Looks for the pattern `finish reason: [XXX]` (with brackets) or
+/// `finish reason: XXX` (without) and returns the trimmed inner token.
+fn extract_finish_reason(trimmed: &str) -> Option<String> {
+    const NEEDLE: &str = "finish reason:";
+    let lower = trimmed.to_lowercase();
+    let pos = lower.find(NEEDLE)?;
+    let after = trimmed[pos + NEEDLE.len()..].trim_start();
+    let reason = if after.starts_with('[') {
+        let end = after.find(']')?;
+        &after[1..end]
+    } else {
+        let end = after
+            .find(|c: char| c.is_whitespace() || c == ']')
+            .unwrap_or(after.len());
+        &after[..end]
+    };
+    let reason = reason.trim().to_string();
+    if reason.is_empty() { None } else { Some(reason) }
+}
+
 /// Core parsing logic: process each line and accumulate into `NativeStats`.
 fn parse_lines<I, S>(lines: I) -> NativeStats
 where
@@ -254,13 +381,33 @@ where
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
         tokens_by_model: HashMap::new(),
+        lines_parsed: 0,
+        json_lines: 0,
+        by_chat_model: HashMap::new(),
+        subagent_by_model: HashMap::new(),
+        autonomous_duration_by_model: HashMap::new(),
+        chat_by_date: HashMap::new(),
+        finish_reason_counts: HashMap::new(),
+        subagent_loops_started: 0,
+        total_rejected: 0,
+        loops_completed_by_model: HashMap::new(),
+        total_loop_actions_by_model: HashMap::new(),
     };
+
+    // Stateful loop-tracking: detect subagent loop starts and stops.
+    // This state is local to a single parse_lines call (one file), which is
+    // sufficient because Copilot Chat sessions are generally contained within
+    // one log file.
+    let mut active_loop = false;
+    let mut active_loop_model: Option<String> = None;
+    let mut active_loop_action_count: u32 = 0;
 
     for line in lines {
         let trimmed = line.as_ref().trim();
         if trimmed.is_empty() {
             continue;
         }
+        stats.lines_parsed += 1;
 
         // ── JSON path ──────────────────────────────────────────────────────
         if let Some(json_str) = extract_json(trimmed) {
@@ -333,6 +480,13 @@ where
                     || event_lower.contains("chat/request")
                 {
                     stats.total_chat += 1;
+                    if !resolved_model.is_empty() {
+                        let model_key = normalize_model(resolved_model);
+                        *stats.by_chat_model.entry(model_key).or_insert(0) += 1;
+                    }
+                    if let Some(dk) = date_key {
+                        *stats.chat_by_date.entry(dk.to_string()).or_insert(0) += 1;
+                    }
                 } else if event_lower.contains("subagent-request")
                     || event_lower.contains("subagent/request")
                 {
@@ -391,17 +545,146 @@ where
                     }
                 }
 
+                stats.json_lines += 1;
                 continue;
             }
         }
 
         // ── Plain-text path ────────────────────────────────────────────────
-        if ascii_ci_contains(trimmed, "[fetchcompletions]")
-            || ascii_ci_contains(trimmed, "ccreq:")
+        if ascii_ci_contains(trimmed, "[fetchcompletions]") {
+            // e.g. "[fetchCompletions] ... finished with 200 status after Nms"
+            if ascii_ci_contains(trimmed, "finished with")
+                && ascii_ci_contains(trimmed, "200")
+            {
+                stats.total_shown += 1;
+                // Populate per-date and per-hour maps for the timeline chart.
+                if let Some(dk) = line_date_key(trimmed) {
+                    stats.by_date.entry(dk.to_string()).or_default().shown += 1;
+                }
+                if let Some(hk) = line_hour_key(trimmed) {
+                    *stats.by_hour.entry(hk.to_string()).or_insert(0) += 1;
+                }
+                if let Some(lat) = extract_latency_from_text(trimmed) {
+                    stats.latencies.push(lat);
+                }
+            }
+        } else if ascii_ci_contains(trimmed, "ccreq:")
+            && ascii_ci_contains(trimmed, "| success |")
         {
-            stats.total_shown += 1;
-            if let Some(lat) = extract_latency_from_text(trimmed) {
-                stats.latencies.push(lat);
+            // e.g. "YYYY-MM-DD HH:MM:SS.mmm [info] ccreq:HASH | success | MODEL | Nms | [INTENT]"
+            let lat = extract_latency_from_text(trimmed);
+            if ascii_ci_contains(trimmed, "[xtabprovider]") {
+                // Inline-completion suggestion shown
+                stats.total_shown += 1;
+                // Populate per-date, per-hour, and per-model maps.
+                if let Some(dk) = line_date_key(trimmed) {
+                    stats.by_date.entry(dk.to_string()).or_default().shown += 1;
+                }
+                if let Some(hk) = line_hour_key(trimmed) {
+                    *stats.by_hour.entry(hk.to_string()).or_insert(0) += 1;
+                }
+                if let Some(raw_model) = extract_ccreq_model(trimmed) {
+                    let norm = normalize_model(raw_model);
+                    if !norm.is_empty() {
+                        *stats.by_model_shown.entry(norm).or_insert(0) += 1;
+                    }
+                }
+                if let Some(l) = lat {
+                    stats.latencies.push(l);
+                }
+            } else if ascii_ci_contains(trimmed, "[nes.") {
+                // Inline-completion accepted (e.g. [nes.nextCursorPosition])
+                stats.total_accepted += 1;
+                // Populate per-date and per-model maps.
+                if let Some(dk) = line_date_key(trimmed) {
+                    stats.by_date.entry(dk.to_string()).or_default().accepted += 1;
+                }
+                if let Some(raw_model) = extract_ccreq_model(trimmed) {
+                    let norm = normalize_model(raw_model);
+                    if !norm.is_empty() {
+                        *stats.by_model_accepted.entry(norm).or_insert(0) += 1;
+                    }
+                }
+                if let Some(l) = lat {
+                    stats.latencies.push(l);
+                }
+            } else {
+                // Chat / agentic request
+                stats.total_chat += 1;
+                // Extract and normalise the model name for per-model chat tracking.
+                let norm_model = extract_ccreq_model(trimmed)
+                    .map(|raw| normalize_model(raw))
+                    .filter(|m| !m.is_empty());
+                if let Some(ref m) = norm_model {
+                    *stats.by_chat_model.entry(m.clone()).or_insert(0) += 1;
+                }
+                // Per-date chat count for the timeline chart.
+                if let Some(dk) = line_date_key(trimmed) {
+                    *stats.chat_by_date.entry(dk.to_string()).or_insert(0) += 1;
+                }
+                // Detect subagent (agentic) intents for autonomous-ratio tracking.
+                let is_agentic = is_subagent_intent_line(trimmed);
+                if is_agentic {
+                    stats.subagent_requests += 1;
+                    if let Some(ref m) = norm_model {
+                        *stats.subagent_by_model.entry(m.clone()).or_insert(0) += 1;
+                    }
+                    // Track the first request in a new loop as a loop-start.
+                    if !active_loop {
+                        stats.subagent_loops_started += 1;
+                        active_loop = true;
+                        active_loop_model = norm_model.clone();
+                        active_loop_action_count = 1;
+                    } else {
+                        active_loop_action_count += 1;
+                    }
+                }
+                // Always record latency for overall P50/P95 tracking.
+                if let Some(l) = lat {
+                    stats.latencies.push(l);
+                    // Accumulate autonomous duration for agentic intents and
+                    // track per-model autonomous duration via request latency.
+                    let is_agentic_duration = is_agentic
+                        || ascii_ci_contains(trimmed, "[panel/")
+                        || ascii_ci_contains(trimmed, "/agent]")
+                        || ascii_ci_contains(trimmed, "subagent");
+                    if is_agentic_duration {
+                        stats.autonomous_duration_ms += l as f64;
+                        if let Some(ref m) = norm_model {
+                            *stats
+                                .autonomous_duration_by_model
+                                .entry(m.clone())
+                                .or_insert(0.0) += l as f64;
+                        }
+                    }
+                }
+            }
+        } else if ascii_ci_contains(trimmed, "[streamchoices]")
+            && ascii_ci_contains(trimmed, "finish reason:")
+        {
+            // "[streamChoices] solution N returned. finish reason: [XXX]"
+            if let Some(reason) = extract_finish_reason(trimmed) {
+                *stats.finish_reason_counts.entry(reason).or_insert(0) += 1;
+            }
+        } else if ascii_ci_contains(trimmed, "[asynccompletionmanager]")
+            && ascii_ci_contains(trimmed, "aborterror")
+        {
+            // "[AsyncCompletionManager] ... AbortError" — user rejected completion.
+            stats.total_rejected += 1;
+        } else if ascii_ci_contains(trimmed, "[toolcallingloop]")
+            && ascii_ci_contains(trimmed, "shouldcontinue=false")
+        {
+            // "[ToolCallingLoop] shouldContinue=false" — episode complete.
+            if active_loop {
+                stats.subagent_loops += 1;
+                if let Some(ref m) = active_loop_model {
+                    *stats.loops_completed_by_model.entry(m.clone()).or_insert(0) += 1;
+                    *stats.total_loop_actions_by_model.entry(m.clone()).or_insert(0) +=
+                        active_loop_action_count;
+                }
+                active_loop = false;
+                active_loop_model = None;
+                active_loop_action_count = 0;
             }
         }
     }
@@ -854,10 +1137,23 @@ mod tests {
     }
 
     #[test]
-    fn counts_plain_text_ccreq() {
-        let input = "2024-06-01 ccreq:abc123 | success | gpt-4o | 800ms | [vscodePrompt]";
+    fn counts_plain_text_ccreq_xtab_shown() {
+        // [XtabProvider] lines are inline-completion suggestions (shown).
+        let input = "2024-06-01 15:10:17.693 [info] ccreq:abc123 | success | gpt-4o | 800ms | [XtabProvider]";
         let s = parse(input);
         assert_eq!(s.total_shown, 1);
+        assert_eq!(s.total_accepted, 0);
+        assert_eq!(s.total_chat, 0);
+    }
+
+    #[test]
+    fn counts_plain_text_ccreq_chat() {
+        // Non-completion intent lines are counted as chat.
+        let input = "2024-06-01 15:10:17.693 [info] ccreq:abc123 | success | gpt-4o | 800ms | [vscodePrompt]";
+        let s = parse(input);
+        assert_eq!(s.total_chat, 1);
+        assert_eq!(s.total_shown, 0);
+        assert_eq!(s.total_accepted, 0);
     }
 
     #[test]
@@ -934,14 +1230,15 @@ mod tests {
 
     #[test]
     fn collects_latency_from_text_fetch_completions() {
-        let input = "[fetchCompletions] Request finished after 290ms";
+        let input = "[fetchCompletions] Request to /v1/engines/gpt-4.5/completions finished with 200 status after 290ms";
         let s = parse(input);
         assert_eq!(s.latencies.first(), Some(&290));
     }
 
     #[test]
     fn collects_latency_from_text_ccreq() {
-        let input = "2024-06-01 ccreq:abc123 | success | gpt-4o | 800ms | [vscodePrompt]";
+        // [XtabProvider] lines are classified as shown — latency is collected.
+        let input = "2024-06-01 15:10:17.693 [info] ccreq:abc123 | success | gpt-4o | 800ms | [XtabProvider]";
         let s = parse(input);
         assert_eq!(s.latencies.first(), Some(&800));
     }
@@ -975,6 +1272,124 @@ mod tests {
         assert_eq!(s.total_prompt_tokens, 0);
         assert_eq!(s.total_completion_tokens, 0);
         assert!(s.tokens_by_model.is_empty());
+        assert_eq!(s.lines_parsed, 0);
+        assert_eq!(s.json_lines, 0);
+    }
+
+    // ── Helper function unit tests ────────────────────────────────────────────
+
+    #[test]
+    fn line_date_key_extracts_prefix() {
+        assert_eq!(
+            line_date_key("2026-03-27 15:10:17.693 [info] ccreq:abc"),
+            Some("2026-03-27")
+        );
+    }
+
+    #[test]
+    fn line_date_key_returns_none_for_non_dated_line() {
+        assert!(line_date_key("[fetchCompletions] Request finished").is_none());
+        assert!(line_date_key("").is_none());
+        assert!(line_date_key("2026/03/27 bad-separator").is_none());
+    }
+
+    #[test]
+    fn line_hour_key_extracts_two_digit_hour() {
+        assert_eq!(
+            line_hour_key("2026-03-27 09:10:17.693 [info] ccreq:abc"),
+            Some("09")
+        );
+        assert_eq!(
+            line_hour_key("2026-03-27 15:10:17.693 [info] ccreq:abc"),
+            Some("15")
+        );
+    }
+
+    #[test]
+    fn line_hour_key_returns_none_for_non_dated_line() {
+        assert!(line_hour_key("[fetchCompletions] Request").is_none());
+    }
+
+    #[test]
+    fn extract_ccreq_model_returns_model_name() {
+        let line = "2026-03-27 15:10:17.693 [info] ccreq:24140080.copilotmd | success | copilot-nes-oct | 850ms | [XtabProvider]";
+        assert_eq!(extract_ccreq_model(line), Some("copilot-nes-oct"));
+    }
+
+    #[test]
+    fn extract_ccreq_model_case_insensitive_marker() {
+        let line = "ccreq:abc | SUCCESS | my-model | 100ms | [intent]";
+        assert_eq!(extract_ccreq_model(line), Some("my-model"));
+    }
+
+    #[test]
+    fn extract_ccreq_model_returns_none_when_no_marker() {
+        assert!(extract_ccreq_model("ccreq:abc | my-model | 100ms").is_none());
+    }
+
+    // ── Plain-text path: by_date / by_model / by_hour population ─────────────
+
+    #[test]
+    fn plain_text_xtabprovider_populates_by_date() {
+        let line = "2026-03-27 15:10:17.693 [info] ccreq:24140080.copilotmd | success | copilot-nes-oct | 850ms | [XtabProvider]";
+        let s = parse(line);
+        assert_eq!(s.by_date.get("2026-03-27").map(|d| d.shown), Some(1));
+        assert_eq!(s.by_date.get("2026-03-27").map(|d| d.accepted), Some(0));
+    }
+
+    #[test]
+    fn plain_text_xtabprovider_populates_by_hour() {
+        let line = "2026-03-27 15:10:17.693 [info] ccreq:24140080.copilotmd | success | copilot-nes-oct | 850ms | [XtabProvider]";
+        let s = parse(line);
+        assert_eq!(s.by_hour.get("15"), Some(&1));
+    }
+
+    #[test]
+    fn plain_text_xtabprovider_populates_by_model_shown() {
+        let line = "2026-03-27 15:10:17.693 [info] ccreq:24140080.copilotmd | success | copilot-nes-oct | 850ms | [XtabProvider]";
+        let s = parse(line);
+        assert_eq!(s.by_model_shown.get("copilot-nes-oct"), Some(&1));
+        assert!(s.by_model_accepted.is_empty());
+    }
+
+    #[test]
+    fn plain_text_nes_populates_by_date_accepted() {
+        let line = "2026-03-27 15:10:21.164 [info] ccreq:b0062305.copilotmd | success | copilot-suggestions-himalia-001 | 682ms | [nes.nextCursorPosition]";
+        let s = parse(line);
+        assert_eq!(s.by_date.get("2026-03-27").map(|d| d.accepted), Some(1));
+        assert_eq!(s.by_date.get("2026-03-27").map(|d| d.shown), Some(0));
+    }
+
+    #[test]
+    fn plain_text_nes_populates_by_model_accepted() {
+        let line = "2026-03-27 15:10:21.164 [info] ccreq:b0062305.copilotmd | success | copilot-suggestions-himalia-001 | 682ms | [nes.nextCursorPosition]";
+        let s = parse(line);
+        assert_eq!(
+            s.by_model_accepted.get("copilot-suggestions-himalia-001"),
+            Some(&1)
+        );
+        assert!(s.by_model_shown.is_empty());
+    }
+
+    #[test]
+    fn plain_text_fetch_completions_populates_by_date() {
+        let line = "2026-03-27 15:10:32.573 [info] [fetchCompletions] Request to /v1/completions finished with 200 status after 198ms";
+        let s = parse(line);
+        assert_eq!(s.by_date.get("2026-03-27").map(|d| d.shown), Some(1));
+        assert_eq!(s.by_hour.get("15"), Some(&1));
+    }
+
+    #[test]
+    fn lines_parsed_and_json_lines_counts() {
+        let input = concat!(
+            r#"{"event":"ghost-text/shown","modelId":"gpt-4o"}"#,
+            "\n",
+            "2026-03-27 15:10:17.693 [info] ccreq:abc | success | gpt-4o | 100ms | [XtabProvider]",
+            "\n\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.lines_parsed, 2);
+        assert_eq!(s.json_lines, 1);
     }
 
     #[test]
@@ -1224,5 +1639,189 @@ mod tests {
     #[test]
     fn format_duration_ms_seconds() {
         assert_eq!(format_duration_ms(45_000.0), "45s");
+    }
+
+    // ── New fields: by_chat_model, subagent_by_model, autonomous_duration_by_model ──
+
+    #[test]
+    fn is_subagent_intent_line_matches_known_intents() {
+        assert!(is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [tool/runSubagent]"
+        ));
+        assert!(is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [panel/editAgent]"
+        ));
+        assert!(is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [tool/runSubagent-some-task]"
+        ));
+        assert!(is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [tool/searchSubagentTool]"
+        ));
+        assert!(!is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [vscodePrompt]"
+        ));
+        assert!(!is_subagent_intent_line(
+            "2026-03-27 12:00:00 ccreq:abc | success | gpt-4o | 500ms | [XtabProvider]"
+        ));
+    }
+
+    #[test]
+    fn extract_finish_reason_with_brackets() {
+        assert_eq!(
+            extract_finish_reason("[streamChoices] solution 0 returned. finish reason: [stop]"),
+            Some("stop".to_string())
+        );
+        assert_eq!(
+            extract_finish_reason("[streamChoices] finish reason: [length]"),
+            Some("length".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_finish_reason_without_brackets() {
+        assert_eq!(
+            extract_finish_reason("[streamChoices] finish reason: stop"),
+            Some("stop".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_finish_reason_returns_none_when_absent() {
+        assert!(extract_finish_reason("[streamChoices] solution returned").is_none());
+        assert!(extract_finish_reason("unrelated line").is_none());
+    }
+
+    #[test]
+    fn plain_text_chat_ccreq_populates_by_chat_model() {
+        let line = "2026-03-27 12:00:00 [info] ccreq:abc | success | gpt-4o | 300ms | [vscodePrompt]";
+        let s = parse(line);
+        assert_eq!(s.total_chat, 1);
+        assert_eq!(s.by_chat_model.get("gpt-4o"), Some(&1));
+        assert_eq!(s.chat_by_date.get("2026-03-27"), Some(&1));
+    }
+
+    #[test]
+    fn plain_text_subagent_ccreq_populates_subagent_by_model() {
+        let line = "2026-03-27 12:00:00 [info] ccreq:abc | success | claude-3.5-sonnet | 800ms | [tool/runSubagent]";
+        let s = parse(line);
+        assert_eq!(s.subagent_requests, 1);
+        assert_eq!(s.subagent_by_model.get("claude-3.5-sonnet"), Some(&1));
+        assert_eq!(s.by_chat_model.get("claude-3.5-sonnet"), Some(&1));
+        assert_eq!(s.chat_by_date.get("2026-03-27"), Some(&1));
+        assert!(s.autonomous_duration_by_model.get("claude-3.5-sonnet").is_some_and(|&v| v > 0.0));
+    }
+
+    #[test]
+    fn plain_text_subagent_ccreq_does_not_double_count_in_chat() {
+        // subagent requests are also counted as chat — only one chat increment per line.
+        let line = "2026-03-27 12:00:00 [info] ccreq:abc | success | gpt-4o | 200ms | [panel/editAgent]";
+        let s = parse(line);
+        assert_eq!(s.total_chat, 1);
+        assert_eq!(s.subagent_requests, 1);
+        assert_eq!(s.by_chat_model.get("gpt-4o"), Some(&1));
+    }
+
+    #[test]
+    fn json_chat_request_populates_by_chat_model_and_chat_by_date() {
+        let input = r#"{"event":"copilot/chat-request","modelId":"gpt-4o","time":"2026-03-27T10:00:00Z"}"#;
+        let s = parse(input);
+        assert_eq!(s.total_chat, 1);
+        assert_eq!(s.by_chat_model.get("gpt-4o"), Some(&1));
+        assert_eq!(s.chat_by_date.get("2026-03-27"), Some(&1));
+    }
+
+    #[test]
+    fn finish_reason_counts_stop_and_length() {
+        let input = concat!(
+            "2026-03-27 12:00:00 [streamChoices] solution 0 returned. finish reason: [stop]\n",
+            "2026-03-27 12:00:00 [streamChoices] solution 0 returned. finish reason: [stop]\n",
+            "2026-03-27 12:00:00 [streamChoices] solution 0 returned. finish reason: [length]\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.finish_reason_counts.get("stop"), Some(&2));
+        assert_eq!(s.finish_reason_counts.get("length"), Some(&1));
+    }
+
+    #[test]
+    fn abort_error_increments_total_rejected() {
+        let input = concat!(
+            "12:00:00 [AsyncCompletionManager] Completion request aborted: AbortError: aborted\n",
+            "12:00:00 [AsyncCompletionManager] Another abort: AbortError\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.total_rejected, 2);
+    }
+
+    #[test]
+    fn tool_calling_loop_stop_increments_subagent_loops() {
+        let input = concat!(
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 200ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:01 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.subagent_loops_started, 1);
+        assert_eq!(s.subagent_loops, 1);
+    }
+
+    #[test]
+    fn multiple_loops_tracked_correctly() {
+        let input = concat!(
+            // Loop 1
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 200ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 150ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
+            // Loop 2
+            "2026-03-27 12:01:00 ccreq:c | success | gpt-4o | 300ms | [panel/editAgent]\n",
+            "2026-03-27 12:01:01 [ToolCallingLoop] shouldContinue=false\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.subagent_loops_started, 2);
+        assert_eq!(s.subagent_loops, 2);
+        // 3 subagent requests (a, b, c)
+        assert_eq!(s.subagent_requests, 3);
+    }
+
+    #[test]
+    fn new_fields_zero_when_empty_input() {
+        let s = parse("");
+        assert!(s.by_chat_model.is_empty());
+        assert!(s.subagent_by_model.is_empty());
+        assert!(s.autonomous_duration_by_model.is_empty());
+        assert!(s.chat_by_date.is_empty());
+        assert!(s.finish_reason_counts.is_empty());
+        assert_eq!(s.subagent_loops_started, 0);
+        assert_eq!(s.total_rejected, 0);
+        assert!(s.loops_completed_by_model.is_empty());
+        assert!(s.total_loop_actions_by_model.is_empty());
+    }
+
+    #[test]
+    fn loops_completed_by_model_tracks_per_model_depth() {
+        // gpt-4o loop: 2 actions then stops
+        // claude loop: 1 action then stops
+        let input = concat!(
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
+            "2026-03-27 12:01:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
+            "2026-03-27 12:01:01 [ToolCallingLoop] shouldContinue=false\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.loops_completed_by_model.get("gpt-4o"), Some(&1));
+        assert_eq!(s.total_loop_actions_by_model.get("gpt-4o"), Some(&2));
+        assert_eq!(s.loops_completed_by_model.get("claude-3.5-sonnet"), Some(&1));
+        assert_eq!(s.total_loop_actions_by_model.get("claude-3.5-sonnet"), Some(&1));
+    }
+
+    #[test]
+    fn loop_without_stop_not_counted_in_completed() {
+        // Loop started but never stopped — should not appear in loops_completed_by_model
+        let input =
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n";
+        let s = parse(input);
+        assert_eq!(s.subagent_loops_started, 1);
+        assert_eq!(s.subagent_loops, 0);
+        assert!(s.loops_completed_by_model.is_empty());
+        assert!(s.total_loop_actions_by_model.is_empty());
     }
 }

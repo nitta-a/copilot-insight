@@ -36,7 +36,7 @@ async function main() {
     platform: "node",
     outdir: "dist",
     outbase: "src",
-    external: ["vscode"],
+    external: ["vscode", "native-parser", "native-parser/*", "./native-parser/*", "../native-parser/*"],
     logLevel: "silent",
     plugins: [
       /* add to the end of plugins array */
@@ -57,6 +57,7 @@ async function main() {
     logLevel: "silent",
     define: { __PKG_VERSION__: JSON.stringify(version) },
     plugins: [esbuildProblemMatcherPlugin],
+    external: ["native-parser", "native-parser/*", "./native-parser/*", "../native-parser/*"],
   });
 
   // Separate bundle for the WebView frontend (browser context, IIFE format).
