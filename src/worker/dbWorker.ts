@@ -27,7 +27,7 @@ import * as path from "node:path";
 import { parentPort } from "node:worker_threads";
 import { InMemoryAnalyticsDb } from "../db/duckdbClient";
 import type { SessionSignalEvent, TrackedEvent } from "../events/eventSchema";
-import { isSubagentIntent } from "../log/logContentParser";
+import { isSubagentIntent } from "../log/parsers/parserHelpers";
 import {
   computeModelPerformance,
   computeRefreshAnalysis,
@@ -1658,6 +1658,10 @@ export function buildSessionList(
  * ignore_errors = true)` — corrupt lines are silently skipped so that a single
  * malformed entry does not abort the entire analysis.
  */
+
+/** Hard cap on events loaded from disk to prevent Worker OOM on very large histories. */
+const MAX_LOAD_EVENTS = 500_000;
+
 function loadJsonlDirectory(storagePath: string): TrackedEvent[] {
   const eventsDir = path.join(storagePath, "events");
   const events: TrackedEvent[] = [];
@@ -1667,12 +1671,21 @@ function loadJsonlDirectory(storagePath: string): TrackedEvent[] {
       .filter((f) => f.endsWith(".jsonl"))
       .sort();
     for (const file of files) {
+      if (events.length >= MAX_LOAD_EVENTS) {
+        console.warn(
+          `[DbWorker] loadJsonlDirectory: reached MAX_LOAD_EVENTS (${MAX_LOAD_EVENTS}), skipping remaining files`,
+        );
+        break;
+      }
       const filePath = path.join(eventsDir, file);
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         for (const line of content.split("\n")) {
           if (!line.trim()) {
             continue;
+          }
+          if (events.length >= MAX_LOAD_EVENTS) {
+            break;
           }
           try {
             events.push(JSON.parse(line) as TrackedEvent);
@@ -1838,7 +1851,7 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         parentPort?.postMessage({ type: msg.type, id: msg.id, error: `Unknown message type: ${msg.type}` });
     }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
     parentPort?.postMessage({ type: msg.type, id: msg.id, error: message });
   }
 });

@@ -42,10 +42,20 @@ export class MetricsWorkerClient {
       }
     });
     this._worker.on("error", (err) => {
+      console.error(`[MetricsWorker] worker error: ${err.stack ?? err.message}`);
       for (const entry of this._pending.values()) {
         entry.reject(err);
       }
       this._pending.clear();
+      this._worker = undefined;
+    });
+    this._worker.on("messageerror", (err) => {
+      console.error(`[MetricsWorker] message deserialisation error: ${err.stack ?? err.message}`);
+    });
+    this._worker.on("exit", (code) => {
+      if (code !== 0) {
+        console.error(`[MetricsWorker] worker exited with code ${code} (pending=${this._pending.size})`);
+      }
     });
   }
 
