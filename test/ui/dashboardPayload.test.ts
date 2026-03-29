@@ -596,6 +596,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 2,
               completionRate: 50,
               velocityMsPerAction: 30000,
+              totalDurationMs: 60000,
             },
           ],
           [
@@ -605,6 +606,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 3,
               completionRate: 100,
               velocityMsPerAction: 10000,
+              totalDurationMs: 60000,
             },
           ],
         ]),
@@ -631,6 +633,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 1,
               completionRate: 100,
               velocityMsPerAction: 5000,
+              totalDurationMs: 5000,
             },
           ],
           [
@@ -640,6 +643,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 2,
               completionRate: 100,
               velocityMsPerAction: 10000,
+              totalDurationMs: 20000,
             },
           ],
         ]),
@@ -669,6 +673,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 2,
               completionRate: 100,
               velocityMsPerAction: 5000,
+              totalDurationMs: 10000,
             },
           ],
           [
@@ -678,6 +683,7 @@ suite("buildDashboardPayload", () => {
               avgLoopActions: 3,
               completionRate: 100,
               velocityMsPerAction: 5000,
+              totalDurationMs: 15000,
             },
           ],
         ]),

@@ -330,7 +330,7 @@ export function buildDashboardPayload(
     .map(([date, dayStat]) => ({
       date,
       avgDepth: Number(dayStat.avgLoopActions.toFixed(2)),
-      totalDurationMin: Number(((dayStat.velocityMsPerAction * countCompletedActions(dayStat)) / 60000).toFixed(2)),
+      totalDurationMin: Number((dayStat.totalDurationMs / 60000).toFixed(2)),
       completionRate: Number(dayStat.completionRate.toFixed(2)),
     }));
 
@@ -643,14 +643,6 @@ function calculateContextFreshness(
     latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
     latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
   };
-}
-
-function countCompletedActions(stat: AgenticDepthStat): number {
-  const { bucket1, bucket2, bucket3to5, bucket6to10, bucket11plus } = stat.loopDistribution;
-
-  const completedLoops = bucket1 + bucket2 + bucket3to5 + bucket6to10 + bucket11plus;
-
-  return completedLoops * stat.avgLoopActions;
 }
 
 /**

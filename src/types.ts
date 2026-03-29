@@ -135,6 +135,12 @@ export interface AgenticDepthStat {
    * 0 when no completed loops with duration data exist.
    */
   velocityMsPerAction: number;
+  /**
+   * Total autonomous-action duration for the period in milliseconds.
+   * Stored directly so callers do not need to reconstruct it from
+   * `velocityMsPerAction` × actions (which requires `loopDistribution`).
+   */
+  totalDurationMs: number;
 }
 
 export interface DateStat {

@@ -348,6 +348,7 @@ export async function parseCopilotLogs(
       avgLoopActions: completed > 0 ? totalActions / completed : 0,
       completionRate: started > 0 ? (completed / started) * 100 : 0,
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+      totalDurationMs,
     });
   }
 
@@ -369,6 +370,7 @@ export async function parseCopilotLogs(
       avgLoopActions: completed > 0 ? totalActions / completed : 0,
       completionRate: started > 0 ? (completed / started) * 100 : 0,
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+      totalDurationMs,
     });
   }
 
