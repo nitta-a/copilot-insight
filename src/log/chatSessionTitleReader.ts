@@ -711,7 +711,24 @@ async function asyncPool<T>(tasks: Array<() => Promise<T>>, concurrency: number)
  * derived title records.  Workspaces and their files are processed with bounded
  * concurrency to avoid overwhelming WSL/cross-filesystem bridges.
  */
-export async function readAllChatSessionData(workspaceStorageRoot: string): Promise<{
+export interface ReadAllChatSessionDataOptions {
+  /**
+   * Maximum number of workspace directories to scan.  Directories are sorted
+   * by mtime descending so only the most recently active ones are processed.
+   * Defaults to 200.
+   */
+  maxWorkspaces?: number;
+  /**
+   * Skip workspace directories whose mtime is older than this many days.
+   * Defaults to 90.  Set to 0 to disable the recency filter.
+   */
+  workspaceRecencyDays?: number;
+}
+
+export async function readAllChatSessionData(
+  workspaceStorageRoot: string,
+  options?: ReadAllChatSessionDataOptions,
+): Promise<{
   titleRecords: ChatSessionTitleRecord[];
   sessionRecords: ChatSessionRecord[];
 }> {
@@ -722,9 +739,37 @@ export async function readAllChatSessionData(workspaceStorageRoot: string): Prom
     return { titleRecords: [], sessionRecords: [] };
   }
 
-  const dirEntries = workspaceEntries.filter((e) => e.isDirectory());
+  let dirEntries = workspaceEntries.filter((e) => e.isDirectory());
 
-  // Process all workspaces with bounded concurrency (8) to avoid overwhelming
+  // Apply recency + count filters to avoid scanning stale workspace directories
+  // on slow cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
+  const maxWorkspaces = options?.maxWorkspaces ?? 200;
+  const recencyDays = options?.workspaceRecencyDays ?? 90;
+  if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
+    // Stat all dirs concurrently (high concurrency: stat is metadata-only,
+    // much faster than opening files).
+    const cutoffMs = recencyDays > 0 ? Date.now() - recencyDays * 24 * 60 * 60 * 1000 : 0;
+    const statResults = await asyncPool(
+      dirEntries.map((entry) => async () => {
+        try {
+          const s = await fs.stat(path.join(workspaceStorageRoot, entry.name));
+          return { entry, mtimeMs: s.mtimeMs };
+        } catch {
+          // stat failed — treat as most-recent so it is not silently dropped.
+          return { entry, mtimeMs: Date.now() };
+        }
+      }),
+      32,
+    );
+    // Sort newest-first, apply recency filter, then cap at maxWorkspaces.
+    dirEntries = statResults
+      .filter(({ mtimeMs }) => cutoffMs === 0 || mtimeMs >= cutoffMs)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(0, maxWorkspaces)
+      .map(({ entry }) => entry);
+  }
+
+  // Process all workspaces with bounded concurrency (4) to avoid overwhelming
   // cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
   const workspaceResults = await asyncPool(
     dirEntries.map((workspaceEntry) => async () => {
@@ -737,19 +782,20 @@ export async function readAllChatSessionData(workspaceStorageRoot: string): Prom
         return [] as (ChatSessionRecord | null)[];
       }
 
-      // Process all files in the same workspace in parallel.
-      return Promise.all(
-        files
-          .filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")))
-          .map((file) => {
-            const filePath = path.join(chatSessionsDir, file.name);
-            return file.name.endsWith(".jsonl")
-              ? parseJsonlChatSessionRecord(filePath, workspaceId)
-              : parseJsonChatSessionRecord(filePath, workspaceId);
-          }),
+      // Process files with bounded concurrency (4) to cap total concurrent I/O
+      // at 4 (outer) × 4 (inner) = 16 instead of unbounded Promise.all.
+      const filteredFiles = files.filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")));
+      return asyncPool(
+        filteredFiles.map((file) => () => {
+          const filePath = path.join(chatSessionsDir, file.name);
+          return file.name.endsWith(".jsonl")
+            ? parseJsonlChatSessionRecord(filePath, workspaceId)
+            : parseJsonChatSessionRecord(filePath, workspaceId);
+        }),
+        4,
       );
     }),
-    8,
+    4,
   );
 
   // Deduplicate by chatSessionId, keeping the most-recent lastMessageAt.

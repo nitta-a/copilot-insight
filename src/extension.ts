@@ -159,8 +159,10 @@ export function activate(context: vscode.ExtensionContext) {
     const advancedStartMs = performance.now();
 
     const logBaseDir = resolveLogSearchPaths(context.logUri.fsPath).logBaseDir;
+    channel.appendLine(`[TIMING] getAdvancedMetrics: start`);
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
+    channel.appendLine(`[TIMING] getAdvancedMetrics: events loaded | count=${allEvents.length}, dates=${dates.length}`);
     if (allEvents.length === 0) {
       if (timingEnabled) {
         channel.appendLine(
@@ -170,37 +172,35 @@ export function activate(context: vscode.ExtensionContext) {
       return { logBaseDir };
     }
     if (dbWorker) {
+      channel.appendLine(`[TIMING] getAdvancedMetrics: dbWorker present, starting db path`);
       try {
         let phaseMs = performance.now();
+        channel.appendLine(`[TIMING] db.loadFromJsonl: start | path=${context.globalStorageUri.fsPath}`);
         await dbWorker.loadFromJsonl(context.globalStorageUri.fsPath);
-        if (timingEnabled) {
-          channel.appendLine(`[TIMING] db.loadFromJsonl: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-        }
+        channel.appendLine(`[TIMING] db.loadFromJsonl: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
         phaseMs = performance.now();
+        channel.appendLine(`[TIMING] db.ingest: start | signals=${stats.sessionSignals.length}`);
         if (stats.sessionSignals.length > 0) {
           await dbWorker.ingest(stats.sessionSignals);
         }
-        if (timingEnabled) {
-          channel.appendLine(
-            `[TIMING] db.ingest: ${(performance.now() - phaseMs).toFixed(1)}ms | ${stats.sessionSignals.length} signal(s)`,
-          );
-        }
+        channel.appendLine(`[TIMING] db.ingest: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
         // NOTE: setChatSessionTitles / setChatSessions / getSessionList are
         // intentionally omitted here — chat session data is loaded lazily when
         // the Sessions tab is first opened (see CopilotUsagePanel._buildSessionsPayloadAsync).
         phaseMs = performance.now();
+        channel.appendLine(`[TIMING] db.computeMetrics: start (trueRate+velocity+modelPerf+refreshAnalysis parallel)`);
         const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
           dbWorker.trueRate(stats.totalShown),
           dbWorker.velocity(),
           dbWorker.modelPerformance(),
           dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
         ]);
+        channel.appendLine(
+          `[TIMING] db.computeMetrics: done | ${(performance.now() - phaseMs).toFixed(1)}ms (trueRate+velocity+modelPerf+refreshAnalysis parallel)`,
+        );
         if (timingEnabled) {
-          channel.appendLine(
-            `[TIMING] db.computeMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms (trueRate+velocity+modelPerf+refreshAnalysis parallel)`,
-          );
           channel.appendLine(
             `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [db path]`,
           );
@@ -212,34 +212,35 @@ export function activate(context: vscode.ExtensionContext) {
           refreshAnalysis,
           logBaseDir,
         };
-      } catch {
+      } catch (err) {
         // Fall back to in-process computation when the worker is unavailable.
+        channel.appendLine(
+          `[TIMING] getAdvancedMetrics: dbWorker error, falling back to in-process | ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
+    } else {
+      channel.appendLine(`[TIMING] getAdvancedMetrics: no dbWorker, using in-process fallback`);
     }
 
     let phaseMs = performance.now();
+    channel.appendLine(`[TIMING] fallback.trueRate: start`);
     const trueAcceptance = computeTrueAcceptanceRate(allEvents, stats.totalShown);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] fallback.trueRate: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] fallback.trueRate: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] fallback.velocity: start`);
     const velocity = computeVelocityAnalysis(allEvents);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] fallback.velocity: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] fallback.velocity: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] fallback.modelPerformance: start`);
     const modelPerformance = computeModelPerformance(allEvents);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] fallback.modelPerformance: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] fallback.modelPerformance: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] fallback.refreshAnalysis: start`);
     const refreshAnalysis = computeRefreshAnalysis(allEvents, stats.memoryManagementEvents);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] fallback.refreshAnalysis: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-      channel.appendLine(
-        `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [fallback path]`,
-      );
-    }
+    channel.appendLine(`[TIMING] fallback.refreshAnalysis: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
+    channel.appendLine(
+      `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [fallback path]`,
+    );
     return {
       trueAcceptance,
       velocity,
@@ -271,11 +272,10 @@ export function activate(context: vscode.ExtensionContext) {
           channel.appendLine(`[TIMING] getInitialStats: ${(performance.now() - phaseMs).toFixed(1)}ms`);
         }
 
+        channel.appendLine(`[TIMING] getAdvancedMetrics: calling`);
         phaseMs = performance.now();
         const advanced = await getAdvancedMetrics(stats);
-        if (timingEnabled) {
-          channel.appendLine(`[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-        }
+        channel.appendLine(`[TIMING] getAdvancedMetrics: returned | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
         const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
         const copilotMemoryDir = path.join(
@@ -285,6 +285,7 @@ export function activate(context: vscode.ExtensionContext) {
           "memory-tool",
           "memories",
         );
+        channel.appendLine(`[TIMING] createOrShow: calling`);
         phaseMs = performance.now();
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
@@ -299,10 +300,11 @@ export function activate(context: vscode.ExtensionContext) {
           },
           dbWorker,
         );
-        if (timingEnabled) {
-          // _update() is async fire-and-forget; this measures only the sync entry cost.
-          channel.appendLine(`[TIMING] createOrShow (sync entry): ${(performance.now() - phaseMs).toFixed(1)}ms`);
-        }
+        // _update() is async fire-and-forget; this measures only the sync entry cost.
+        channel.appendLine(
+          `[TIMING] createOrShow: returned (sync entry) | ${(performance.now() - phaseMs).toFixed(1)}ms`,
+        );
+        channel.appendLine(`[TIMING] showCopilotUsage: withProgress handler complete`);
       },
     );
   });

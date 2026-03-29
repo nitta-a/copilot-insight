@@ -27,8 +27,8 @@ export type { CopilotUsageStats, DateStat } from "../types";
 // ---------------------------------------------------------------------------
 
 const WS_SESSION_CACHE_FILENAME = "ws-session-cache.json";
-/** Default TTL for the workspace session disk cache: 15 minutes. */
-const WS_SESSION_CACHE_TTL_MS = 15 * 60 * 1000;
+/** Default TTL for the workspace session disk cache: 60 minutes. */
+const WS_SESSION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Module-level in-memory cache so repeated calls skip disk I/O entirely. */
 let wsSessionMemCache: {
@@ -299,7 +299,7 @@ export async function parseCopilotLogs(
     );
     if (timingEnabled) {
       channel.appendLine(
-        `[TIMING] all sessions: ${(performance.now() - sessionsStartMs).toFixed(1)}ms | logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}`,
+        `[TIMING] all sessions: ${(performance.now() - sessionsStartMs).toFixed(1)}ms | logFilesFound=${ctx.logFilesFound}, shown=${ctx.totalShown}, accepted=${ctx.totalAccepted}, chat=${ctx.totalChat}, agenticMs=${Math.round(ctx.autonomousDurationMs)}`,
       );
     }
     // NOTE: SQLite workspace chat-session reads are intentionally deferred.
@@ -348,6 +348,7 @@ export async function parseCopilotLogs(
       avgLoopActions: completed > 0 ? totalActions / completed : 0,
       completionRate: started > 0 ? (completed / started) * 100 : 0,
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+      totalDurationMs,
     });
   }
 
@@ -369,6 +370,7 @@ export async function parseCopilotLogs(
       avgLoopActions: completed > 0 ? totalActions / completed : 0,
       completionRate: started > 0 ? (completed / started) * 100 : 0,
       velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
+      totalDurationMs,
     });
   }
 
@@ -482,12 +484,16 @@ export async function loadMoreCopilotLogs(logUri: vscode.Uri): Promise<CopilotUs
  * calling `getSessionList()`.
  */
 export async function readWorkspaceChatSessions(
-  logBaseDir: string,
+  logBaseDir?: string,
   options?: { skipWindowsRoots?: boolean; storagePath?: string; cacheTtlMs?: number },
 ): Promise<{
   chatSessionTitles: ChatSessionTitleRecord[];
   chatSessions: ChatSessionRecord[];
 }> {
+  if (!logBaseDir) {
+    return { chatSessionTitles: [], chatSessions: [] };
+  }
+
   const channel = getLogChannel();
   const timingEnabled = isTimingLogsEnabled();
   const t0 = timingEnabled ? performance.now() : 0;
@@ -528,7 +534,11 @@ export async function readWorkspaceChatSessions(
 
   const t1 = timingEnabled ? performance.now() : 0;
   // Single-pass: scan each root once, deriving title records from session records.
-  const allResults = await Promise.all(allRoots.map((root) => readAllChatSessionData(root)));
+  // Limit to the 200 most recently active workspaces within the last 90 days to
+  // avoid exhaustive scans on slow cross-filesystem bridges (e.g. WSL ↔ Windows).
+  const allResults = await Promise.all(
+    allRoots.map((root) => readAllChatSessionData(root, { maxWorkspaces: 200, workspaceRecencyDays: 90 })),
+  );
   if (timingEnabled) {
     const totalFiles = allResults.reduce((s, r) => s + r.sessionRecords.length, 0);
     channel.appendLine(

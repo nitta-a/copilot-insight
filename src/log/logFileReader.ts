@@ -129,10 +129,25 @@ export async function parseLogDirectory(logDir: string, ctx: ParsingContext): Pr
       logFiles.map(async (e) => {
         const filePath = path.join(logDir, e.name);
         const result = await parseLogFile(filePath, ctx);
-        if (timingEnabled && result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
-          getLogChannel().appendLine(
-            `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
-          );
+        if (timingEnabled) {
+          if (result.elapsedMs >= SLOW_FILE_THRESHOLD_MS) {
+            getLogChannel().appendLine(
+              `[TIMING] slow file (${result.elapsedMs.toFixed(1)}ms): ${filePath} [${result.usedNative ? "native" : "js"}]`,
+            );
+          }
+          if (result.fileStats) {
+            const fs = result.fileStats;
+            const parts = [`shown=${fs.shown}`, `accepted=${fs.accepted}`, `chat=${fs.chat}`];
+            if (fs.agenticMs > 0) {
+              parts.push(`agenticMs=${fs.agenticMs}`);
+            }
+            if (fs.linesTotal !== undefined && fs.linesTotal > 0) {
+              parts.push(`jsonLines=${fs.linesJson ?? 0}/${fs.linesTotal}`);
+            }
+            getLogChannel().appendLine(
+              `[TIMING]   file [${result.usedNative ? "native" : "js"}]: ${parts.join(", ")} — ${path.basename(filePath)}`,
+            );
+          }
         }
         return result;
       }),
@@ -217,6 +232,18 @@ export async function parseRemoteExthostLog(
 
 export async function parseSessionTerminalLog(sessionDir: string, ctx: ParsingContext): Promise<boolean> {
   const terminalLogPath = path.join(sessionDir, "terminal.log");
+  // Fast existence check: avoid opening a readline stream for a missing file
+  // (~100-500ms per session when the file doesn't exist).
+  const exists = await fs.access(terminalLogPath).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) {
+    if (isTimingLogsEnabled()) {
+      getLogChannel().appendLine(`[TIMING] terminal.log: 0.0ms [skip] | missing: ${terminalLogPath}`);
+    }
+    return false;
+  }
   const result = await parseLogFile(terminalLogPath, ctx);
   if (result.success) {
     ctx.logFilesFound++;

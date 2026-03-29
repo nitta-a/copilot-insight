@@ -200,6 +200,7 @@ suite("weeklyTrend", () => {
             avgLoopActions: 2,
             completionRate: 100,
             velocityMsPerAction: 1000,
+            totalDurationMs: 2000,
           },
         ],
         [
@@ -209,6 +210,7 @@ suite("weeklyTrend", () => {
             avgLoopActions: 3,
             completionRate: 100,
             velocityMsPerAction: 1000,
+            totalDurationMs: 6000,
           },
         ],
       ]);

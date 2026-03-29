@@ -25,7 +25,11 @@ import type { ParsingContext } from "../types";
 import { tryParseJsonLogLine } from "./parsers/jsonLogParser";
 import { parseTextLogLine } from "./parsers/textLogParser";
 import type { NativeParseResult } from "./nativeBridge";
-import { loadNativeModule, parseLogChunkNative, parseLogFileNative } from "./nativeBridge";
+import { getNativeLoadError, loadNativeModule, parseLogChunkNative, parseLogFileNative } from "./nativeBridge";
+import { getLogChannel, isTimingLogsEnabled } from "./logChannel";
+
+/** Emit the native-unavailable reason at most once per extension session. */
+let nativeStatusLogged = false;
 
 // Re-export public API from sub-modules so that existing consumers keep working
 // without changing their import paths.
@@ -94,6 +98,8 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   if (native.latencies.length > 0) {
     for (const lat of native.latencies) {
       ctx.latencies.push(lat);
+      ctx.latencySum += lat;
+      ctx.latencyCount += 1;
     }
   }
 
@@ -134,6 +140,50 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     existing.promptTokens += pt ?? 0;
     existing.completionTokens += ct ?? 0;
     ctx.tokensByModel.set(model, existing);
+  }
+
+  // Merge new model-breakdown maps needed by the ROI / Agent Intelligence tabs.
+  for (const [model, count] of Object.entries(native.byChatModel ?? {})) {
+    ctx.byChatModel.set(model, (ctx.byChatModel.get(model) ?? 0) + count);
+  }
+  for (const [model, count] of Object.entries(native.subagentByModel ?? {})) {
+    ctx.subagentByModel.set(model, (ctx.subagentByModel.get(model) ?? 0) + count);
+  }
+  for (const [model, ms] of Object.entries(native.autonomousDurationByModel ?? {})) {
+    ctx.autonomousDurationByModel.set(model, (ctx.autonomousDurationByModel.get(model) ?? 0) + ms);
+  }
+  for (const [date, count] of Object.entries(native.chatByDate ?? {})) {
+    ctx.chatByDate.set(date, (ctx.chatByDate.get(date) ?? 0) + count);
+  }
+  for (const [reason, count] of Object.entries(native.finishReasonCounts ?? {})) {
+    ctx.finishReasonCounts.set(reason, (ctx.finishReasonCounts.get(reason) ?? 0) + count);
+  }
+  if (native.subagentLoopsStarted) {
+    ctx.subagentLoopsStarted += native.subagentLoopsStarted;
+  }
+  if (native.totalRejected) {
+    ctx.totalRejected += native.totalRejected;
+  }
+  for (const [model, count] of Object.entries(native.loopsCompletedByModel ?? {})) {
+    ctx.loopsCompletedByModel.set(model, (ctx.loopsCompletedByModel.get(model) ?? 0) + count);
+  }
+  for (const [model, count] of Object.entries(native.totalLoopActionsByModel ?? {})) {
+    ctx.totalLoopActionsByModel.set(model, (ctx.totalLoopActionsByModel.get(model) ?? 0) + count);
+  }
+  for (const [model, count] of Object.entries(native.loopsStartedByModel ?? {})) {
+    ctx.loopsStartedByModel.set(model, (ctx.loopsStartedByModel.get(model) ?? 0) + count);
+  }
+  for (const [date, count] of Object.entries(native.loopsStartedByDate ?? {})) {
+    ctx.loopsStartedByDate.set(date, (ctx.loopsStartedByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, count] of Object.entries(native.loopsCompletedByDate ?? {})) {
+    ctx.loopsCompletedByDate.set(date, (ctx.loopsCompletedByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, count] of Object.entries(native.totalLoopActionsByDate ?? {})) {
+    ctx.totalLoopActionsByDate.set(date, (ctx.totalLoopActionsByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, ms] of Object.entries(native.autonomousDurationByDate ?? {})) {
+    ctx.autonomousDurationByDate.set(date, (ctx.autonomousDurationByDate.get(date) ?? 0) + ms);
   }
 }
 
@@ -176,6 +226,17 @@ export interface ParseLogFileResult {
   elapsedMs: number;
   /** Whether the native Rust addon was used (`true`) or the JS readline fallback (`false`). */
   usedNative: boolean;
+  /** Per-file stats extracted by the parser (shown/accepted/chat/agenticMs). Populated only when timing is enabled. */
+  fileStats?: {
+    shown: number;
+    accepted: number;
+    chat: number;
+    agenticMs: number;
+    /** Lines handled by the JSON path (diagnostic). */
+    linesJson?: number;
+    /** Total non-empty lines processed (diagnostic; matches `linesParsed` from native). */
+    linesTotal?: number;
+  };
 }
 
 export interface ParseLogFileOptions {
@@ -208,12 +269,28 @@ export async function parseLogFile(
   // When a byte offset is supplied we must use the JS readline path because the
   // native addon always reads from the beginning of the file.
   const useNative = !opts?.startByte && loadNativeModule();
+  if (!useNative && !nativeStatusLogged) {
+    nativeStatusLogged = true;
+    const reason = getNativeLoadError() ?? "native addon not built (run `npm run build:native`)";
+    getLogChannel().appendLine(`[native] falling back to JS parser — ${reason}`);
+  }
   if (useNative) {
     try {
       const nativeResult = parseLogFileNative(filePath);
       if (nativeResult) {
         mergeNativeResults(nativeResult, ctx);
-        return { success: true, elapsedMs: performance.now() - startMs, usedNative: true };
+        const elapsedMs = performance.now() - startMs;
+        const fileStats = isTimingLogsEnabled()
+          ? {
+              shown: nativeResult.totalShown,
+              accepted: nativeResult.totalAccepted,
+              chat: nativeResult.totalChat,
+              agenticMs: Math.round(nativeResult.autonomousDurationMs ?? 0),
+              linesJson: nativeResult.jsonLines ?? 0,
+              linesTotal: nativeResult.linesParsed ?? 0,
+            }
+          : undefined;
+        return { success: true, elapsedMs, usedNative: true, fileStats };
       }
     } catch {
       // Intentionally silent: file-not-found, permission errors, and unexpected

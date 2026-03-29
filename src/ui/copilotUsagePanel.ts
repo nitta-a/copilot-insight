@@ -2,7 +2,14 @@ import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
+import type {
+  AgentStep,
+  CopilotUsageStats,
+  RefreshAnalysis,
+  SessionDetailPayload,
+  SessionSummary,
+  SessionThreadSummary,
+} from "../types";
 import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
@@ -59,6 +66,8 @@ export class CopilotUsagePanel {
   private _dbWorker: DbWorkerClient | undefined;
   /** Guard against reading workspaceStorage chat sessions more than once. */
   private _chatSessionsLoaded = false;
+  /** In-flight promise returned by _ensureChatSessionsLoaded — deduplicates concurrent callers. */
+  private _chatSessionsLoadingPromise: Promise<void> | null = null;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -70,7 +79,18 @@ export class CopilotUsagePanel {
 
     if (CopilotUsagePanel.currentPanel) {
       CopilotUsagePanel.currentPanel._panel.reveal(column);
+      // Preserve any chat-session data already loaded into the old stats object
+      // so that the Prompt Insights and Sessions tabs do not lose their data
+      // when _stats is replaced with fresh parse results.
+      const prevTitles = CopilotUsagePanel.currentPanel._stats.chatSessionTitles;
+      const prevSessions = CopilotUsagePanel.currentPanel._stats.chatSessions;
       CopilotUsagePanel.currentPanel._stats = stats;
+      if ((prevTitles?.length ?? 0) > 0) {
+        CopilotUsagePanel.currentPanel._stats.chatSessionTitles = prevTitles;
+      }
+      if ((prevSessions?.length ?? 0) > 0) {
+        CopilotUsagePanel.currentPanel._stats.chatSessions = prevSessions;
+      }
       CopilotUsagePanel.currentPanel._advanced = advanced;
       CopilotUsagePanel.currentPanel._dbWorker = dbWorker;
       void CopilotUsagePanel.currentPanel._update();
@@ -144,8 +164,51 @@ export class CopilotUsagePanel {
         break;
       }
       case "requestSessionDetail": {
+        const buildInMemoryDetail = (sessionId: string): SessionDetailPayload | null => {
+          const session = (this._stats.chatSessions ?? []).find((s) => s.chatSessionId === sessionId);
+          if (!session) {
+            return null;
+          }
+          const steps: AgentStep[] = session.requests.map((req) => ({
+            timestamp: new Date(req.timestamp).toISOString(),
+            actor: "human" as const,
+            phase: "human" as const,
+            label: "Prompt" as const,
+            detail: req.messageText.slice(0, 500),
+            rawIntent: req.messageText.slice(0, 200),
+            durationMs: req.timings.totalElapsed ?? undefined,
+          }));
+          const thread: SessionThreadSummary = {
+            threadId: session.chatSessionId,
+            title: session.title ?? session.firstRequestText?.slice(0, 80) ?? session.chatSessionId,
+            startedAt: session.createdAt,
+            estimatedMinutesSaved: 0,
+            autonomousDurationMs: 0,
+            acceptedChars: 0,
+            hasAutonomousRun: false,
+            stepCount: steps.length,
+            longestPauseMs: 0,
+            hasSelectableTitle: Boolean(session.title),
+          };
+          return {
+            sessionId: session.chatSessionId,
+            date: session.createdAt.slice(0, 10),
+            totalActions: steps.length,
+            trueRate: 0,
+            autonomousDuration: 0,
+            efficiencyScore: 0,
+            timeline: [],
+            episodes: [],
+            fatigueMarker: null,
+            threads: steps.length > 0 ? [thread] : [],
+            stepsByThread: steps.length > 0 ? { [session.chatSessionId]: steps } : {},
+          };
+        };
         if (!this._dbWorker) {
-          void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+          void this._panel.webview.postMessage({
+            type: "sessionDetailData",
+            payload: buildInMemoryDetail(msg.payload.sessionId),
+          });
           break;
         }
         void this._dbWorker
@@ -154,7 +217,10 @@ export class CopilotUsagePanel {
             void this._panel.webview.postMessage({ type: "sessionDetailData", payload });
           })
           .catch(() => {
-            void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+            void this._panel.webview.postMessage({
+              type: "sessionDetailData",
+              payload: buildInMemoryDetail(msg.payload.sessionId),
+            });
           });
         break;
       }
@@ -179,25 +245,33 @@ export class CopilotUsagePanel {
 
   /**
    * Read workspaceStorage chat session data once and cache it into `this._stats`.
-   * Idempotent — subsequent calls are no-ops.
+   * Idempotent — concurrent callers share the same in-flight promise so only one
+   * filesystem scan ever runs at a time.
    */
-  private async _ensureChatSessionsLoaded(): Promise<void> {
+  private _ensureChatSessionsLoaded(): Promise<void> {
     if (this._chatSessionsLoaded) {
-      return;
+      return Promise.resolve();
     }
     if (!this._advanced.logBaseDir) {
-      return;
+      return Promise.resolve();
     }
-    try {
-      const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir, {
-        storagePath: this._advanced.globalStoragePath,
-      });
-      this._stats.chatSessionTitles = chatSessionTitles;
-      this._stats.chatSessions = chatSessions;
-    } catch {
-      // Non-fatal — workspace storage may not exist in all environments.
+    if (this._chatSessionsLoadingPromise) {
+      return this._chatSessionsLoadingPromise;
     }
-    this._chatSessionsLoaded = true;
+    this._chatSessionsLoadingPromise = (async () => {
+      try {
+        const { chatSessionTitles, chatSessions } = await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+          storagePath: this._advanced.globalStoragePath,
+        });
+        this._stats.chatSessionTitles = chatSessionTitles;
+        this._stats.chatSessions = chatSessions;
+      } catch {
+        // Non-fatal — workspace storage may not exist in all environments.
+      }
+      this._chatSessionsLoaded = true;
+      this._chatSessionsLoadingPromise = null;
+    })();
+    return this._chatSessionsLoadingPromise;
   }
 
   /**
@@ -258,43 +332,67 @@ export class CopilotUsagePanel {
 
     await this._ensureChatSessionsLoaded();
     if (this._advanced.logBaseDir && this._dbWorker) {
-      const { chatSessionTitles, chatSessions } =
-        (this._stats.chatSessionTitles?.length ?? 0) > 0 || (this._stats.chatSessions?.length ?? 0) > 0
-          ? {
-              chatSessionTitles: this._stats.chatSessionTitles ?? [],
-              chatSessions: this._stats.chatSessions ?? [],
-            }
-          : await readWorkspaceChatSessions(this._advanced.logBaseDir, {
-              storagePath: this._advanced.globalStoragePath,
-            });
-      if (timingEnabled) {
-        channel.appendLine(
-          `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,
-        );
-      }
+      try {
+        const { chatSessionTitles, chatSessions } =
+          (this._stats.chatSessionTitles?.length ?? 0) > 0 || (this._stats.chatSessions?.length ?? 0) > 0
+            ? {
+                chatSessionTitles: this._stats.chatSessionTitles ?? [],
+                chatSessions: this._stats.chatSessions ?? [],
+              }
+            : await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+                storagePath: this._advanced.globalStoragePath,
+              });
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,
+          );
+        }
 
-      let phaseMs = performance.now();
-      await this._dbWorker.setChatSessionTitles(chatSessionTitles);
-      await this._dbWorker.setChatSessions(chatSessions);
-      if (timingEnabled) {
-        channel.appendLine(`[TIMING] sessions.dbSet: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-      }
+        let phaseMs = performance.now();
+        await this._dbWorker.setChatSessionTitles(chatSessionTitles);
+        await this._dbWorker.setChatSessions(chatSessions);
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] sessions.dbSet: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
 
-      phaseMs = performance.now();
-      const sessionSummaries = await this._dbWorker.getSessionList();
-      if (timingEnabled) {
-        channel.appendLine(
-          `[TIMING] sessions.getSessionList: ${(performance.now() - phaseMs).toFixed(1)}ms | ${sessionSummaries.length} summary(ies)`,
-        );
-        channel.appendLine(`[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms`);
+        phaseMs = performance.now();
+        const sessionSummaries = await this._dbWorker.getSessionList();
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] sessions.getSessionList: ${(performance.now() - phaseMs).toFixed(1)}ms | ${sessionSummaries.length} summary(ies)`,
+          );
+          channel.appendLine(
+            `[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms`,
+          );
+        }
+        return buildSessionsPayload(this._stats, sessionSummaries);
+      } catch {
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] _buildSessionsPayload: dbWorker unavailable, using in-memory fallback`);
+        }
+        // fall through to in-memory fallback
       }
-      return buildSessionsPayload(this._stats, sessionSummaries);
     }
     // No logBaseDir or no dbWorker — fall back to in-memory stats
     if (timingEnabled) {
       channel.appendLine(
         `[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms [in-memory fallback]`,
       );
+    }
+    const chatSessions = this._stats.chatSessions ?? [];
+    if (chatSessions.length > 0) {
+      const summaries: SessionSummary[] = chatSessions
+        .map((s) => ({
+          sessionId: s.chatSessionId,
+          title: s.title ?? s.firstRequestText?.slice(0, 80) ?? null,
+          date: s.createdAt?.slice(0, 10) ?? s.lastMessageAt?.slice(0, 10) ?? "",
+          totalActions: s.requests.length,
+          trueRate: 0,
+          autonomousDuration: 0,
+          efficiencyScore: 0,
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      return buildSessionsPayload(this._stats, summaries);
     }
     return buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
   }
@@ -342,9 +440,16 @@ export class CopilotUsagePanel {
     if (!this._advanced.logUri) {
       return;
     }
+    // Wait for any in-flight chat-session scan before starting the full
+    // log re-parse so both don't compete for filesystem I/O.
+    await this._ensureChatSessionsLoaded();
     try {
+      const prevChatSessions = this._stats.chatSessions;
+      const prevChatSessionTitles = this._stats.chatSessionTitles;
       const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
       this._stats = fullStats;
+      this._stats.chatSessions = prevChatSessions;
+      this._stats.chatSessionTitles = prevChatSessionTitles;
       this._advanced = { ...this._advanced, hasMoreData: false };
       await this._update();
     } catch (err) {
@@ -365,17 +470,17 @@ export class CopilotUsagePanel {
     );
 
     let phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.collectContextFiles: start`);
     const projectContextFiles = await collectAllContextFiles(
       this._advanced.userPromptsDir,
       this._advanced.copilotMemoryDir,
     );
-    if (timingEnabled) {
-      channel.appendLine(
-        `[TIMING] _update.collectContextFiles: ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
-      );
-    }
+    channel.appendLine(
+      `[TIMING] _update.collectContextFiles: done | ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
+    );
 
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.buildPayload: start`);
     const payload = buildDashboardPayload(
       this._stats,
       this._advanced.trueAcceptance,
@@ -387,23 +492,18 @@ export class CopilotUsagePanel {
       this._advanced.hasMoreData ?? false,
       projectContextFiles,
     );
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.buildPayload: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update.buildPayload: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.setHtml: start`);
     this._panel.webview.html = getHtmlContent(this._stats, nonce, scriptUri.toString(), payload);
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.setHtml: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update.setHtml: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
     // Also push an update via postMessage so the WebView re-renders without
     // a full HTML reload (e.g. when only the period changes after first load).
     phaseMs = performance.now();
+    channel.appendLine(`[TIMING] _update.postMessage: sending`);
     this._panel.webview.postMessage({ type: "dashboardData", payload });
-    if (timingEnabled) {
-      channel.appendLine(`[TIMING] _update.postMessage: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-      channel.appendLine(`[TIMING] _update total: ${(performance.now() - updateStartMs).toFixed(1)}ms`);
-    }
+    channel.appendLine(`[TIMING] _update total: ${(performance.now() - updateStartMs).toFixed(1)}ms`);
   }
 }

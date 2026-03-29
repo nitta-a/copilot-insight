@@ -82,6 +82,18 @@ export class DbWorkerClientImpl implements DbWorkerClient {
         entry.reject(err);
       }
       this._pending.clear();
+      this._worker = undefined;
+    });
+    this._worker.on("exit", (code) => {
+      if (this._pending.size === 0) {
+        return;
+      }
+      const err = new Error(`DB worker exited unexpectedly (code ${code})`);
+      for (const entry of this._pending.values()) {
+        entry.reject(err);
+      }
+      this._pending.clear();
+      this._worker = undefined;
     });
   }
 

@@ -186,18 +186,39 @@ export function buildDashboardPayload(
   // summary KPIs and the per-model autonomous ratio table below.
   const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
   const normalizedChatModelForSummary = mergeCountByNormalizedModel(stats.byChatModel);
-  const askModelCounts = buildModelCountFromSessionSignals(
+  let askModelCounts = buildModelCountFromSessionSignals(
     stats,
     (signal) => signal.signalType === "chat-request" && isAskIntent(signal.intent),
   );
   // Count both legacy plan-proposal signals (panel/unknown, agent/plan) and modern
   // panel/editAgent requests, which represent the agentic phase in current Copilot logs.
-  const planModelCounts = buildModelCountFromSessionSignals(
+  let planModelCounts = buildModelCountFromSessionSignals(
     stats,
     (signal) =>
       signal.signalType === "plan-proposal" ||
       (signal.signalType === "chat-request" && signal.intent === "panel/editAgent"),
   );
+
+  // Fallback for the native parser path where sessionSignals is always empty:
+  // derive ask/plan model counts from the byChatModel / subagentByModel maps
+  // that the native parser does populate.
+  if (stats.sessionSignals.length === 0 && normalizedChatModelForSummary.size > 0) {
+    const normalizedSubagentFallback = mergeCountByNormalizedModel(stats.subagentByModel);
+    askModelCounts = new Map<string, number>();
+    for (const [model, chatCount] of normalizedChatModelForSummary) {
+      const ask = chatCount - (normalizedSubagentFallback.get(model) ?? 0);
+      if (ask > 0) {
+        askModelCounts.set(model, ask);
+      }
+    }
+  }
+  if (planModelCounts.size === 0 && stats.sessionSignals.length === 0) {
+    const normalizedSubagentFallback = mergeCountByNormalizedModel(stats.subagentByModel);
+    if (normalizedSubagentFallback.size > 0) {
+      planModelCounts = new Map(normalizedSubagentFallback);
+    }
+  }
+
   const topChatModel = findTopCountModel(normalizedChatModelForSummary);
   const topAskModel = findTopCountModel(askModelCounts);
   const topPlanModel = findTopCountModel(planModelCounts);
@@ -309,7 +330,7 @@ export function buildDashboardPayload(
     .map(([date, dayStat]) => ({
       date,
       avgDepth: Number(dayStat.avgLoopActions.toFixed(2)),
-      totalDurationMin: Number(((dayStat.velocityMsPerAction * countCompletedActions(dayStat)) / 60000).toFixed(2)),
+      totalDurationMin: Number((dayStat.totalDurationMs / 60000).toFixed(2)),
       completionRate: Number(dayStat.completionRate.toFixed(2)),
     }));
 
@@ -622,14 +643,6 @@ function calculateContextFreshness(
     latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
     latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
   };
-}
-
-function countCompletedActions(stat: AgenticDepthStat): number {
-  const { bucket1, bucket2, bucket3to5, bucket6to10, bucket11plus } = stat.loopDistribution;
-
-  const completedLoops = bucket1 + bucket2 + bucket3to5 + bucket6to10 + bucket11plus;
-
-  return completedLoops * stat.avgLoopActions;
 }
 
 /**
