@@ -3,6 +3,19 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.1.7] - 2026-03-30
+
+### Changed
+- 📦 **Dependency updates** — updated dev and production dependencies to their latest versions:
+  - `@biomejs/biome` → `^2.4.9`
+  - `@napi-rs/cli` → `^3.6.0`
+  - `typescript` → `^6.0.2`
+  - `@modelcontextprotocol/sdk` → `^1.28.0`
+  - `recharts` → `^3.8.1`
+  - `serialize-javascript` override → `>7.0.4`
+  - `path-to-regexp` (indirect) → `8.4.0`
+  - `picomatch` (indirect) → `2.3.2`
+
 ## [1.1.6] - 2026-03-27
 
 ### Changed
