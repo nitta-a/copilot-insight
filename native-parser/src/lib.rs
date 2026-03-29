@@ -97,6 +97,8 @@ pub struct NativeStats {
     pub loops_completed_by_model: HashMap<String, u32>,
     /// Per-model total number of agentic actions executed across all completed loops.
     pub total_loop_actions_by_model: HashMap<String, u32>,
+    /// Per-model count of agentic (ToolCallingLoop) episodes that were started.
+    pub loops_started_by_model: HashMap<String, u32>,
 }
 
 /// All data required to produce a Markdown report.
@@ -392,6 +394,7 @@ where
         total_rejected: 0,
         loops_completed_by_model: HashMap::new(),
         total_loop_actions_by_model: HashMap::new(),
+        loops_started_by_model: HashMap::new(),
     };
 
     // Stateful loop-tracking: detect subagent loop starts and stops.
@@ -635,6 +638,9 @@ where
                         active_loop = true;
                         active_loop_model = norm_model.clone();
                         active_loop_action_count = 1;
+                        if let Some(ref m) = norm_model {
+                            *stats.loops_started_by_model.entry(m.clone()).or_insert(0) += 1;
+                        }
                     } else {
                         active_loop_action_count += 1;
                     }
@@ -1793,6 +1799,7 @@ mod tests {
         assert_eq!(s.total_rejected, 0);
         assert!(s.loops_completed_by_model.is_empty());
         assert!(s.total_loop_actions_by_model.is_empty());
+        assert!(s.loops_started_by_model.is_empty());
     }
 
     #[test]
@@ -1823,5 +1830,22 @@ mod tests {
         assert_eq!(s.subagent_loops, 0);
         assert!(s.loops_completed_by_model.is_empty());
         assert!(s.total_loop_actions_by_model.is_empty());
+    }
+
+    #[test]
+    fn loops_started_by_model_tracks_per_model() {
+        // Two loops started: gpt-4o starts and stops, then claude starts (no stop).
+        let input = concat!(
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
+            "2026-03-27 12:01:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
+        );
+        let s = parse(input);
+        // gpt-4o started 1 loop, claude started 1 loop
+        assert_eq!(s.loops_started_by_model.get("gpt-4o"), Some(&1));
+        assert_eq!(s.loops_started_by_model.get("claude-3.5-sonnet"), Some(&1));
+        // global counter matches
+        assert_eq!(s.subagent_loops_started, 2);
     }
 }

@@ -317,6 +317,21 @@ export class CopilotUsagePanel {
         `[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms [in-memory fallback]`,
       );
     }
+    const chatSessions = this._stats.chatSessions ?? [];
+    if (chatSessions.length > 0) {
+      const summaries: SessionSummary[] = chatSessions
+        .map((s) => ({
+          sessionId: s.chatSessionId,
+          title: s.title ?? s.firstRequestText?.slice(0, 80) ?? null,
+          date: s.createdAt?.slice(0, 10) ?? s.lastMessageAt?.slice(0, 10) ?? "",
+          totalActions: s.requests.length,
+          trueRate: 0,
+          autonomousDuration: 0,
+          efficiencyScore: 0,
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      return buildSessionsPayload(this._stats, summaries);
+    }
     return buildSessionsPayload(this._stats, this._advanced.sessionSummaries);
   }
 

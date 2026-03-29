@@ -98,6 +98,8 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   if (native.latencies.length > 0) {
     for (const lat of native.latencies) {
       ctx.latencies.push(lat);
+      ctx.latencySum += lat;
+      ctx.latencyCount += 1;
     }
   }
 
@@ -167,6 +169,9 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   }
   for (const [model, count] of Object.entries(native.totalLoopActionsByModel ?? {})) {
     ctx.totalLoopActionsByModel.set(model, (ctx.totalLoopActionsByModel.get(model) ?? 0) + count);
+  }
+  for (const [model, count] of Object.entries(native.loopsStartedByModel ?? {})) {
+    ctx.loopsStartedByModel.set(model, (ctx.loopsStartedByModel.get(model) ?? 0) + count);
   }
 }
 

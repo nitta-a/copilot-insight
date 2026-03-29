@@ -106,6 +106,7 @@ suite("nativeBridge", () => {
       totalRejected: 2,
       loopsCompletedByModel: { "gpt-4o": 2 },
       totalLoopActionsByModel: { "gpt-4o": 8 },
+      loopsStartedByModel: { "gpt-4o": 1 },
     };
     assert.strictEqual(sample.totalShown, 10);
     assert.strictEqual(sample.totalAccepted, 3);
@@ -137,6 +138,7 @@ suite("nativeBridge", () => {
     assert.strictEqual(sample.totalRejected, 2);
     assert.strictEqual(sample.loopsCompletedByModel["gpt-4o"], 2);
     assert.strictEqual(sample.totalLoopActionsByModel["gpt-4o"], 8);
+    assert.strictEqual(sample.loopsStartedByModel["gpt-4o"], 1);
   });
 
   test("resetNativeModule allows reloading the module cache", () => {

@@ -86,6 +86,8 @@ export interface NativeParseResult {
   loopsCompletedByModel: Record<string, number>;
   /** Per-model total agentic actions across all completed loops. */
   totalLoopActionsByModel: Record<string, number>;
+  /** Per-model count of agentic episodes that were started. */
+  loopsStartedByModel: Record<string, number>;
 }
 
 /**
