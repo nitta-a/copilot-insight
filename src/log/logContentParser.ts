@@ -173,6 +173,18 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   for (const [model, count] of Object.entries(native.loopsStartedByModel ?? {})) {
     ctx.loopsStartedByModel.set(model, (ctx.loopsStartedByModel.get(model) ?? 0) + count);
   }
+  for (const [date, count] of Object.entries(native.loopsStartedByDate ?? {})) {
+    ctx.loopsStartedByDate.set(date, (ctx.loopsStartedByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, count] of Object.entries(native.loopsCompletedByDate ?? {})) {
+    ctx.loopsCompletedByDate.set(date, (ctx.loopsCompletedByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, count] of Object.entries(native.totalLoopActionsByDate ?? {})) {
+    ctx.totalLoopActionsByDate.set(date, (ctx.totalLoopActionsByDate.get(date) ?? 0) + count);
+  }
+  for (const [date, ms] of Object.entries(native.autonomousDurationByDate ?? {})) {
+    ctx.autonomousDurationByDate.set(date, (ctx.autonomousDurationByDate.get(date) ?? 0) + ms);
+  }
 }
 
 /**

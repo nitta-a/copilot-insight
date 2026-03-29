@@ -88,6 +88,14 @@ export interface NativeParseResult {
   totalLoopActionsByModel: Record<string, number>;
   /** Per-model count of agentic episodes that were started. */
   loopsStartedByModel: Record<string, number>;
+  /** Per-date count of agentic episodes that were started ("YYYY-MM-DD" → count). */
+  loopsStartedByDate: Record<string, number>;
+  /** Per-date count of agentic episodes that completed ("YYYY-MM-DD" → count). */
+  loopsCompletedByDate: Record<string, number>;
+  /** Per-date total agentic actions across all completed loops. */
+  totalLoopActionsByDate: Record<string, number>;
+  /** Per-date cumulative autonomous-action duration in milliseconds. */
+  autonomousDurationByDate: Record<string, number>;
 }
 
 /**

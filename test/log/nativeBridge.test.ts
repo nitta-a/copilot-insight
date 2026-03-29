@@ -107,6 +107,10 @@ suite("nativeBridge", () => {
       loopsCompletedByModel: { "gpt-4o": 2 },
       totalLoopActionsByModel: { "gpt-4o": 8 },
       loopsStartedByModel: { "gpt-4o": 1 },
+      loopsStartedByDate: { "2024-06-15": 1 },
+      loopsCompletedByDate: { "2024-06-15": 1 },
+      totalLoopActionsByDate: { "2024-06-15": 3 },
+      autonomousDurationByDate: { "2024-06-15": 2500 },
     };
     assert.strictEqual(sample.totalShown, 10);
     assert.strictEqual(sample.totalAccepted, 3);

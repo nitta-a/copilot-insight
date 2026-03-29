@@ -99,6 +99,15 @@ pub struct NativeStats {
     pub total_loop_actions_by_model: HashMap<String, u32>,
     /// Per-model count of agentic (ToolCallingLoop) episodes that were started.
     pub loops_started_by_model: HashMap<String, u32>,
+    /// Per-date count of agentic (ToolCallingLoop) episodes that were started ("YYYY-MM-DD" → count).
+    pub loops_started_by_date: HashMap<String, u32>,
+    /// Per-date count of agentic (ToolCallingLoop) episodes that completed ("YYYY-MM-DD" → count).
+    pub loops_completed_by_date: HashMap<String, u32>,
+    /// Per-date total number of agentic actions executed across all completed loops.
+    pub total_loop_actions_by_date: HashMap<String, u32>,
+    /// Per-date cumulative autonomous-action duration in milliseconds.
+    /// Uses f64 (rather than u64) for seamless JavaScript number interop.
+    pub autonomous_duration_by_date: HashMap<String, f64>,
 }
 
 /// All data required to produce a Markdown report.
@@ -283,6 +292,25 @@ fn line_date_key(trimmed: &str) -> Option<&str> {
     }
 }
 
+/// Extract milliseconds-since-midnight from a log line's leading timestamp.
+/// Handles "YYYY-MM-DD HH:MM:SS[.mmm]" and "YYYY-MM-DDTHH:MM:SS[.mmm]" prefixes.
+/// Used to compute loop duration for `autonomous_duration_by_date`.
+fn line_ts_ms(trimmed: &str) -> Option<u64> {
+    let b = trimmed.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[7] != b'-' || (b[10] != b' ' && b[10] != b'T') {
+        return None;
+    }
+    let hour: u64 = trimmed[11..13].parse().ok()?;
+    let min: u64 = trimmed[14..16].parse().ok()?;
+    let sec: u64 = trimmed[17..19].parse().ok()?;
+    let frac_ms: u64 = if b.len() >= 23 && b[19] == b'.' {
+        trimmed[20..(20 + 3).min(b.len())].parse().unwrap_or(0)
+    } else {
+        0
+    };
+    Some(hour * 3_600_000 + min * 60_000 + sec * 1_000 + frac_ms)
+}
+
 /// Extract the two-digit hour (HH) from a VS Code log line timestamp prefix.
 ///
 /// Expects a valid `YYYY-MM-DD` prefix (validated by [`line_date_key`]) followed
@@ -395,6 +423,10 @@ where
         loops_completed_by_model: HashMap::new(),
         total_loop_actions_by_model: HashMap::new(),
         loops_started_by_model: HashMap::new(),
+        loops_started_by_date: HashMap::new(),
+        loops_completed_by_date: HashMap::new(),
+        total_loop_actions_by_date: HashMap::new(),
+        autonomous_duration_by_date: HashMap::new(),
     };
 
     // Stateful loop-tracking: detect subagent loop starts and stops.
@@ -404,6 +436,7 @@ where
     let mut active_loop = false;
     let mut active_loop_model: Option<String> = None;
     let mut active_loop_action_count: u32 = 0;
+    let mut active_loop_start_ms: Option<u64> = None;
 
     for line in lines {
         let trimmed = line.as_ref().trim();
@@ -641,6 +674,10 @@ where
                         if let Some(ref m) = norm_model {
                             *stats.loops_started_by_model.entry(m.clone()).or_insert(0) += 1;
                         }
+                        if let Some(dk) = line_date_key(trimmed) {
+                            *stats.loops_started_by_date.entry(dk.to_string()).or_insert(0) += 1;
+                        }
+                        active_loop_start_ms = line_ts_ms(trimmed);
                     } else {
                         active_loop_action_count += 1;
                     }
@@ -688,9 +725,28 @@ where
                     *stats.total_loop_actions_by_model.entry(m.clone()).or_insert(0) +=
                         active_loop_action_count;
                 }
+                if let Some(dk) = line_date_key(trimmed) {
+                    let dk = dk.to_string();
+                    *stats.loops_completed_by_date.entry(dk.clone()).or_insert(0) += 1;
+                    *stats
+                        .total_loop_actions_by_date
+                        .entry(dk.clone())
+                        .or_insert(0) += active_loop_action_count;
+                    if let (Some(start_ms), Some(end_ms)) =
+                        (active_loop_start_ms, line_ts_ms(trimmed))
+                    {
+                        if end_ms > start_ms {
+                            *stats
+                                .autonomous_duration_by_date
+                                .entry(dk)
+                                .or_insert(0.0) += (end_ms - start_ms) as f64;
+                        }
+                    }
+                }
                 active_loop = false;
                 active_loop_model = None;
                 active_loop_action_count = 0;
+                active_loop_start_ms = None;
             }
         }
     }
@@ -1847,5 +1903,60 @@ mod tests {
         assert_eq!(s.loops_started_by_model.get("claude-3.5-sonnet"), Some(&1));
         // global counter matches
         assert_eq!(s.subagent_loops_started, 2);
+    }
+
+    #[test]
+    fn loops_started_by_date_tracks_per_date() {
+        let input = concat!(
+            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:01 [ToolCallingLoop] shouldContinue=false\n",
+            "2026-03-28 09:00:00 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-28 09:00:01 [ToolCallingLoop] shouldContinue=false\n",
+            "2026-03-28 10:00:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
+            "2026-03-28 10:00:02 [ToolCallingLoop] shouldContinue=false\n",
+        );
+        let s = parse(input);
+        assert_eq!(s.loops_started_by_date.get("2026-03-27"), Some(&1));
+        assert_eq!(s.loops_started_by_date.get("2026-03-28"), Some(&2));
+        assert_eq!(s.loops_completed_by_date.get("2026-03-27"), Some(&1));
+        assert_eq!(s.loops_completed_by_date.get("2026-03-28"), Some(&2));
+        assert_eq!(s.total_loop_actions_by_date.get("2026-03-27"), Some(&1));
+        assert_eq!(s.total_loop_actions_by_date.get("2026-03-28"), Some(&2)); // 1+1 actions
+    }
+
+    #[test]
+    fn autonomous_duration_by_date_computed_from_timestamps() {
+        let input = concat!(
+            "2026-03-27 12:00:00.000 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
+            "2026-03-27 12:00:05.000 [ToolCallingLoop] shouldContinue=false\n",
+        );
+        let s = parse(input);
+        // Duration = 5000 ms (12:00:05 - 12:00:00)
+        let dur = s.autonomous_duration_by_date.get("2026-03-27").copied().unwrap_or(0.0);
+        assert!((dur - 5000.0).abs() < 1.0, "expected ~5000ms, got {}", dur);
+    }
+
+    #[test]
+    fn line_ts_ms_parses_space_separated_timestamp() {
+        // 12:00:05 should be 12*3600000 + 5000 = 43_205_000
+        assert_eq!(
+            line_ts_ms("2026-03-27 12:00:05 some text"),
+            Some(43_205_000)
+        );
+    }
+
+    #[test]
+    fn line_ts_ms_parses_fractional_seconds() {
+        // 12:00:05.123
+        assert_eq!(
+            line_ts_ms("2026-03-27 12:00:05.123 some text"),
+            Some(43_205_123)
+        );
+    }
+
+    #[test]
+    fn line_ts_ms_returns_none_for_non_timestamp_line() {
+        assert_eq!(line_ts_ms("[ToolCallingLoop] shouldContinue=false"), None);
+        assert_eq!(line_ts_ms("short"), None);
     }
 }
