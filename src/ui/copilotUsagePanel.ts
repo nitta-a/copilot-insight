@@ -2,7 +2,14 @@ import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../types";
+import type {
+  AgentStep,
+  CopilotUsageStats,
+  RefreshAnalysis,
+  SessionDetailPayload,
+  SessionSummary,
+  SessionThreadSummary,
+} from "../types";
 import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
@@ -157,8 +164,51 @@ export class CopilotUsagePanel {
         break;
       }
       case "requestSessionDetail": {
+        const buildInMemoryDetail = (sessionId: string): SessionDetailPayload | null => {
+          const session = (this._stats.chatSessions ?? []).find((s) => s.chatSessionId === sessionId);
+          if (!session) {
+            return null;
+          }
+          const steps: AgentStep[] = session.requests.map((req) => ({
+            timestamp: new Date(req.timestamp).toISOString(),
+            actor: "human" as const,
+            phase: "human" as const,
+            label: "Prompt" as const,
+            detail: req.messageText.slice(0, 500),
+            rawIntent: req.messageText.slice(0, 200),
+            durationMs: req.timings.totalElapsed ?? undefined,
+          }));
+          const thread: SessionThreadSummary = {
+            threadId: session.chatSessionId,
+            title: session.title ?? session.firstRequestText?.slice(0, 80) ?? session.chatSessionId,
+            startedAt: session.createdAt,
+            estimatedMinutesSaved: 0,
+            autonomousDurationMs: 0,
+            acceptedChars: 0,
+            hasAutonomousRun: false,
+            stepCount: steps.length,
+            longestPauseMs: 0,
+            hasSelectableTitle: Boolean(session.title),
+          };
+          return {
+            sessionId: session.chatSessionId,
+            date: session.createdAt.slice(0, 10),
+            totalActions: steps.length,
+            trueRate: 0,
+            autonomousDuration: 0,
+            efficiencyScore: 0,
+            timeline: [],
+            episodes: [],
+            fatigueMarker: null,
+            threads: steps.length > 0 ? [thread] : [],
+            stepsByThread: steps.length > 0 ? { [session.chatSessionId]: steps } : {},
+          };
+        };
         if (!this._dbWorker) {
-          void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+          void this._panel.webview.postMessage({
+            type: "sessionDetailData",
+            payload: buildInMemoryDetail(msg.payload.sessionId),
+          });
           break;
         }
         void this._dbWorker
@@ -167,7 +217,10 @@ export class CopilotUsagePanel {
             void this._panel.webview.postMessage({ type: "sessionDetailData", payload });
           })
           .catch(() => {
-            void this._panel.webview.postMessage({ type: "sessionDetailData", payload: null });
+            void this._panel.webview.postMessage({
+              type: "sessionDetailData",
+              payload: buildInMemoryDetail(msg.payload.sessionId),
+            });
           });
         break;
       }
@@ -279,37 +332,46 @@ export class CopilotUsagePanel {
 
     await this._ensureChatSessionsLoaded();
     if (this._advanced.logBaseDir && this._dbWorker) {
-      const { chatSessionTitles, chatSessions } =
-        (this._stats.chatSessionTitles?.length ?? 0) > 0 || (this._stats.chatSessions?.length ?? 0) > 0
-          ? {
-              chatSessionTitles: this._stats.chatSessionTitles ?? [],
-              chatSessions: this._stats.chatSessions ?? [],
-            }
-          : await readWorkspaceChatSessions(this._advanced.logBaseDir, {
-              storagePath: this._advanced.globalStoragePath,
-            });
-      if (timingEnabled) {
-        channel.appendLine(
-          `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,
-        );
-      }
+      try {
+        const { chatSessionTitles, chatSessions } =
+          (this._stats.chatSessionTitles?.length ?? 0) > 0 || (this._stats.chatSessions?.length ?? 0) > 0
+            ? {
+                chatSessionTitles: this._stats.chatSessionTitles ?? [],
+                chatSessions: this._stats.chatSessions ?? [],
+              }
+            : await readWorkspaceChatSessions(this._advanced.logBaseDir, {
+                storagePath: this._advanced.globalStoragePath,
+              });
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] sessions.readWorkspaceChat: ${(performance.now() - buildStartMs).toFixed(1)}ms | ${chatSessionTitles.length} title(s), ${chatSessions.length} session(s)`,
+          );
+        }
 
-      let phaseMs = performance.now();
-      await this._dbWorker.setChatSessionTitles(chatSessionTitles);
-      await this._dbWorker.setChatSessions(chatSessions);
-      if (timingEnabled) {
-        channel.appendLine(`[TIMING] sessions.dbSet: ${(performance.now() - phaseMs).toFixed(1)}ms`);
-      }
+        let phaseMs = performance.now();
+        await this._dbWorker.setChatSessionTitles(chatSessionTitles);
+        await this._dbWorker.setChatSessions(chatSessions);
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] sessions.dbSet: ${(performance.now() - phaseMs).toFixed(1)}ms`);
+        }
 
-      phaseMs = performance.now();
-      const sessionSummaries = await this._dbWorker.getSessionList();
-      if (timingEnabled) {
-        channel.appendLine(
-          `[TIMING] sessions.getSessionList: ${(performance.now() - phaseMs).toFixed(1)}ms | ${sessionSummaries.length} summary(ies)`,
-        );
-        channel.appendLine(`[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms`);
+        phaseMs = performance.now();
+        const sessionSummaries = await this._dbWorker.getSessionList();
+        if (timingEnabled) {
+          channel.appendLine(
+            `[TIMING] sessions.getSessionList: ${(performance.now() - phaseMs).toFixed(1)}ms | ${sessionSummaries.length} summary(ies)`,
+          );
+          channel.appendLine(
+            `[TIMING] _buildSessionsPayload total: ${(performance.now() - buildStartMs).toFixed(1)}ms`,
+          );
+        }
+        return buildSessionsPayload(this._stats, sessionSummaries);
+      } catch {
+        if (timingEnabled) {
+          channel.appendLine(`[TIMING] _buildSessionsPayload: dbWorker unavailable, using in-memory fallback`);
+        }
+        // fall through to in-memory fallback
       }
-      return buildSessionsPayload(this._stats, sessionSummaries);
     }
     // No logBaseDir or no dbWorker — fall back to in-memory stats
     if (timingEnabled) {
@@ -382,8 +444,12 @@ export class CopilotUsagePanel {
     // log re-parse so both don't compete for filesystem I/O.
     await this._ensureChatSessionsLoaded();
     try {
+      const prevChatSessions = this._stats.chatSessions;
+      const prevChatSessionTitles = this._stats.chatSessionTitles;
       const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
       this._stats = fullStats;
+      this._stats.chatSessions = prevChatSessions;
+      this._stats.chatSessionTitles = prevChatSessionTitles;
       this._advanced = { ...this._advanced, hasMoreData: false };
       await this._update();
     } catch (err) {
