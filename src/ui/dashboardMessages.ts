@@ -21,17 +21,6 @@ export type AgentStep = AgentStepData;
 // Payload data shapes (sent from host → webview)
 // ---------------------------------------------------------------------------
 
-export interface ContextFreshness {
-  score: number;
-  actionCount: number;
-  status: "fresh" | "aging" | "exhausted";
-  actionPenalty: number;
-  trendPenalty: number;
-  suggestedAction: "none" | "compact" | "restart";
-  latestRefreshRoi: number | null;
-  latestRecoveryDelta: number | null;
-}
-
 /** Breakdown of a numeric ROI metric by source category (editor vs CLI). */
 export interface RoiBreakdown {
   /** Combined total across all sources. */
@@ -291,20 +280,6 @@ export interface SessionsData {
   sessionSummaries: SessionSummary[];
 }
 
-/**
- * A single context-definition file discovered from one of three sources:
- * - "workspace": a file inside the current VS Code workspace (e.g. `.github/copilot-instructions.md`)
- * - "user-prompts": files from the VS Code user-level prompts directory
- * - "copilot-memory": Plan Agent session memory files from workspaceStorage
- */
-export interface ProjectContextFile {
-  path: string;
-  name: string;
-  /** First 100 characters of file content for preview. */
-  preview: string;
-  source: "workspace" | "user-prompts" | "copilot-memory";
-}
-
 /** Complete payload sent from the extension host to the WebView. */
 export interface DashboardPayload {
   /** Number of days shown in the timeline (equals timeline.length). */
@@ -324,16 +299,12 @@ export interface DashboardPayload {
   agenticStats: AgenticStats;
   /** Refresh ROI analysis around /compact or truncation boundaries. */
   refreshAnalysis: RefreshAnalysis[];
-  /** Current-session context freshness, or null when unsupported by logs. */
-  freshness: ContextFreshness | null;
   /**
    * True when only a limited number of recent sessions were parsed during the
    * initial load.  The WebView should show a "Load Historical Data" button that
    * sends a `loadMoreData` message to trigger a full re-parse.
    */
   hasMoreData: boolean;
-  /** Context-definition files discovered from workspace, user prompts, and Copilot memory. */
-  projectContextFiles: ProjectContextFile[];
 }
 
 // ---------------------------------------------------------------------------

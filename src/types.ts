@@ -323,11 +323,6 @@ export interface CopilotUsageStats {
   // Session tracking
   bySession: Map<string, SessionStat>;
 
-  // Context Window Insights
-  byContextSource: Map<string, number>;
-  /** Per context source shown/accepted counts for effectiveness analysis. */
-  byContextEffectiveness: Map<string, UsageStatCount>;
-
   // Subagent / Agentic activity
   /** Total number of requests identified as subagent-initiated. */
   subagentRequests: number;

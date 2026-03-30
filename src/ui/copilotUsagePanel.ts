@@ -14,7 +14,6 @@ import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
 import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
-import { collectAllContextFiles } from "../utils/contextFileLocator";
 import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
 import { loadMoreCopilotLogs, readWorkspaceChatSessions } from "../log/copilotLogParser";
 import { getLogChannel, isTimingLogsEnabled } from "../log/logChannel";
@@ -47,10 +46,6 @@ export interface AdvancedMetrics {
    * and older sessions are still available to load.
    */
   hasMoreData?: boolean;
-  /** Path to the VS Code user-level prompts directory (for context file discovery). */
-  userPromptsDir?: string;
-  /** Path to the Copilot Plan Agent session memory directory (for context file discovery). */
-  copilotMemoryDir?: string;
   /** Extension global storage path, used to cache workspace session scan results between runs. */
   globalStoragePath?: string;
 }
@@ -470,16 +465,6 @@ export class CopilotUsagePanel {
     );
 
     let phaseMs = performance.now();
-    channel.appendLine(`[TIMING] _update.collectContextFiles: start`);
-    const projectContextFiles = await collectAllContextFiles(
-      this._advanced.userPromptsDir,
-      this._advanced.copilotMemoryDir,
-    );
-    channel.appendLine(
-      `[TIMING] _update.collectContextFiles: done | ${(performance.now() - phaseMs).toFixed(1)}ms | ${projectContextFiles.length} file(s)`,
-    );
-
-    phaseMs = performance.now();
     channel.appendLine(`[TIMING] _update.buildPayload: start`);
     const payload = buildDashboardPayload(
       this._stats,
@@ -490,7 +475,6 @@ export class CopilotUsagePanel {
       this._advanced.sessionSummaries,
       vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30,
       this._advanced.hasMoreData ?? false,
-      projectContextFiles,
     );
     channel.appendLine(`[TIMING] _update.buildPayload: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 

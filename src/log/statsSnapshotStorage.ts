@@ -44,8 +44,6 @@ interface SerializedCopilotUsageStats {
   chatLatencyP50: number;
   chatLatencyP95: number;
   bySession: Array<[string, SessionStat]>;
-  byContextSource: Array<[string, number]>;
-  byContextEffectiveness: Array<[string, UsageStatCount]>;
   subagentRequests: number;
   agenticRatio: number;
   autonomousDurationMs: number;
@@ -119,8 +117,6 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     chatLatencyP50: stats.chatLatencyP50,
     chatLatencyP95: stats.chatLatencyP95,
     bySession: mapEntries(stats.bySession),
-    byContextSource: mapEntries(stats.byContextSource),
-    byContextEffectiveness: mapEntries(stats.byContextEffectiveness),
     subagentRequests: stats.subagentRequests,
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
@@ -187,8 +183,6 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     chatLatencyP50: stats.chatLatencyP50,
     chatLatencyP95: stats.chatLatencyP95,
     bySession: toMap(stats.bySession),
-    byContextSource: toMap(stats.byContextSource),
-    byContextEffectiveness: toMap(stats.byContextEffectiveness),
     subagentRequests: stats.subagentRequests,
     agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,

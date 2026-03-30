@@ -320,56 +320,6 @@ function parseCcreqLine(
 }
 
 /**
- * Parse context provider log lines that record which context sources were used.
- * Detects lines containing the word "context" or known context-service keywords
- * (e.g. WorkspaceChunkSearchService, GithubAvailableEmbeddingTypesManager, reposearch)
- * even when the exact word "context" is absent.
- * Returns true if the line was handled as a context event.
- */
-function parseContextProviderLine(line: string, lower: string, ctx: ParsingContext): boolean {
-  // Accept lines that mention "context" or any known context source keyword.
-  const hasContext = lower.includes("context");
-  const hasServiceKeyword =
-    lower.includes("workspacechunk") ||
-    lower.includes("embedding") ||
-    lower.includes("reposearch") ||
-    lower.includes("opentab") ||
-    lower.includes("workspace") ||
-    lower.includes("mcp") ||
-    lower.includes("externaldoc") ||
-    lower.includes("currentfile") ||
-    lower.includes("snippet");
-  if (!hasContext && !hasServiceKeyword) {
-    return false;
-  }
-  const sourcePatterns: [RegExp, string][] = [
-    [/opentab/i, "Open Tabs"],
-    [/workspace/i, "Workspace"],
-    [/reposearch/i, "Workspace"],
-    [/embedding/i, "Workspace"],
-    [/\bmcp\b/i, "MCP / External Docs"],
-    [/externaldoc/i, "MCP / External Docs"],
-    [/(agent-plugin|plugin|skill)/i, "Plugin / Skill"],
-    [/(browsertool|browser tool|playwright|screenshot)/i, "Browser Tool"],
-    [/(session_memory|session memory|compact|compaction)/i, "Session Memory"],
-    [/currentfile/i, "Current File"],
-    [/snippet/i, "Snippet"],
-  ];
-  for (const [pattern, source] of sourcePatterns) {
-    if (pattern.test(line)) {
-      incrementCount(ctx.byContextSource, source);
-      return true;
-    }
-  }
-  // "context" is present but no known source pattern matched — count as unknown.
-  if (hasContext) {
-    incrementCount(ctx.byContextSource, "Unknown Context");
-    return true;
-  }
-  return false;
-}
-
-/**
  * Detect "[ToolCallingLoop] Subagent stop hook result: shouldContinue=false" lines.
  * Closes the active subagent loop and accumulates the autonomous duration.
  * Returns true if the line was handled.
@@ -544,9 +494,6 @@ export function parseTextLogLine(line: string, ctx: ParsingContext): void {
     return;
   }
   if (parseCcreqLine(line, lineCtx, ctx)) {
-    return;
-  }
-  if (parseContextProviderLine(line, lineCtx.lower, ctx)) {
     return;
   }
 }

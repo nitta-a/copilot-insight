@@ -182,35 +182,6 @@ export function mergeCountByNormalizedModel(source: Map<string, number>): Map<st
   return merged;
 }
 
-/**
- * Normalize a raw context source type string to a canonical display name.
- * Returns the original `raw` string when no known pattern matches, so that
- * unknown-but-real sources remain visible instead of being silently dropped.
- * Returns "" only when `raw` is empty.
- */
-export function normalizeContextSource(raw: string): string {
-  if (!raw) {
-    return "";
-  }
-  const lower = raw.toLowerCase().replace(/[-_ ]/g, "");
-  if (lower.includes("opentab")) {
-    return "Open Tabs";
-  }
-  if (lower.includes("workspace") || lower.includes("reposearch") || lower.includes("embedding")) {
-    return "Workspace";
-  }
-  if (lower.includes("mcp") || lower.includes("externaldoc")) {
-    return "MCP / External Docs";
-  }
-  if (lower.includes("currentfile") || lower === "current") {
-    return "Current File";
-  }
-  if (lower.includes("snippet")) {
-    return "Snippet";
-  }
-  return raw;
-}
-
 /** Increment a Map<string, number> counter by 1 (no-op if key is empty). */
 export function incrementCount(map: Map<string, number>, key: string): void {
   if (!key) {
@@ -414,20 +385,6 @@ export function recordMemoryManagementSignal(ctx: ParsingContext, raw: string, t
     phase: "memory",
     intent: type,
     rawText: raw,
-    modelName: "",
-    latencyMs: 0,
-    success: true,
-  });
-}
-
-export function recordReferenceSignal(ctx: ParsingContext, source: string, timestamp: string, rawText: string): void {
-  pushSessionSignal(ctx, {
-    timestamp,
-    signalType: "reference-used",
-    actor: "system",
-    phase: "research",
-    intent: `reference/${source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-    rawText,
     modelName: "",
     latencyMs: 0,
     success: true,
