@@ -231,6 +231,49 @@ suite("chatSessionTitleReader", () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("readAllChatSessionData: cross-fs path skips stat and recency filter", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-xfs-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      // Create 3 valid hex-hash workspace dirs with a very old mtime (200 days ago).
+      const hexDirs = Array.from({ length: 3 }, (_, i) => i.toString(16).padStart(32, "0"));
+      const oldTime = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+      for (const id of hexDirs) {
+        const dir = path.join(workspaceStorageRoot, id);
+        await fs.mkdir(path.join(dir, "chatSessions"), { recursive: true });
+        await fs.writeFile(
+          path.join(dir, "chatSessions", "s.json"),
+          JSON.stringify({ sessionId: id, creationDate: 1760871632297, lastMessageDate: 1760871632297, requests: [] }),
+          "utf-8",
+        );
+        // Set the workspace dir mtime to 200 days ago (older than the 90-day cutoff).
+        await fs.utimes(dir, oldTime, oldTime);
+      }
+
+      // Non-cross-fs: stat IS called, 90-day recency filter excludes all 200-day-old dirs.
+      const { sessionRecords: normal } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 10,
+        workspaceRecencyDays: 90,
+      });
+      assert.strictEqual(normal.length, 0, "normal path should filter dirs older than 90 days");
+
+      // Cross-fs override: stat is skipped entirely, recency filter never applied.
+      // All 3 dirs must be returned (no mtime filtering, no stat calls).
+      const { sessionRecords: crossFs } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 10,
+        workspaceRecencyDays: 90,
+        _crossFsOverride: true,
+      });
+      assert.strictEqual(
+        crossFs.length,
+        3,
+        `cross-fs path should return all dirs without recency filter, got ${crossFs.length}`,
+      );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 suite("discoverWindowsWorkspaceStorageRoots", () => {

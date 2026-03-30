@@ -727,9 +727,15 @@ export interface ReadAllChatSessionDataOptions {
    * Maximum number of directories to stat before capping the scan list to
    * `maxWorkspaces * 2`.  This prevents runaway stat I/O on large
    * workspaceStorage directories (e.g. thousands of entries on a WSL ↔
-   * Windows cross-filesystem bridge).  Defaults to 2000.
+   * Windows cross-filesystem bridge).  Defaults to `maxWorkspaces`.
    */
   maxStatEntries?: number;
+  /**
+   * @internal For testing only — overrides the automatic cross-filesystem
+   * detection so that callers can force `isCrossFs = true` without requiring
+   * a real `/mnt/[drive]/` path on disk.
+   */
+  _crossFsOverride?: boolean;
 }
 
 /**
@@ -765,40 +771,57 @@ export async function readAllChatSessionData(
   // on slow cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
   const maxWorkspaces = options?.maxWorkspaces ?? 200;
   const recencyDays = options?.workspaceRecencyDays ?? 90;
-  const statScanCap = options?.maxStatEntries ?? 2000;
-  if (dirEntries.length > statScanCap) {
-    // Hard-cap the stat scan to avoid O(n) WSL bridge calls when a
-    // workspaceStorage root contains thousands of hash directories.  We
-    // preserve the recency sort for the capped subset.
-    const originalCount = dirEntries.length;
-    dirEntries = dirEntries.slice(0, maxWorkspaces * 2);
+  const statScanCap = options?.maxStatEntries ?? maxWorkspaces;
+
+  // Detect WSL ↔ Windows cross-filesystem paths (/mnt/[single drive letter]/…).
+  // On these paths the Linux 9P filesystem driver serialises every stat syscall
+  // through the Windows kernel — asyncPool concurrency provides no speedup and
+  // ~1500 stat calls take ~135 seconds.  Skip stat entirely for cross-fs roots
+  // and simply cap by readdir order.
+  const isCrossFs =
+    options?._crossFsOverride ?? (process.platform === "linux" && /^\/mnt\/[a-z]\//.test(workspaceStorageRoot));
+
+  if (isCrossFs) {
+    // Skip stat entirely for cross-filesystem roots — cap by readdir order.
+    // No recency sort is available, but avoiding 135-second I/O stalls is the
+    // overwhelming priority.
+    dirEntries = dirEntries.slice(0, maxWorkspaces);
     // eslint-disable-next-line no-console
-    console.warn(
-      `[TIMING] readAllChatSessionData: statScanCap(${statScanCap}) triggered | original=${originalCount}, capped=${dirEntries.length}`,
-    );
-  }
-  if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
-    // Stat all dirs concurrently (high concurrency: stat is metadata-only,
-    // much faster than opening files).
-    const cutoffMs = recencyDays > 0 ? Date.now() - recencyDays * 24 * 60 * 60 * 1000 : 0;
-    const statResults = await asyncPool(
-      dirEntries.map((entry) => async () => {
-        try {
-          const s = await fs.stat(path.join(workspaceStorageRoot, entry.name));
-          return { entry, mtimeMs: s.mtimeMs };
-        } catch {
-          // stat failed — treat as most-recent so it is not silently dropped.
-          return { entry, mtimeMs: Date.now() };
-        }
-      }),
-      32,
-    );
-    // Sort newest-first, apply recency filter, then cap at maxWorkspaces.
-    dirEntries = statResults
-      .filter(({ mtimeMs }) => cutoffMs === 0 || mtimeMs >= cutoffMs)
-      .sort((a, b) => b.mtimeMs - a.mtimeMs)
-      .slice(0, maxWorkspaces)
-      .map(({ entry }) => entry);
+    console.warn(`[TIMING] readAllChatSessionData: skip-stat (cross-fs) | dirs=${dirEntries.length}`);
+  } else {
+    // Cap the stat scan on native paths to avoid O(n) calls when a
+    // workspaceStorage root contains thousands of hash directories.
+    if (dirEntries.length > statScanCap) {
+      const originalCount = dirEntries.length;
+      dirEntries = dirEntries.slice(0, maxWorkspaces * 2);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[TIMING] readAllChatSessionData: statScanCap(${statScanCap}) triggered | original=${originalCount}, capped=${dirEntries.length}`,
+      );
+    }
+    if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
+      // Stat all dirs concurrently (high concurrency: stat is metadata-only,
+      // much faster than opening files).
+      const cutoffMs = recencyDays > 0 ? Date.now() - recencyDays * 24 * 60 * 60 * 1000 : 0;
+      const statResults = await asyncPool(
+        dirEntries.map((entry) => async () => {
+          try {
+            const s = await fs.stat(path.join(workspaceStorageRoot, entry.name));
+            return { entry, mtimeMs: s.mtimeMs };
+          } catch {
+            // stat failed — treat as most-recent so it is not silently dropped.
+            return { entry, mtimeMs: Date.now() };
+          }
+        }),
+        32,
+      );
+      // Sort newest-first, apply recency filter, then cap at maxWorkspaces.
+      dirEntries = statResults
+        .filter(({ mtimeMs }) => cutoffMs === 0 || mtimeMs >= cutoffMs)
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        .slice(0, maxWorkspaces)
+        .map(({ entry }) => entry);
+    }
   }
 
   // Process all workspaces with bounded concurrency (4) to avoid overwhelming
