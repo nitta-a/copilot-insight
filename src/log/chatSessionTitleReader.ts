@@ -723,7 +723,23 @@ export interface ReadAllChatSessionDataOptions {
    * Defaults to 90.  Set to 0 to disable the recency filter.
    */
   workspaceRecencyDays?: number;
+  /**
+   * Maximum number of directories to stat before capping the scan list to
+   * `maxWorkspaces * 2`.  This prevents runaway stat I/O on large
+   * workspaceStorage directories (e.g. thousands of entries on a WSL ↔
+   * Windows cross-filesystem bridge).  Defaults to 2000.
+   */
+  maxStatEntries?: number;
 }
+
+/**
+ * Matches the 32-char lowercase-hex workspace storage directory names that
+ * VS Code creates, with an optional numeric suffix (e.g. `abc123…-1`).
+ * Used as a positive allowlist so that only genuine VS Code workspace
+ * directories are scanned — any other entries (typos, tooling artefacts,
+ * etc.) are silently skipped without the need for a denylist.
+ */
+const WORKSPACE_HASH_RE = /^[0-9a-f]{32}(-\d+)?$/i;
 
 export async function readAllChatSessionData(
   workspaceStorageRoot: string,
@@ -739,12 +755,28 @@ export async function readAllChatSessionData(
     return { titleRecords: [], sessionRecords: [] };
   }
 
-  let dirEntries = workspaceEntries.filter((e) => e.isDirectory());
+  // Only consider directories with valid VS Code workspace hash names
+  // (32-char lowercase hex, optional -N suffix).  This acts as a positive
+  // allowlist and avoids stat-ing unrelated entries that may appear in the
+  // same parent directory.
+  let dirEntries = workspaceEntries.filter((e) => e.isDirectory() && WORKSPACE_HASH_RE.test(e.name));
 
   // Apply recency + count filters to avoid scanning stale workspace directories
   // on slow cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
   const maxWorkspaces = options?.maxWorkspaces ?? 200;
   const recencyDays = options?.workspaceRecencyDays ?? 90;
+  const statScanCap = options?.maxStatEntries ?? 2000;
+  if (dirEntries.length > statScanCap) {
+    // Hard-cap the stat scan to avoid O(n) WSL bridge calls when a
+    // workspaceStorage root contains thousands of hash directories.  We
+    // preserve the recency sort for the capped subset.
+    const originalCount = dirEntries.length;
+    dirEntries = dirEntries.slice(0, maxWorkspaces * 2);
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[TIMING] readAllChatSessionData: statScanCap(${statScanCap}) triggered | original=${originalCount}, capped=${dirEntries.length}`,
+    );
+  }
   if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
     // Stat all dirs concurrently (high concurrency: stat is metadata-only,
     // much faster than opening files).
@@ -850,7 +882,7 @@ export async function readChatSessionTitleRecords(workspaceStorageRoot: string):
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory()) {
+    if (!workspaceEntry.isDirectory() || !WORKSPACE_HASH_RE.test(workspaceEntry.name)) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
@@ -892,7 +924,7 @@ export async function readChatSessionRecords(workspaceStorageRoot: string): Prom
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory()) {
+    if (!workspaceEntry.isDirectory() || !WORKSPACE_HASH_RE.test(workspaceEntry.name)) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
