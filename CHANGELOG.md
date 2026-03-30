@@ -3,6 +3,16 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.1.8] - 2026-03-30
+
+### Removed
+- 🗑️ **Context Window Insight removed** — the Context Window Insight feature has been removed to simplify the codebase and reduce surface area. This includes:
+  - `ContextFreshnessMeter` Web Component (`<copilot-freshness-meter>`)
+  - `ProjectPlanList` Web Component (`<copilot-project-plan-list>`)
+  - `src/utils/contextFileLocator.ts` — context-file discovery and freshness scoring utilities
+  - All related fields removed from `CopilotUsageStats`, `DashboardPayload`, and associated parsers/storage/export modules
+  - Context-window insight tests, snapshot fields, and dashboard message types cleaned up
+
 ## [1.1.7] - 2026-03-30
 
 ### Changed
