@@ -87,16 +87,6 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
     lines.push("");
   }
 
-  // Context Window Insights section
-  if (stats.byContextSource.size > 0) {
-    lines.push("# Context Window Insights");
-    lines.push("Source,Count");
-    for (const [source, count] of Array.from(stats.byContextSource.entries()).sort((a, b) => b[1] - a[1])) {
-      lines.push(`${csvEscape(source)},${count}`);
-    }
-    lines.push("");
-  }
-
   // Errors section
   if (stats.totalErrors > 0) {
     lines.push("# Errors by Type");
@@ -161,7 +151,6 @@ export function exportAsJson(stats: CopilotUsageStats): string {
     byHour: mapToObject<number>(stats.byHour),
     chatByHour: mapToObject<number>(stats.chatByHour),
     errorsByType: mapToObject<number>(stats.errorsByType),
-    byContextSource: mapToObject<number>(stats.byContextSource),
     featureSignals: {
       browserTools: {
         total: stats.browserToolInvocations,

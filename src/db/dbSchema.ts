@@ -31,8 +31,6 @@ export interface EventRecord {
   isSubagent: boolean;
   /** Intent identifier (e.g. "runSubagent", "editAgent", "searchSubagentTool"). Empty string when not a subagent event. */
   intent: string;
-  /** Context sources referenced in this completion event (e.g. "Open Tabs", "Workspace"). Empty array when unknown. */
-  contextSources: string[];
   /** Session-level signal subtype when `eventType === "sessionSignal"`. */
   signalType: string;
   /** Timeline actor for synthetic session signals. */
@@ -128,7 +126,6 @@ export function normaliseEvent(
     filePath?: string;
     isSubagent?: boolean;
     intent?: string;
-    contextSources?: string[];
     signalType?: string;
     actor?: string;
     phase?: string;
@@ -152,7 +149,6 @@ export function normaliseEvent(
     filePath: raw.filePath ?? "",
     isSubagent: raw.isSubagent ?? false,
     intent: raw.intent ?? "",
-    contextSources: raw.contextSources ?? [],
     signalType: raw.signalType ?? "",
     actor: raw.actor ?? "",
     phase: raw.phase ?? "",

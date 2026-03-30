@@ -20,7 +20,6 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
-  ContextFreshness,
   DashboardPayload,
   HostToWebviewMessage,
   PromptInsightsData,
@@ -42,9 +41,7 @@ import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
   AgentIntelligenceOverview,
-  ContextFreshnessMeter,
   InsightsList,
-  ProjectPlanList,
   RefreshAnalysis,
   SummaryCards,
   TagCloud,
@@ -419,24 +416,6 @@ function renderTagCloud(topKeywords: PromptInsightsData["topKeywords"]): void {
   comp.tags = topKeywords;
 }
 
-function renderContextFreshness(
-  freshness: ContextFreshness | null,
-  refreshAnalysis: DashboardPayload["refreshAnalysis"],
-): void {
-  const el = document.getElementById("db-freshness-container");
-  if (!el) {
-    return;
-  }
-  let comp = el.querySelector<ContextFreshnessMeter>("copilot-freshness-meter");
-  if (!comp) {
-    comp = document.createElement("copilot-freshness-meter") as ContextFreshnessMeter;
-    el.innerHTML = "";
-    el.appendChild(comp);
-  }
-  comp.freshness = freshness;
-  comp.refreshAnalysis = refreshAnalysis;
-}
-
 function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
   const el = document.getElementById("db-refresh-analysis-container");
   if (!el) {
@@ -522,7 +501,9 @@ async function exportFullDashboard(): Promise<void> {
 
   // Guard: lazy-loaded tabs must have their data visible before capturing.
   if (currentTab === "sessions" && !sessionsLoaded) {
-    showExportError("Sessions data has not yet loaded. Please switch to the Sessions tab to load the data before exporting.");
+    showExportError(
+      "Sessions data has not yet loaded. Please switch to the Sessions tab to load the data before exporting.",
+    );
     return;
   }
   if (currentTab === "prompt-insights" && !promptInsightsLoaded) {
@@ -799,25 +780,6 @@ function showLazyContent(placeholderId: string, contentId: string): void {
   }
 }
 
-function renderProjectContextFiles(files: DashboardPayload["projectContextFiles"]): void {
-  const container = document.getElementById("db-project-context-container");
-  if (!container) {
-    return;
-  }
-  // Remove any previously rendered component
-  container.innerHTML = "";
-  if (!files || files.length === 0) {
-    return;
-  }
-  const el = document.createElement("copilot-project-plan-list") as ProjectPlanList;
-  el.files = files;
-  el.addEventListener("open-file", (e: Event) => {
-    const filePath = (e as CustomEvent<{ filePath: string }>).detail.filePath;
-    vscode.postMessage({ type: "openDocument", filePath } satisfies WebviewToHostMessage);
-  });
-  container.appendChild(el);
-}
-
 function renderPromptInsightsData(data: PromptInsightsData): void {
   promptInsightsLoaded = true;
   showLazyContent("db-prompt-insights-lazy", "db-prompt-insights-content");
@@ -871,7 +833,6 @@ function render(payload: DashboardPayload): void {
   currentPayload = payload;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
-  renderContextFreshness(payload.freshness, payload.refreshAnalysis);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
@@ -879,7 +840,6 @@ function render(payload: DashboardPayload): void {
   renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
   renderModelAutonomyLeverageMap(payload.agenticStats);
-  renderProjectContextFiles(payload.projectContextFiles);
 
   // Show or hide the "Load Historical Data" section.
   const loadHistoricalContainer = document.getElementById("db-load-historical-container");

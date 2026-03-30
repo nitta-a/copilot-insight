@@ -23,11 +23,9 @@ import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
-  ContextFreshness,
   CountBreakdownEntry,
   DashboardPayload,
   EvolutionPoint,
-  ProjectContextFile,
   PromptInsightsData,
   RoiBreakdown,
   SessionsData,
@@ -173,7 +171,6 @@ export function buildDashboardPayload(
   _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
   cliRoiMinutesPerInteraction = 30,
   hasMoreData = false,
-  projectContextFiles: ProjectContextFile[] = [],
 ): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
   const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
@@ -506,8 +503,6 @@ export function buildDashboardPayload(
     featureSignals,
   };
 
-  const freshness = calculateContextFreshness(stats, trueAcceptanceRate, refreshAnalysis);
-
   return {
     days: timeline.length,
     availableRange,
@@ -519,9 +514,7 @@ export function buildDashboardPayload(
     weeklyTrend,
     agenticStats,
     refreshAnalysis,
-    freshness,
     hasMoreData,
-    projectContextFiles,
   };
 }
 
@@ -587,62 +580,6 @@ function buildPromptLengthScatterData(
     points.push({ x: bucket.midpoint, y: Math.round(y * 10) / 10, r });
   }
   return points;
-}
-
-function calculateContextFreshness(
-  stats: CopilotUsageStats,
-  trueAcceptanceRate: number | null,
-  refreshAnalysis: RefreshAnalysis[],
-): ContextFreshness | null {
-  if (refreshAnalysis.length === 0) {
-    return null;
-  }
-
-  const latestSession = getLatestSession(stats);
-  if (!latestSession) {
-    return null;
-  }
-
-  const actionCount = latestSession.shown + latestSession.accepted + latestSession.chat + latestSession.errors;
-  const latestRefresh = refreshAnalysis.at(-1) ?? null;
-  if (actionCount <= 50) {
-    return {
-      score: 100,
-      actionCount,
-      status: "fresh",
-      actionPenalty: 0,
-      trendPenalty: 0,
-      suggestedAction: "none",
-      latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
-      latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
-    };
-  }
-
-  const overflow = actionCount - 50;
-  const actionPenalty = Math.min(overflow * 1.15, 60);
-  const effectiveTrueRate = trueAcceptanceRate ?? stats.acceptanceRate;
-  const fatigueRatio =
-    stats.acceptanceRate > 0 ? Math.max(0, (stats.acceptanceRate - effectiveTrueRate) / stats.acceptanceRate) : 0;
-  const positiveRoi = refreshAnalysis.filter((entry) => (entry.refreshRoi ?? 0) > 0);
-  const averagePositiveRoi =
-    positiveRoi.length > 0
-      ? positiveRoi.reduce((sum, entry) => sum + (entry.refreshRoi ?? 0), 0) / positiveRoi.length
-      : 0;
-  const trendPenalty = Math.min(fatigueRatio * 25 + averagePositiveRoi * 20, 30);
-  const score = Math.max(0, Math.min(100, 100 - actionPenalty - trendPenalty));
-  const status = score >= 70 ? "fresh" : score >= 40 ? "aging" : "exhausted";
-  const suggestedAction = status === "fresh" ? "none" : status === "aging" ? "compact" : "restart";
-
-  return {
-    score,
-    actionCount,
-    status,
-    actionPenalty,
-    trendPenalty,
-    suggestedAction,
-    latestRefreshRoi: latestRefresh?.refreshRoi ?? null,
-    latestRecoveryDelta: latestRefresh?.recoveryDelta ?? null,
-  };
 }
 
 /**

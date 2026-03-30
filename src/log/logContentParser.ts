@@ -41,7 +41,6 @@ export {
   isSubagentIntent,
   mergeCountByNormalizedModel,
   mergeStatsByNormalizedModel,
-  normalizeContextSource,
   normalizeModelName,
 } from "./parsers/parserHelpers";
 export { processJsonEntry, tryParseJsonLogLine } from "./parsers/jsonLogParser";
@@ -61,7 +60,6 @@ export { parseTextLogLine } from "./parsers/textLogParser";
  * - Per-date map: `byDate` (shown + accepted counts per date key).
  * - Per-hour map: `byHour` (event counts per hour key).
  * - Latency array: `latencies` (raw millisecond values appended).
- * - Context-source map: `byContextSource` (occurrence counts per source).
  * - New fields: `autonomousDurationMs`, `subagentLoops`, `executedPlanCount`,
  *   `browserToolsByType`, `errorsByType`.
  */
@@ -101,10 +99,6 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
       ctx.latencySum += lat;
       ctx.latencyCount += 1;
     }
-  }
-
-  for (const [src, count] of Object.entries(native.byContextSource)) {
-    ctx.byContextSource.set(src, (ctx.byContextSource.get(src) ?? 0) + count);
   }
 
   // Merge new NativeStats fields (default to zero in the Rust parser; non-zero
@@ -192,8 +186,7 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
  *
  * Attempts native bulk parsing first for both the core counters (`totalShown`,
  * `totalAccepted`, `totalChat`, `subagentRequests`, `planCount`, `byModel`)
- * and the detailed metrics (`byDate`, `byHour`, `latencies`,
- * `byContextSource`).
+ * and the detailed metrics (`byDate`, `byHour`, `latencies`).
  * When the native addon is unavailable or parsing fails, falls back to the
  * existing JS line-by-line parsers which populate all of the above fields
  * plus session-signal fields not tracked by the native path.

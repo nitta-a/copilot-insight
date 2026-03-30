@@ -277,16 +277,6 @@ export function activate(context: vscode.ExtensionContext) {
         const advanced = await getAdvancedMetrics(stats);
         channel.appendLine(`[TIMING] getAdvancedMetrics: returned | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
-        const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
-        const copilotMemoryDir = path.join(
-          context.storageUri?.fsPath ?? "",
-          "..",
-          "GitHub.copilot-chat",
-          "memory-tool",
-          "memories",
-        );
-        channel.appendLine(`[TIMING] createOrShow: calling`);
-        phaseMs = performance.now();
         CopilotUsagePanel.createOrShow(
           context.extensionUri,
           stats,
@@ -294,8 +284,6 @@ export function activate(context: vscode.ExtensionContext) {
             ...advanced,
             logUri: context.logUri,
             hasMoreData,
-            userPromptsDir,
-            copilotMemoryDir,
             globalStoragePath: context.globalStorageUri.fsPath,
           },
           dbWorker,
@@ -332,15 +320,6 @@ export function activate(context: vscode.ExtensionContext) {
             channel.appendLine(`[TIMING] getAdvancedMetrics: ${(performance.now() - phaseMs).toFixed(1)}ms`);
           }
 
-          const userPromptsDir = path.resolve(context.globalStorageUri.fsPath, "../../..", "prompts");
-          const copilotMemoryDir = path.join(
-            context.storageUri?.fsPath ?? "",
-            "..",
-            "GitHub.copilot-chat",
-            "memory-tool",
-            "memories",
-          );
-          phaseMs = performance.now();
           CopilotUsagePanel.createOrShow(
             context.extensionUri,
             stats,
@@ -348,8 +327,6 @@ export function activate(context: vscode.ExtensionContext) {
               ...advanced,
               logUri: context.logUri,
               hasMoreData: false,
-              userPromptsDir,
-              copilotMemoryDir,
               globalStoragePath: context.globalStorageUri.fsPath,
             },
             dbWorker,

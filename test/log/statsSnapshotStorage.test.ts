@@ -32,8 +32,6 @@ function makeStats(): CopilotUsageStats {
     chatLatencyP50: 150,
     chatLatencyP95: 250,
     bySession: new Map([["session-1", { sessionId: "session-1", shown: 12, accepted: 7, chat: 3, errors: 1 }]]),
-    byContextSource: new Map([["Workspace", 4]]),
-    byContextEffectiveness: new Map([["Workspace", { shown: 5, accepted: 2 }]]),
     subagentRequests: 2,
     agenticRatio: 13.3,
     autonomousDurationMs: 999,

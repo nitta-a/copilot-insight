@@ -269,8 +269,6 @@ suite("parseRemoteExthostLog", () => {
       chatLatencyP50: 0,
       chatLatencyP95: 0,
       bySession: new Map(),
-      byContextSource: new Map(),
-      byContextEffectiveness: new Map(),
       subagentRequests: 0,
       agenticRatio: 0,
       autonomousDurationMs: 0,

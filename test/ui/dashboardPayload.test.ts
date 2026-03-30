@@ -108,8 +108,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP50: 200,
     chatLatencyP95: 300,
     bySession: new Map([["s1", { sessionId: "s1", shown: 100, accepted: 60, chat: 10, errors: 0 }]]),
-    byContextSource: new Map(),
-    byContextEffectiveness: new Map(),
     subagentRequests: 0,
     agenticRatio: 0,
     autonomousDurationMs: 0,
@@ -441,7 +439,6 @@ suite("buildDashboardPayload", () => {
 
     test("freshness is null when refresh analysis is unavailable", () => {
       const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.freshness, null);
       assert.deepStrictEqual(payload.refreshAnalysis, []);
     });
   });
@@ -539,49 +536,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.velocityPoints[0].kpm, 120);
       assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
       assert.strictEqual(payload.velocityPoints[1].flowDisrupted, true);
-    });
-  });
-
-  suite("context freshness", () => {
-    test("stays at 100% through the first 50 actions", () => {
-      const stats = makeStats({
-        bySession: new Map([["s2", { sessionId: "s2", shown: 20, accepted: 10, chat: 5, errors: 0 }]]),
-      });
-      const payload = buildDashboardPayload(stats, undefined, undefined, undefined, [makeRefreshAnalysis()]);
-      assert.ok(payload.freshness);
-      assert.strictEqual(payload.freshness?.score, 100);
-      assert.strictEqual(payload.freshness?.status, "fresh");
-    });
-
-    test("decays after 50 actions and exposes refresh analysis", () => {
-      const stats = makeStats({
-        bySession: new Map([["s2", { sessionId: "s2", shown: 45, accepted: 20, chat: 8, errors: 0 }]]),
-      });
-      const trueAcceptance: TrueAcceptanceResult = {
-        rawAccepted: 120,
-        trueAccepted: 84,
-        rawRate: 60,
-        trueRate: 42,
-        revertedCount: 36,
-      };
-      const refreshAnalysis = [makeRefreshAnalysis({ refreshRoi: 0.25, recoveryDelta: 18 })];
-      const payload = buildDashboardPayload(stats, trueAcceptance, undefined, undefined, refreshAnalysis);
-      assert.ok(payload.freshness);
-      assert.ok((payload.freshness?.score ?? 0) < 100);
-      assert.strictEqual(payload.freshness?.suggestedAction, "compact");
-      assert.strictEqual(payload.refreshAnalysis.length, 1);
-      assert.strictEqual(payload.freshness?.latestRefreshRoi, 0.25);
-    });
-
-    test("preserves refresh analysis entries for overview history rendering", () => {
-      const refreshAnalysis = [
-        makeRefreshAnalysis(),
-        makeRefreshAnalysis({ event: { ...makeRefreshAnalysis().event, timestamp: "2026-03-07T11:00:00Z" } }),
-      ];
-      const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, refreshAnalysis);
-      assert.strictEqual(payload.refreshAnalysis.length, 2);
-      assert.strictEqual(payload.refreshAnalysis[0].event.type, "compact");
-      assert.strictEqual(payload.refreshAnalysis[1].event.timestamp, "2026-03-07T11:00:00Z");
     });
   });
 
@@ -1455,31 +1409,5 @@ suite("buildPromptInsightsPayload — topKeywords", () => {
       payload.topKeywords[0].count >= payload.topKeywords[1].count,
       "first entry should have count >= second entry",
     );
-  });
-});
-
-suite("buildDashboardPayload – projectContextFiles", () => {
-  test("buildDashboardPayload defaults projectContextFiles to empty array", () => {
-    const payload = buildDashboardPayload(makeStats());
-    assert.deepStrictEqual(payload.projectContextFiles, []);
-  });
-
-  test("buildDashboardPayload passes through projectContextFiles", () => {
-    const files = [
-      {
-        path: "/workspace/.github/copilot-instructions.md",
-        name: "copilot-instructions.md",
-        preview: "# Instructions",
-        source: "workspace" as const,
-      },
-      {
-        path: "/home/user/.vscode-server/data/User/prompts/foo.instructions.md",
-        name: "foo.instructions.md",
-        preview: "---\napplyTo: '**'",
-        source: "user-prompts" as const,
-      },
-    ];
-    const payload = buildDashboardPayload(makeStats(), undefined, undefined, undefined, [], [], 30, false, files);
-    assert.deepStrictEqual(payload.projectContextFiles, files);
   });
 });

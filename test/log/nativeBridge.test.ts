@@ -82,11 +82,6 @@ suite("nativeBridge", () => {
       byDate: { "2024-06-15": { shown: 5, accepted: 2 } },
       byHour: { "14": 3, "09": 7 },
       latencies: [120, 290, 450],
-      byContextSource: { vscodePrompt: 4, activeDocument: 1 },
-      contextRichness: {
-        totalPromptChars: 800,
-        promptCount: 4,
-      },
       autonomousDurationMs: 5000,
       subagentLoops: 2,
       executedPlanCount: 1,
@@ -123,9 +118,6 @@ suite("nativeBridge", () => {
     assert.strictEqual(sample.byDate["2024-06-15"]?.accepted, 2);
     assert.strictEqual(sample.byHour["14"], 3);
     assert.deepStrictEqual(sample.latencies, [120, 290, 450]);
-    assert.strictEqual(sample.byContextSource["vscodePrompt"], 4);
-    assert.strictEqual(sample.contextRichness.promptCount, 4);
-    assert.strictEqual(sample.contextRichness.totalPromptChars, 800);
     assert.strictEqual(sample.autonomousDurationMs, 5000);
     assert.strictEqual(sample.subagentLoops, 2);
     assert.strictEqual(sample.executedPlanCount, 1);

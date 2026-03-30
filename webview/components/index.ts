@@ -1,9 +1,7 @@
 export { AgentIntelligenceOverview } from "./AgentIntelligenceOverview";
 export { CopilotInsightCard } from "./CopilotInsightCard";
 export { CopilotStatCard } from "./CopilotStatCard";
-export { ContextFreshnessMeter } from "./ContextFreshnessMeter";
 export { InsightsList } from "./InsightsList";
-export { ProjectPlanList } from "./ProjectPlanList";
 export { RefreshAnalysis } from "./RefreshAnalysis";
 export { SummaryCards } from "./SummaryCards";
 export { TagCloud } from "./TagCloud";

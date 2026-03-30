@@ -13,13 +13,6 @@
  * Field names use camelCase, which NAPI-RS produces automatically from the
  * Rust snake_case field names.
  */
-export interface NativeContextRichness {
-  /** Total character count of all prompt_text fields encountered. */
-  totalPromptChars: number;
-  /** Number of log entries that carried a non-empty prompt_text field. */
-  promptCount: number;
-}
-
 export interface NativeParseResult {
   /** Number of inline-completion suggestions shown to the user. */
   totalShown: number;
@@ -41,10 +34,6 @@ export interface NativeParseResult {
   byHour: Record<string, number>;
   /** Raw inline-completion latency values in milliseconds. */
   latencies: number[];
-  /** Per context-source occurrence counts. */
-  byContextSource: Record<string, number>;
-  /** Context-richness metrics extracted from reference-count and prompt-text fields. */
-  contextRichness: NativeContextRichness;
   /** Cumulative autonomous-action duration in milliseconds (f64 for JS number compat). */
   autonomousDurationMs: number;
   /** Number of completed agentic (ToolCallingLoop) episodes. */

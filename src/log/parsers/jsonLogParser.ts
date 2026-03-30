@@ -13,10 +13,8 @@ import {
   incrementCount,
   incrementStatCount,
   maybeRecordFeatureSignals,
-  normalizeContextSource,
   normalizeModelName,
   normalizeTimestamp,
-  recordReferenceSignal,
   recordThreadTitleSignal,
   trackPlanningStats,
 } from "./parserHelpers";
@@ -51,40 +49,6 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
       incrementStatCount(ctx.byModel, jsonModel, "accepted");
     } else if (!eventLower.includes("rejected") && !eventLower.includes("dismissed")) {
       incrementCount(ctx.byChatModel, jsonModel);
-    }
-  }
-
-  // Context Window Insights: parse context source references from JSON telemetry
-  const effectivenessType: "shown" | "accepted" | null = isShown ? "shown" : isAccepted ? "accepted" : null;
-  const contextItems = data.contextItems ?? data.references ?? data.usedContext;
-  if (Array.isArray(contextItems)) {
-    for (const item of contextItems) {
-      const rawType = (item as Record<string, unknown>)?.type ?? (item as Record<string, unknown>)?.kind;
-      if (typeof rawType === "string") {
-        const source = normalizeContextSource(rawType);
-        if (source) {
-          incrementCount(ctx.byContextSource, source);
-          if (effectivenessType) {
-            incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
-          }
-          if (timestamp) {
-            recordReferenceSignal(ctx, source, timestamp, source);
-          }
-        }
-      }
-    }
-  }
-  const directType = data.contextType ?? data.sourceType;
-  if (typeof directType === "string") {
-    const source = normalizeContextSource(directType);
-    if (source) {
-      incrementCount(ctx.byContextSource, source);
-      if (effectivenessType) {
-        incrementStatCount(ctx.byContextEffectiveness, source, effectivenessType);
-      }
-      if (timestamp) {
-        recordReferenceSignal(ctx, source, timestamp, source);
-      }
     }
   }
 
