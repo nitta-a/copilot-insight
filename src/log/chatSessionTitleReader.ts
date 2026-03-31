@@ -759,6 +759,17 @@ const WORKSPACE_HASH_RE = /^[0-9a-f]{32}(-\d+)?$/i;
  */
 const IGNORED_DIRS = new Set(["node_modules", "doc", ".git", "dist", "out", "build", "coverage", "packages"]);
 
+/**
+ * Thresholds for slow-path timing diagnostics emitted as `[TIMING-SCAN-SLOW]`
+ * warnings.  Only directories / files that exceed these limits are logged, so
+ * the output remains actionable and does not itself become a source of overhead.
+ *
+ * - `SLOW_DIR_SCAN_MS`  (100 ms) — readdir + full file-parse loop for one chatSessions dir
+ * - `SLOW_FILE_PARSE_MS` (50 ms) — parsing a single .json / .jsonl chat session file
+ */
+const SLOW_DIR_SCAN_MS = 100;
+const SLOW_FILE_PARSE_MS = 50;
+
 export async function readAllChatSessionData(
   workspaceStorageRoot: string,
   options?: ReadAllChatSessionDataOptions,
@@ -845,6 +856,7 @@ export async function readAllChatSessionData(
     dirEntries.map((workspaceEntry) => async () => {
       const workspaceId = workspaceEntry.name;
       const chatSessionsDir = path.join(workspaceStorageRoot, workspaceId, "chatSessions");
+      const tDir = performance.now();
       let files: Dirent[] = [];
       try {
         files = await fs.readdir(chatSessionsDir, { withFileTypes: true });
@@ -859,15 +871,28 @@ export async function readAllChatSessionData(
       const filteredFiles = files.filter(
         (f) => f.isFile() && !IGNORED_DIRS.has(f.name) && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")),
       );
-      return asyncPool(
-        filteredFiles.map((file) => () => {
+      const results = await asyncPool(
+        filteredFiles.map((file) => async () => {
           const filePath = path.join(chatSessionsDir, file.name);
-          return file.name.endsWith(".jsonl")
+          const tFile = performance.now();
+          const record = await (file.name.endsWith(".jsonl")
             ? parseJsonlChatSessionRecord(filePath, workspaceId)
-            : parseJsonChatSessionRecord(filePath, workspaceId);
+            : parseJsonChatSessionRecord(filePath, workspaceId));
+          const elapsedFile = performance.now() - tFile;
+          if (elapsedFile >= SLOW_FILE_PARSE_MS) {
+            // eslint-disable-next-line no-console
+            console.warn(`[TIMING-SCAN-SLOW] ${filePath} - ${elapsedFile.toFixed(1)}ms`);
+          }
+          return record;
         }),
         4,
       );
+      const elapsedDir = performance.now() - tDir;
+      if (elapsedDir >= SLOW_DIR_SCAN_MS) {
+        // eslint-disable-next-line no-console
+        console.warn(`[TIMING-SCAN-SLOW] ${chatSessionsDir} - ${elapsedDir.toFixed(1)}ms`);
+      }
+      return results;
     }),
     4,
   );
