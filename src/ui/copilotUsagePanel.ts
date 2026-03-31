@@ -63,6 +63,8 @@ export class CopilotUsagePanel {
   private _chatSessionsLoaded = false;
   /** In-flight promise returned by _ensureChatSessionsLoaded — deduplicates concurrent callers. */
   private _chatSessionsLoadingPromise: Promise<void> | null = null;
+  /** In-flight promise for loadMoreCopilotLogs — deduplicates concurrent "Load Historical Data" calls. */
+  private _loadingMoreLogsPromise: Promise<CopilotUsageStats> | null = null;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -438,10 +440,17 @@ export class CopilotUsagePanel {
     // Wait for any in-flight chat-session scan before starting the full
     // log re-parse so both don't compete for filesystem I/O.
     await this._ensureChatSessionsLoaded();
+    // Deduplicate concurrent "Load Historical Data" requests: if a full
+    // re-parse is already in progress, wait for it rather than starting
+    // a second parallel scan of the same log files.
+    if (this._loadingMoreLogsPromise) {
+      return this._loadingMoreLogsPromise.then(() => this._update());
+    }
+    this._loadingMoreLogsPromise = loadMoreCopilotLogs(this._advanced.logUri);
     try {
       const prevChatSessions = this._stats.chatSessions;
       const prevChatSessionTitles = this._stats.chatSessionTitles;
-      const fullStats = await loadMoreCopilotLogs(this._advanced.logUri);
+      const fullStats = await this._loadingMoreLogsPromise;
       this._stats = fullStats;
       this._stats.chatSessions = prevChatSessions;
       this._stats.chatSessionTitles = prevChatSessionTitles;
@@ -451,6 +460,8 @@ export class CopilotUsagePanel {
       vscode.window.showWarningMessage(
         `Copilot Insight: could not load historical data — ${err instanceof Error ? err.message : "unknown error"}`,
       );
+    } finally {
+      this._loadingMoreLogsPromise = null;
     }
   }
 

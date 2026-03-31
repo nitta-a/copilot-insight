@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as assert from "assert";
 import {
   discoverWindowsWorkspaceStorageRoots,
+  readAllChatSessionData,
   readChatSessionRecords,
   readChatSessionTitleRecords,
   resolveWorkspaceStorageRoot,
@@ -19,7 +20,7 @@ suite("chatSessionTitleReader", () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-chat-sessions-"));
     try {
       const workspaceStorageRoot = path.join(tempRoot, "User", "workspaceStorage");
-      const workspaceDir = path.join(workspaceStorageRoot, "workspace-1", "chatSessions");
+      const workspaceDir = path.join(workspaceStorageRoot, "abcdef0123456789abcdef0123456789", "chatSessions");
       await fs.mkdir(workspaceDir, { recursive: true });
 
       await fs.writeFile(
@@ -72,7 +73,7 @@ suite("chatSessionTitleReader", () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-chat-session-records-"));
     try {
       const workspaceStorageRoot = path.join(tempRoot, "User", "workspaceStorage");
-      const workspaceDir = path.join(workspaceStorageRoot, "workspace-1", "chatSessions");
+      const workspaceDir = path.join(workspaceStorageRoot, "abcdef0123456789abcdef0123456789", "chatSessions");
       await fs.mkdir(workspaceDir, { recursive: true });
 
       await fs.writeFile(
@@ -156,6 +157,162 @@ suite("chatSessionTitleReader", () => {
         startLine: 1,
         endLine: 40,
       });
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("readAllChatSessionData: non-hash directory names are excluded by allowlist", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-allowlist-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      // Valid 32-char hex hash directory — should be scanned
+      const validDir = path.join(workspaceStorageRoot, "abcdef0123456789abcdef0123456789", "chatSessions");
+      // Invalid names — should be silently skipped
+      const nodeModulesDir = path.join(workspaceStorageRoot, "node_modules", "chatSessions");
+      const gitDir = path.join(workspaceStorageRoot, ".git", "chatSessions");
+      const notHexDir = path.join(workspaceStorageRoot, "notahexstring", "chatSessions");
+      await fs.mkdir(validDir, { recursive: true });
+      await fs.mkdir(nodeModulesDir, { recursive: true });
+      await fs.mkdir(gitDir, { recursive: true });
+      await fs.mkdir(notHexDir, { recursive: true });
+
+      // Place a chat session only in the valid dir
+      await fs.writeFile(
+        path.join(validDir, "chat-a.json"),
+        JSON.stringify({
+          sessionId: "chat-a",
+          creationDate: 1760871632297,
+          lastMessageDate: 1760871632297,
+          customTitle: "valid session",
+          requests: [],
+        }),
+        "utf-8",
+      );
+
+      const { titleRecords } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 10,
+        workspaceRecencyDays: 0,
+      });
+      assert.strictEqual(titleRecords.length, 1, "only the valid hex-hash workspace should be scanned");
+      assert.strictEqual(titleRecords[0]?.title, "valid session");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("readAllChatSessionData: IGNORED_DIRS entries are skipped at workspaceStorage root", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-ignoredirs-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      const validHash = "aabbccddeeff00112233445566778899";
+      const validDir = path.join(workspaceStorageRoot, validHash, "chatSessions");
+      await fs.mkdir(validDir, { recursive: true });
+      await fs.writeFile(
+        path.join(validDir, "s.json"),
+        JSON.stringify({ sessionId: "s1", creationDate: 1760871632297, lastMessageDate: 1760871632297, requests: [] }),
+        "utf-8",
+      );
+
+      // Create IGNORED_DIRS entries at the workspaceStorage root level.
+      // These must never be entered regardless of their contents.
+      for (const ignored of ["node_modules", "doc", ".git", "dist", "build", "packages"]) {
+        const largeDir = path.join(workspaceStorageRoot, ignored, "chatSessions");
+        await fs.mkdir(largeDir, { recursive: true });
+        // Put a JSON file inside — it must NOT be parsed because the dir is ignored.
+        await fs.writeFile(
+          path.join(largeDir, "noise.json"),
+          JSON.stringify({
+            sessionId: `ignored-${ignored}`,
+            creationDate: 1760871632297,
+            lastMessageDate: 1760871632297,
+            requests: [],
+          }),
+          "utf-8",
+        );
+      }
+
+      const { sessionRecords } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 50,
+        workspaceRecencyDays: 0,
+      });
+      // Only the valid hex-hash workspace should produce a session record.
+      assert.strictEqual(sessionRecords.length, 1, `expected 1 session, got ${sessionRecords.length}`);
+      assert.strictEqual(sessionRecords[0]?.workspaceId, validHash);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("readAllChatSessionData: maxStatEntries cap limits the number of dirs statted", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-statcap-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      // Create 6 valid hex-hash workspace dirs (maxWorkspaces=2, maxStatEntries=3 → cap to 2*2=4 before stat)
+      const hexDirs = Array.from({ length: 6 }, (_, i) => {
+        const id = i.toString(16).padStart(32, "0");
+        return id;
+      });
+      for (const id of hexDirs) {
+        await fs.mkdir(path.join(workspaceStorageRoot, id, "chatSessions"), { recursive: true });
+        await fs.writeFile(
+          path.join(workspaceStorageRoot, id, "chatSessions", "s.json"),
+          JSON.stringify({ sessionId: id, creationDate: 1760871632297, lastMessageDate: 1760871632297, requests: [] }),
+          "utf-8",
+        );
+      }
+
+      // maxStatEntries=3 triggers the cap: 6 dirs > 3, so slice to maxWorkspaces*2=4 before stat.
+      // After stat+sort, maxWorkspaces=2 further trims to 2.
+      const { titleRecords } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 2,
+        workspaceRecencyDays: 90,
+        maxStatEntries: 3,
+      });
+      assert.ok(titleRecords.length <= 2, `expected at most 2 results, got ${titleRecords.length}`);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("readAllChatSessionData: cross-fs path skips stat and recency filter", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-xfs-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      // Create 3 valid hex-hash workspace dirs with a very old mtime (200 days ago).
+      const hexDirs = Array.from({ length: 3 }, (_, i) => i.toString(16).padStart(32, "0"));
+      const oldTime = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+      for (const id of hexDirs) {
+        const dir = path.join(workspaceStorageRoot, id);
+        await fs.mkdir(path.join(dir, "chatSessions"), { recursive: true });
+        await fs.writeFile(
+          path.join(dir, "chatSessions", "s.json"),
+          JSON.stringify({ sessionId: id, creationDate: 1760871632297, lastMessageDate: 1760871632297, requests: [] }),
+          "utf-8",
+        );
+        // Set the workspace dir mtime to 200 days ago (older than the 90-day cutoff).
+        await fs.utimes(dir, oldTime, oldTime);
+      }
+
+      // Non-cross-fs: stat IS called, 90-day recency filter excludes all 200-day-old dirs.
+      const { sessionRecords: normal } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 10,
+        workspaceRecencyDays: 90,
+      });
+      assert.strictEqual(normal.length, 0, "normal path should filter dirs older than 90 days");
+
+      // Cross-fs override: stat is skipped entirely, recency filter never applied.
+      // All 3 dirs must be returned (no mtime filtering, no stat calls).
+      const { sessionRecords: crossFs } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 10,
+        workspaceRecencyDays: 90,
+        _crossFsOverride: true,
+      });
+      assert.strictEqual(
+        crossFs.length,
+        3,
+        `cross-fs path should return all dirs without recency filter, got ${crossFs.length}`,
+      );
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

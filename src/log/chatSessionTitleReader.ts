@@ -1,6 +1,8 @@
 import type { Dirent } from "node:fs";
+import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { createInterface } from "node:readline";
 import type { ChatSessionRecord, ChatSessionRequest, ChatSessionTitleRecord, SkillRef, ToolCallInfo } from "../types";
 
 interface JsonlMutationEntry {
@@ -459,13 +461,20 @@ async function parseJsonlChatSessionFile(
   workspaceId: string,
 ): Promise<ChatSessionTitleRecord | null> {
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
     const agentNameByRequest: Array<string | null> = [];
 
-    for (const line of lines) {
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: "utf-8" }),
+      crlfDelay: Infinity,
+      terminal: false,
+    });
+
+    for await (const line of rl) {
+      if (!line.trim()) {
+        continue;
+      }
       let entry: JsonlSessionLine;
       try {
         entry = JSON.parse(line) as JsonlSessionLine;
@@ -540,13 +549,20 @@ async function parseJsonlChatSessionFile(
 
 async function parseJsonlChatSessionRecord(filePath: string, workspaceId: string): Promise<ChatSessionRecord | null> {
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
     const agentNameByRequest: Array<string | null> = [];
 
-    for (const line of lines) {
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: "utf-8" }),
+      crlfDelay: Infinity,
+      terminal: false,
+    });
+
+    for await (const line of rl) {
+      if (!line.trim()) {
+        continue;
+      }
       let entry: JsonlSessionLine;
       try {
         entry = JSON.parse(line) as JsonlSessionLine;
@@ -723,7 +739,52 @@ export interface ReadAllChatSessionDataOptions {
    * Defaults to 90.  Set to 0 to disable the recency filter.
    */
   workspaceRecencyDays?: number;
+  /**
+   * Maximum number of directories to stat before capping the scan list to
+   * `maxWorkspaces * 2`.  This prevents runaway stat I/O on large
+   * workspaceStorage directories (e.g. thousands of entries on a WSL ↔
+   * Windows cross-filesystem bridge).  Defaults to `maxWorkspaces`.
+   */
+  maxStatEntries?: number;
+  /**
+   * @internal For testing only — overrides the automatic cross-filesystem
+   * detection so that callers can force `isCrossFs = true` without requiring
+   * a real `/mnt/[drive]/` path on disk.
+   */
+  _crossFsOverride?: boolean;
 }
+
+/**
+ * Matches the 32-char lowercase-hex workspace storage directory names that
+ * VS Code creates, with an optional numeric suffix (e.g. `abc123…-1`).
+ * Used as a positive allowlist so that only genuine VS Code workspace
+ * directories are scanned — any other entries (typos, tooling artefacts,
+ * etc.) are silently skipped without the need for a denylist.
+ */
+const WORKSPACE_HASH_RE = /^[0-9a-f]{32}(-\d+)?$/i;
+
+/**
+ * Well-known directories that are guaranteed to never contain VS Code chat
+ * session data.  These are explicitly excluded at every level of the scan
+ * as defense-in-depth — the WORKSPACE_HASH_RE allowlist already prevents
+ * them at the workspaceStorage root, but this denylist protects against
+ * unexpected path-resolution results and future structural changes.
+ *
+ * When one of these names is encountered during a `readdir` loop, the
+ * scanner must skip the entry immediately without entering the directory.
+ */
+const IGNORED_DIRS = new Set(["node_modules", "doc", ".git", "dist", "out", "build", "coverage", "packages"]);
+
+/**
+ * Thresholds for slow-path timing diagnostics emitted as `[TIMING-SCAN-SLOW]`
+ * warnings.  Only directories / files that exceed these limits are logged, so
+ * the output remains actionable and does not itself become a source of overhead.
+ *
+ * - `SLOW_DIR_SCAN_MS`   (100 ms) — readdir + full file-parse loop for one chatSessions dir
+ * - `SLOW_FILE_PARSE_MS` (100 ms) — parsing a single .json / .jsonl chat session file
+ */
+const SLOW_DIR_SCAN_MS = 100;
+const SLOW_FILE_PARSE_MS = 100;
 
 export async function readAllChatSessionData(
   workspaceStorageRoot: string,
@@ -739,34 +800,70 @@ export async function readAllChatSessionData(
     return { titleRecords: [], sessionRecords: [] };
   }
 
-  let dirEntries = workspaceEntries.filter((e) => e.isDirectory());
+  // Only consider directories with valid VS Code workspace hash names
+  // (32-char lowercase hex, optional -N suffix).  This acts as a positive
+  // allowlist and avoids stat-ing unrelated entries that may appear in the
+  // same parent directory.  IGNORED_DIRS provides a secondary denylist as
+  // defense-in-depth for unexpected path-resolution results.
+  let dirEntries = workspaceEntries.filter(
+    (e) => e.isDirectory() && WORKSPACE_HASH_RE.test(e.name) && !IGNORED_DIRS.has(e.name),
+  );
 
   // Apply recency + count filters to avoid scanning stale workspace directories
   // on slow cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
   const maxWorkspaces = options?.maxWorkspaces ?? 200;
   const recencyDays = options?.workspaceRecencyDays ?? 90;
-  if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
-    // Stat all dirs concurrently (high concurrency: stat is metadata-only,
-    // much faster than opening files).
-    const cutoffMs = recencyDays > 0 ? Date.now() - recencyDays * 24 * 60 * 60 * 1000 : 0;
-    const statResults = await asyncPool(
-      dirEntries.map((entry) => async () => {
-        try {
-          const s = await fs.stat(path.join(workspaceStorageRoot, entry.name));
-          return { entry, mtimeMs: s.mtimeMs };
-        } catch {
-          // stat failed — treat as most-recent so it is not silently dropped.
-          return { entry, mtimeMs: Date.now() };
-        }
-      }),
-      32,
-    );
-    // Sort newest-first, apply recency filter, then cap at maxWorkspaces.
-    dirEntries = statResults
-      .filter(({ mtimeMs }) => cutoffMs === 0 || mtimeMs >= cutoffMs)
-      .sort((a, b) => b.mtimeMs - a.mtimeMs)
-      .slice(0, maxWorkspaces)
-      .map(({ entry }) => entry);
+  const statScanCap = options?.maxStatEntries ?? maxWorkspaces;
+
+  // Detect WSL ↔ Windows cross-filesystem paths (/mnt/[single drive letter]/…).
+  // On these paths the Linux 9P filesystem driver serialises every stat syscall
+  // through the Windows kernel — asyncPool concurrency provides no speedup and
+  // ~1500 stat calls take ~135 seconds.  Skip stat entirely for cross-fs roots
+  // and simply cap by readdir order.
+  const isCrossFs =
+    options?._crossFsOverride ?? (process.platform === "linux" && /^\/mnt\/[a-z]\//.test(workspaceStorageRoot));
+
+  if (isCrossFs) {
+    // Skip stat entirely for cross-filesystem roots — cap by readdir order.
+    // No recency sort is available, but avoiding 135-second I/O stalls is the
+    // overwhelming priority.
+    dirEntries = dirEntries.slice(0, maxWorkspaces);
+    // eslint-disable-next-line no-console
+    console.warn(`[TIMING] readAllChatSessionData: skip-stat (cross-fs) | dirs=${dirEntries.length}`);
+  } else {
+    // Cap the stat scan on native paths to avoid O(n) calls when a
+    // workspaceStorage root contains thousands of hash directories.
+    if (dirEntries.length > statScanCap) {
+      const originalCount = dirEntries.length;
+      dirEntries = dirEntries.slice(0, maxWorkspaces * 2);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[TIMING] readAllChatSessionData: statScanCap(${statScanCap}) triggered | original=${originalCount}, capped=${dirEntries.length}`,
+      );
+    }
+    if (dirEntries.length > maxWorkspaces || recencyDays > 0) {
+      // Stat all dirs concurrently (high concurrency: stat is metadata-only,
+      // much faster than opening files).
+      const cutoffMs = recencyDays > 0 ? Date.now() - recencyDays * 24 * 60 * 60 * 1000 : 0;
+      const statResults = await asyncPool(
+        dirEntries.map((entry) => async () => {
+          try {
+            const s = await fs.stat(path.join(workspaceStorageRoot, entry.name));
+            return { entry, mtimeMs: s.mtimeMs };
+          } catch {
+            // stat failed — treat as most-recent so it is not silently dropped.
+            return { entry, mtimeMs: Date.now() };
+          }
+        }),
+        32,
+      );
+      // Sort newest-first, apply recency filter, then cap at maxWorkspaces.
+      dirEntries = statResults
+        .filter(({ mtimeMs }) => cutoffMs === 0 || mtimeMs >= cutoffMs)
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+        .slice(0, maxWorkspaces)
+        .map(({ entry }) => entry);
+    }
   }
 
   // Process all workspaces with bounded concurrency (4) to avoid overwhelming
@@ -775,6 +872,7 @@ export async function readAllChatSessionData(
     dirEntries.map((workspaceEntry) => async () => {
       const workspaceId = workspaceEntry.name;
       const chatSessionsDir = path.join(workspaceStorageRoot, workspaceId, "chatSessions");
+      const tDir = performance.now();
       let files: Dirent[] = [];
       try {
         files = await fs.readdir(chatSessionsDir, { withFileTypes: true });
@@ -784,16 +882,33 @@ export async function readAllChatSessionData(
 
       // Process files with bounded concurrency (4) to cap total concurrent I/O
       // at 4 (outer) × 4 (inner) = 16 instead of unbounded Promise.all.
-      const filteredFiles = files.filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")));
-      return asyncPool(
-        filteredFiles.map((file) => () => {
+      // Also skip any subdirectory that is in IGNORED_DIRS so that unexpected
+      // session-resource layouts cannot drag in large directory trees.
+      const filteredFiles = files.filter(
+        (f) => f.isFile() && !IGNORED_DIRS.has(f.name) && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")),
+      );
+      const results = await asyncPool(
+        filteredFiles.map((file) => async () => {
           const filePath = path.join(chatSessionsDir, file.name);
-          return file.name.endsWith(".jsonl")
+          const tFile = performance.now();
+          const record = await (file.name.endsWith(".jsonl")
             ? parseJsonlChatSessionRecord(filePath, workspaceId)
-            : parseJsonChatSessionRecord(filePath, workspaceId);
+            : parseJsonChatSessionRecord(filePath, workspaceId));
+          const elapsedFile = performance.now() - tFile;
+          if (elapsedFile >= SLOW_FILE_PARSE_MS) {
+            // eslint-disable-next-line no-console
+            console.warn(`[TIMING-PARSE-SLOW] ${filePath} - ${elapsedFile.toFixed(1)}ms`);
+          }
+          return record;
         }),
         4,
       );
+      const elapsedDir = performance.now() - tDir;
+      if (elapsedDir >= SLOW_DIR_SCAN_MS) {
+        // eslint-disable-next-line no-console
+        console.warn(`[TIMING-SCAN-SLOW] ${chatSessionsDir} - ${elapsedDir.toFixed(1)}ms`);
+      }
+      return results;
     }),
     4,
   );
@@ -850,7 +965,11 @@ export async function readChatSessionTitleRecords(workspaceStorageRoot: string):
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory()) {
+    if (
+      !workspaceEntry.isDirectory() ||
+      IGNORED_DIRS.has(workspaceEntry.name) ||
+      !WORKSPACE_HASH_RE.test(workspaceEntry.name)
+    ) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
@@ -862,7 +981,7 @@ export async function readChatSessionTitleRecords(workspaceStorageRoot: string):
       continue;
     }
     for (const file of files) {
-      if (!file.isFile()) {
+      if (!file.isFile() || IGNORED_DIRS.has(file.name)) {
         continue;
       }
       const filePath = path.join(chatSessionsDir, file.name);
@@ -892,7 +1011,11 @@ export async function readChatSessionRecords(workspaceStorageRoot: string): Prom
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory()) {
+    if (
+      !workspaceEntry.isDirectory() ||
+      IGNORED_DIRS.has(workspaceEntry.name) ||
+      !WORKSPACE_HASH_RE.test(workspaceEntry.name)
+    ) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
@@ -904,7 +1027,7 @@ export async function readChatSessionRecords(workspaceStorageRoot: string): Prom
       continue;
     }
     for (const file of files) {
-      if (!file.isFile()) {
+      if (!file.isFile() || IGNORED_DIRS.has(file.name)) {
         continue;
       }
       const filePath = path.join(chatSessionsDir, file.name);
