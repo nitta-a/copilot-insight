@@ -1,6 +1,8 @@
 import type { Dirent } from "node:fs";
+import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { createInterface } from "node:readline";
 import type { ChatSessionRecord, ChatSessionRequest, ChatSessionTitleRecord, SkillRef, ToolCallInfo } from "../types";
 
 interface JsonlMutationEntry {
@@ -459,13 +461,20 @@ async function parseJsonlChatSessionFile(
   workspaceId: string,
 ): Promise<ChatSessionTitleRecord | null> {
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
     const agentNameByRequest: Array<string | null> = [];
 
-    for (const line of lines) {
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: "utf-8" }),
+      crlfDelay: Infinity,
+      terminal: false,
+    });
+
+    for await (const line of rl) {
+      if (!line.trim()) {
+        continue;
+      }
       let entry: JsonlSessionLine;
       try {
         entry = JSON.parse(line) as JsonlSessionLine;
@@ -540,13 +549,20 @@ async function parseJsonlChatSessionFile(
 
 async function parseJsonlChatSessionRecord(filePath: string, workspaceId: string): Promise<ChatSessionRecord | null> {
   try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
     const agentNameByRequest: Array<string | null> = [];
 
-    for (const line of lines) {
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: "utf-8" }),
+      crlfDelay: Infinity,
+      terminal: false,
+    });
+
+    for await (const line of rl) {
+      if (!line.trim()) {
+        continue;
+      }
       let entry: JsonlSessionLine;
       try {
         entry = JSON.parse(line) as JsonlSessionLine;
@@ -764,11 +780,11 @@ const IGNORED_DIRS = new Set(["node_modules", "doc", ".git", "dist", "out", "bui
  * warnings.  Only directories / files that exceed these limits are logged, so
  * the output remains actionable and does not itself become a source of overhead.
  *
- * - `SLOW_DIR_SCAN_MS`  (100 ms) — readdir + full file-parse loop for one chatSessions dir
- * - `SLOW_FILE_PARSE_MS` (50 ms) — parsing a single .json / .jsonl chat session file
+ * - `SLOW_DIR_SCAN_MS`   (100 ms) — readdir + full file-parse loop for one chatSessions dir
+ * - `SLOW_FILE_PARSE_MS` (100 ms) — parsing a single .json / .jsonl chat session file
  */
 const SLOW_DIR_SCAN_MS = 100;
-const SLOW_FILE_PARSE_MS = 50;
+const SLOW_FILE_PARSE_MS = 100;
 
 export async function readAllChatSessionData(
   workspaceStorageRoot: string,
@@ -881,7 +897,7 @@ export async function readAllChatSessionData(
           const elapsedFile = performance.now() - tFile;
           if (elapsedFile >= SLOW_FILE_PARSE_MS) {
             // eslint-disable-next-line no-console
-            console.warn(`[TIMING-SCAN-SLOW] ${filePath} - ${elapsedFile.toFixed(1)}ms`);
+            console.warn(`[TIMING-PARSE-SLOW] ${filePath} - ${elapsedFile.toFixed(1)}ms`);
           }
           return record;
         }),
