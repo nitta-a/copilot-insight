@@ -3,6 +3,13 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.1.9] - 2026-03-31
+
+### Fixed
+- 🗂️ **Chat session JSONL parsing — streaming read** — `chatSessionTitleReader` now reads JSONL files line-by-line via `readline` + `createReadStream` instead of loading the entire file into memory with `fs.readFile`; this prevents out-of-memory errors and I/O stalls when large or cross-filesystem (WSL ↔ Windows) session files are scanned
+- 🔒 **`workspaceStorage` scan — cross-filesystem protection** — added `maxStatEntries` / `_crossFsOverride` options to `ReadAllChatSessionDataOptions` to cap the number of directory entries stat'd before the scan list is capped, preventing runaway I/O on large `workspaceStorage` directories on cross-filesystem bridges
+- ⚡ **"Load Historical Data" — concurrent request deduplication** — a second call to the panel's historical-log loader while a scan is already in progress now reuses the in-flight promise instead of launching a duplicate filesystem scan
+
 ## [1.1.8] - 2026-03-30
 
 ### Removed
