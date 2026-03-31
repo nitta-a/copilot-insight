@@ -201,6 +201,49 @@ suite("chatSessionTitleReader", () => {
     }
   });
 
+  test("readAllChatSessionData: IGNORED_DIRS entries are skipped at workspaceStorage root", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-ignoredirs-"));
+    try {
+      const workspaceStorageRoot = path.join(tempRoot, "workspaceStorage");
+      const validHash = "aabbccddeeff00112233445566778899";
+      const validDir = path.join(workspaceStorageRoot, validHash, "chatSessions");
+      await fs.mkdir(validDir, { recursive: true });
+      await fs.writeFile(
+        path.join(validDir, "s.json"),
+        JSON.stringify({ sessionId: "s1", creationDate: 1760871632297, lastMessageDate: 1760871632297, requests: [] }),
+        "utf-8",
+      );
+
+      // Create IGNORED_DIRS entries at the workspaceStorage root level.
+      // These must never be entered regardless of their contents.
+      for (const ignored of ["node_modules", "doc", ".git", "dist", "build", "packages"]) {
+        const largeDir = path.join(workspaceStorageRoot, ignored, "chatSessions");
+        await fs.mkdir(largeDir, { recursive: true });
+        // Put a JSON file inside — it must NOT be parsed because the dir is ignored.
+        await fs.writeFile(
+          path.join(largeDir, "noise.json"),
+          JSON.stringify({
+            sessionId: `ignored-${ignored}`,
+            creationDate: 1760871632297,
+            lastMessageDate: 1760871632297,
+            requests: [],
+          }),
+          "utf-8",
+        );
+      }
+
+      const { sessionRecords } = await readAllChatSessionData(workspaceStorageRoot, {
+        maxWorkspaces: 50,
+        workspaceRecencyDays: 0,
+      });
+      // Only the valid hex-hash workspace should produce a session record.
+      assert.strictEqual(sessionRecords.length, 1, `expected 1 session, got ${sessionRecords.length}`);
+      assert.strictEqual(sessionRecords[0]?.workspaceId, validHash);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   test("readAllChatSessionData: maxStatEntries cap limits the number of dirs statted", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-statcap-"));
     try {

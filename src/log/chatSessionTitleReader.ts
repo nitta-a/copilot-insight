@@ -747,6 +747,18 @@ export interface ReadAllChatSessionDataOptions {
  */
 const WORKSPACE_HASH_RE = /^[0-9a-f]{32}(-\d+)?$/i;
 
+/**
+ * Well-known directories that are guaranteed to never contain VS Code chat
+ * session data.  These are explicitly excluded at every level of the scan
+ * as defense-in-depth — the WORKSPACE_HASH_RE allowlist already prevents
+ * them at the workspaceStorage root, but this denylist protects against
+ * unexpected path-resolution results and future structural changes.
+ *
+ * When one of these names is encountered during a `readdir` loop, the
+ * scanner must skip the entry immediately without entering the directory.
+ */
+const IGNORED_DIRS = new Set(["node_modules", "doc", ".git", "dist", "out", "build", "coverage", "packages"]);
+
 export async function readAllChatSessionData(
   workspaceStorageRoot: string,
   options?: ReadAllChatSessionDataOptions,
@@ -764,8 +776,11 @@ export async function readAllChatSessionData(
   // Only consider directories with valid VS Code workspace hash names
   // (32-char lowercase hex, optional -N suffix).  This acts as a positive
   // allowlist and avoids stat-ing unrelated entries that may appear in the
-  // same parent directory.
-  let dirEntries = workspaceEntries.filter((e) => e.isDirectory() && WORKSPACE_HASH_RE.test(e.name));
+  // same parent directory.  IGNORED_DIRS provides a secondary denylist as
+  // defense-in-depth for unexpected path-resolution results.
+  let dirEntries = workspaceEntries.filter(
+    (e) => e.isDirectory() && WORKSPACE_HASH_RE.test(e.name) && !IGNORED_DIRS.has(e.name),
+  );
 
   // Apply recency + count filters to avoid scanning stale workspace directories
   // on slow cross-filesystem bridges (e.g. WSL ↔ Windows /mnt/).
@@ -839,7 +854,11 @@ export async function readAllChatSessionData(
 
       // Process files with bounded concurrency (4) to cap total concurrent I/O
       // at 4 (outer) × 4 (inner) = 16 instead of unbounded Promise.all.
-      const filteredFiles = files.filter((f) => f.isFile() && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")));
+      // Also skip any subdirectory that is in IGNORED_DIRS so that unexpected
+      // session-resource layouts cannot drag in large directory trees.
+      const filteredFiles = files.filter(
+        (f) => f.isFile() && !IGNORED_DIRS.has(f.name) && (f.name.endsWith(".jsonl") || f.name.endsWith(".json")),
+      );
       return asyncPool(
         filteredFiles.map((file) => () => {
           const filePath = path.join(chatSessionsDir, file.name);
@@ -905,7 +924,11 @@ export async function readChatSessionTitleRecords(workspaceStorageRoot: string):
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory() || !WORKSPACE_HASH_RE.test(workspaceEntry.name)) {
+    if (
+      !workspaceEntry.isDirectory() ||
+      IGNORED_DIRS.has(workspaceEntry.name) ||
+      !WORKSPACE_HASH_RE.test(workspaceEntry.name)
+    ) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
@@ -917,7 +940,7 @@ export async function readChatSessionTitleRecords(workspaceStorageRoot: string):
       continue;
     }
     for (const file of files) {
-      if (!file.isFile()) {
+      if (!file.isFile() || IGNORED_DIRS.has(file.name)) {
         continue;
       }
       const filePath = path.join(chatSessionsDir, file.name);
@@ -947,7 +970,11 @@ export async function readChatSessionRecords(workspaceStorageRoot: string): Prom
   }
 
   for (const workspaceEntry of workspaceEntries) {
-    if (!workspaceEntry.isDirectory() || !WORKSPACE_HASH_RE.test(workspaceEntry.name)) {
+    if (
+      !workspaceEntry.isDirectory() ||
+      IGNORED_DIRS.has(workspaceEntry.name) ||
+      !WORKSPACE_HASH_RE.test(workspaceEntry.name)
+    ) {
       continue;
     }
     const workspaceId = workspaceEntry.name;
@@ -959,7 +986,7 @@ export async function readChatSessionRecords(workspaceStorageRoot: string): Prom
       continue;
     }
     for (const file of files) {
-      if (!file.isFile()) {
+      if (!file.isFile() || IGNORED_DIRS.has(file.name)) {
         continue;
       }
       const filePath = path.join(chatSessionsDir, file.name);
