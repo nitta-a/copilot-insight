@@ -19,6 +19,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { CliDateStat, CliThreadUsage, CliUsageStat, CliUsageTurn } from "../types";
 import { getPromptLengthBucket } from "../types";
+import { parseFusion } from "./fusion";
+import { parseInterventions } from "./interventions";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -117,6 +119,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   const usage = emptyUsage();
   const usageByModel = new Map<string, CliUsageStat>();
   const threads: CliThreadUsage[] = [];
+  const interventionSources = new Map<string, string[]>();
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
@@ -156,6 +159,12 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       const raw = await fs.readFile(eventsPath, "utf8");
       const result = parseEventsJsonl(raw, defaultModel, path.basename(sessionDir));
 
+      if (result.thread) {
+        const sources = interventionSources.get(result.thread.sessionId) ?? [];
+        sources.push(raw);
+        interventionSources.set(result.thread.sessionId, sources);
+      }
+
       // Merge per-date stats.
       for (const [dateKey, stat] of result.byDate) {
         const existing = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
@@ -173,9 +182,19 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       }
       if (
         result.thread &&
-        (result.totalInteractions > 0 ||
+        (Boolean(result.thread.fusionRuns?.length) ||
+          Boolean(
+            result.thread.interventions?.permissions.length ||
+              result.thread.interventions?.steering.length ||
+              result.thread.interventions?.stops.length,
+          ) ||
+          result.totalInteractions > 0 ||
           result.usage.inputTokens > 0 ||
           result.usage.outputTokens > 0 ||
+          result.usage.cacheReadTokens > 0 ||
+          result.usage.cacheWriteTokens > 0 ||
+          result.usage.reasoningTokens > 0 ||
+          result.usage.totalNanoAiu === null ||
           (result.usage.totalNanoAiu ?? 0) > 0)
       ) {
         threads.push(result.thread);
@@ -219,6 +238,22 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     } catch {
       // Skip unreadable or missing files.
     }
+  }
+
+  const seenInterventionEvents = new Set<string>();
+  const assignedSessions = new Set<string>();
+  for (const thread of threads) {
+    if (assignedSessions.has(thread.sessionId)) {
+      thread.interventions = undefined;
+      thread.fusionRuns = undefined;
+      continue;
+    }
+    assignedSessions.add(thread.sessionId);
+    thread.interventions = parseInterventions(
+      (interventionSources.get(thread.sessionId) ?? []).join("\n"),
+      seenInterventionEvents,
+    );
+    thread.fusionRuns = parseFusion((interventionSources.get(thread.sessionId) ?? []).join("\n"));
   }
 
   const result: CliStats = {
@@ -350,6 +385,8 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   let currentTurn: CliUsageTurn | undefined;
   let currentTurnHasUsage = false;
   let sessionId = fallbackSessionId;
+  let projectPath: string | null = null;
+  let sawSessionStart = false;
   let title = "";
   let startedAt: string | null = null;
   let lastActivityAt: string | null = null;
@@ -405,6 +442,14 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
     if (type === "session.start") {
       // Extract YYYY-MM-DD from the session start timestamp.
       const data = asRecord(event.data);
+      if (!sawSessionStart) {
+        sawSessionStart = true;
+        const context = asRecord(data?.context);
+        const folder = [context?.gitRoot, context?.cwd].find(
+          (value): value is string => typeof value === "string" && path.isAbsolute(value),
+        );
+        projectPath = folder ? path.normalize(folder) : null;
+      }
       const startTime = eventTimestamp(data?.startTime);
       if (startTime && /^\d{4}-\d{2}-\d{2}/.test(startTime)) {
         dateKey = startTime.substring(0, 10);
@@ -673,12 +718,16 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
     thread: sessionId
       ? {
           sessionId,
+          projectPath,
+          usageByDate: Array.from(usageByDate, ([date, dailyUsage]) => ({ date, usage: dailyUsage })),
           title: title || `Copilot CLI ${sessionId.slice(0, 8)}`,
           startedAt,
           lastActivityAt,
           prompts: totalInteractions,
           usage,
           turns,
+          fusionRuns: parseFusion(content),
+          interventions: parseInterventions(content),
         }
       : undefined,
     totalInteractions,

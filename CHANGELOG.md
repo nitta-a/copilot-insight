@@ -4,7 +4,12 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [1.1.11] - 2026-11-06
+
+### Added
+- Show all-time token and AI credit usage by project folder, using the session's Git root or working directory.
+- Show Fusion execution details in session timelines, including observed phases, models, usage, and reconciliation with completion totals.
+- Visualize observed Fusion paths, execution counts, phase AI credits, and the rate of repair after a judge, filtered by the selected usage period.
 
 ## [1.1.10] - 2026-11-05
 

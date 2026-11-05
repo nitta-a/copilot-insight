@@ -369,6 +369,20 @@ suite("CLI daily and thread consumption", () => {
   }
   const jsonl = (...events: object[]) => events.map((event) => JSON.stringify(event)).join("\n");
 
+  test("uses the first session's absolute git root, falling back to cwd or unknown", () => {
+    const project = (context: unknown) =>
+      parseEventsJsonl(
+        jsonl(
+          { type: "session.start", data: { sessionId: "s", context } },
+          { type: "session.start", data: { context: { gitRoot: "/later" } } },
+        ),
+      ).thread?.projectPath;
+    assert.strictEqual(project({ gitRoot: "/repos/project", cwd: "/repos/project/sub" }), "/repos/project");
+    assert.strictEqual(project({ gitRoot: "relative", cwd: "/work/project" }), "/work/project");
+    assert.strictEqual(project({ cwd: "relative" }), null);
+    assert.strictEqual(project(undefined), null);
+  });
+
   test("keeps each model call on its actual UTC day across midnight and shutdown", () => {
     const result = parseEventsJsonl(
       jsonl(start, call(1, "2026-11-01T23:59:00Z"), call(2, "2026-11-02T00:01:00Z"), {

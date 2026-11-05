@@ -88,6 +88,7 @@ export class CopilotStatCard extends LitElement {
 
   @property({ type: String }) value = "";
   @property({ type: String }) label = "";
+  @property({ type: String }) icon = "";
   @property({ type: String, reflect: true }) highlight = "";
   @property({ type: String }) subtext = "";
   @property({ type: Boolean }) showDownload = false;
@@ -100,7 +101,7 @@ export class CopilotStatCard extends LitElement {
   render() {
     return html`
       <div class="value">${this.value}</div>
-      <div class="label">${this.label}</div>
+      <div class="label">${this.icon ? html`<span aria-hidden="true">${this.icon} </span>` : ""}${this.label}</div>
       ${this.subtext ? html`<span class="subtext">${this.subtext}</span>` : ""}
       ${this.showDownload
         ? html`<button class="download-btn" title="Download as PNG" @click=${this._handleDownload}>🖼️</button>`

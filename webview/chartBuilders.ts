@@ -30,6 +30,7 @@ import type {
   TimelineEntry,
 } from "../src/ui/dashboardMessages";
 import { fmtDate } from "./dashboardUtils";
+import { formatProjectShare, type projectChartRows } from "./utils/projectUsage";
 
 // Register only the Chart.js components we actually use (tree-shaking).
 Chart.register(
@@ -148,6 +149,43 @@ export function createDailyUsageChart(
               `${item.dataset.label}: ${Number(item.raw).toLocaleString(undefined, { maximumFractionDigits: 6 })}`,
           },
         },
+      },
+    },
+  });
+}
+
+export function createProjectUsageChart(
+  canvas: HTMLCanvasElement,
+  rows: ReturnType<typeof projectChartRows>,
+  metric: "credits" | "tokens",
+  colors: ChartColors,
+): Chart {
+  return new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: rows.map((row) => {
+        const value = metric === "credits" ? row.aiCredits : row.inputTokens + row.outputTokens;
+        const total = metric === "credits" ? rows[0].aiCredits : rows[0].inputTokens + rows[0].outputTokens;
+        return `${row.label} (${formatProjectShare(value, total)})`;
+      }),
+      datasets: metric === "credits"
+        ? [{ label: "AI credits", data: rows.map((row) => row.aiCredits), backgroundColor: colors.purple }]
+        : [
+            { label: "Input (includes cache)", data: rows.map((row) => row.inputTokens), backgroundColor: colors.blue },
+            { label: "Output", data: rows.map((row) => row.outputTokens), backgroundColor: colors.green },
+          ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, beginAtZero: true, ticks: { color: colors.foreground }, grid: { color: colors.grid } },
+        y: { stacked: true, ticks: { color: colors.foreground }, grid: { display: false } },
+      },
+      plugins: {
+        legend: { labels: { color: colors.foreground } },
+        tooltip: { callbacks: { title: (items) => rows[items[0]?.dataIndex]?.path ?? rows[items[0]?.dataIndex]?.label ?? "" } },
       },
     },
   });

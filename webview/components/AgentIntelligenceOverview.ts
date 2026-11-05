@@ -91,7 +91,7 @@ export class AgentIntelligenceOverview extends LitElement {
         ? html`
             <div class="stat-card">
               <div class="stat-value">${formatDuration(agenticStats.autonomousDurationMs)}</div>
-              <div class="stat-label">Autonomous Duration</div>
+              <div class="stat-label"><span aria-hidden="true">⏱️</span> Autonomous Duration</div>
               <div class="stat-detail">total active time</div>
             </div>
           `
@@ -106,22 +106,22 @@ export class AgentIntelligenceOverview extends LitElement {
             <div class="stats-grid">
               <div class="stat-card">
                 <div class="stat-value">${overview.planCount}</div>
-                <div class="stat-label">Plans Proposed</div>
+                <div class="stat-label"><span aria-hidden="true">📝</span> Plans Proposed</div>
                 <div class="stat-detail">agent/plan proposals</div>
               </div>
               <div class="stat-card">
                 <div class="stat-value">${overview.executedPlanCount}</div>
-                <div class="stat-label">Plans Executed</div>
+                <div class="stat-label"><span aria-hidden="true">✅</span> Plans Executed</div>
                 <div class="stat-detail">led to file edits</div>
               </div>
               <div class="stat-card db-highlight">
                 <div class="stat-value db-accent">${planSuccessStr}</div>
-                <div class="stat-label">Success Rate</div>
+                <div class="stat-label"><span aria-hidden="true">🎯</span> Success Rate</div>
                 <div class="stat-detail">plans implemented</div>
               </div>
               <div class="stat-card">
                 <div class="stat-value">${overview.userChoicesInPlan}</div>
-                <div class="stat-label">User Choices</div>
+                <div class="stat-label"><span aria-hidden="true">👤</span> User Choices</div>
                 <div class="stat-detail">in-plan interactions</div>
               </div>
             </div>
@@ -218,21 +218,25 @@ export class AgentIntelligenceOverview extends LitElement {
     const featureCards = [
       {
         label: "Browser Tools",
+        icon: "🌐",
         total: agenticStats.featureSignals.browserTools.total,
         detail: agenticStats.featureSignals.browserTools.breakdown,
       },
       {
         label: "Plugins / Skills",
+        icon: "🧩",
         total: agenticStats.featureSignals.pluginOrSkills.total,
         detail: agenticStats.featureSignals.pluginOrSkills.breakdown,
       },
       {
         label: "Session Memory / Compact",
+        icon: "🧠",
         total: agenticStats.featureSignals.memoryManagement.total,
         detail: agenticStats.featureSignals.memoryManagement.breakdown,
       },
       {
         label: "Agent Debug",
+        icon: "🔍",
         total: agenticStats.featureSignals.agentDebug.total,
         detail: agenticStats.featureSignals.agentDebug.breakdown,
       },
@@ -251,7 +255,7 @@ export class AgentIntelligenceOverview extends LitElement {
               return html`
                 <div class="stat-card">
                   <div class="stat-value">${card.total}</div>
-                  <div class="stat-label">${card.label}</div>
+                  <div class="stat-label"><span aria-hidden="true">${card.icon}</span> ${card.label}</div>
                   <div class="stat-detail">${top || "detected log signals"}</div>
                 </div>
               `;
@@ -266,32 +270,32 @@ export class AgentIntelligenceOverview extends LitElement {
       <div class="stats-grid">
         <div class="stat-card db-highlight">
           <div class="stat-value db-accent">${overview.autonomousActionCount}</div>
-          <div class="stat-label">Autonomous Actions</div>
+          <div class="stat-label"><span aria-hidden="true">⚙️</span> Autonomous Actions</div>
           <div class="stat-detail">All agentic activity</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${ratioStr}%</div>
-          <div class="stat-label">Agentic Ratio</div>
+          <div class="stat-label"><span aria-hidden="true">📊</span> Agentic Ratio</div>
           <div class="stat-detail">of all requests</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${overview.agenticLoopCount}</div>
-          <div class="stat-label">Agentic Loops</div>
+          <div class="stat-label"><span aria-hidden="true">🔁</span> Agentic Loops</div>
           <div class="stat-detail">completed episodes</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${cliReasoningStr}</div>
-          <div class="stat-label">CLI Reasoning Chars</div>
+          <div class="stat-label"><span aria-hidden="true">🧠</span> CLI Reasoning Chars</div>
           <div class="stat-detail">assistant.reasoningText length</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${avgStr}</div>
-          <div class="stat-label">Avg Calls / Loop</div>
+          <div class="stat-label"><span aria-hidden="true">📞</span> Avg Calls / Loop</div>
           <div class="stat-detail">agentic depth</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${completionStr}</div>
-          <div class="stat-label">Completion Rate</div>
+          <div class="stat-label"><span aria-hidden="true">✅</span> Completion Rate</div>
           <div class="stat-detail">episodes completed</div>
         </div>
         ${durationCell}

@@ -83,7 +83,20 @@ export interface SummaryData {
     totalTokens: number;
     totalAiCredits: number | null;
     topModels: Array<{ model: string; totalTokens: number; aiCredits: number | null }>;
+    projects: Array<{
+      path: string | null;
+      name: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      aiCredits: number | null;
+      dailyUsage: Array<{ date: string; usage: import("../types").CliUsageStat }>;
+    }> | null;
+    projectDailyUsageAvailable: boolean;
     dailyUsage: DailyUsagePoint[];
+    fusionRuns?: import("../types").FusionRun[];
+    interventionThreads?: Array<{ projectPath?: string | null; interventions?: import("../types").CliInterventions }>;
     /** Signed difference between cumulative totals and timestamped call records. */
     unattributedTokens: number;
     unattributedAiCredits: number | null;

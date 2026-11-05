@@ -50,24 +50,24 @@ export class RefreshAnalysis extends LitElement {
         <div class="stats-grid">
           <div class="stat-card db-highlight">
             <div class="stat-value db-accent">${refreshAnalysis.length}</div>
-            <div class="stat-label">Refresh Events</div>
+            <div class="stat-label"><span aria-hidden="true">🔄</span> Refresh Events</div>
             <div class="stat-detail">compact or truncation boundaries</div>
           </div>
           <div class="stat-card">
             <div class="stat-value ${getDeltaClass(avgRoi)}">${formatSignedPercent(avgRoi)}</div>
-            <div class="stat-label">Average ROI</div>
+            <div class="stat-label"><span aria-hidden="true">📈</span> Average ROI</div>
             <div class="stat-detail">post.trueRate / pre.trueRate - 1</div>
           </div>
           <div class="stat-card">
             <div class="stat-value ${getDeltaClass(avgRecoveryDelta)}">${formatSignedPoints(avgRecoveryDelta)}</div>
-            <div class="stat-label">Average Recovery</div>
+            <div class="stat-label"><span aria-hidden="true">🩹</span> Average Recovery</div>
             <div class="stat-detail">post true rate minus pre true rate</div>
           </div>
           <div class="stat-card">
             <div class="stat-value ${getDeltaClass(bestEntry?.refreshRoi ?? null)}">
               ${formatSignedPercent(bestEntry?.refreshRoi ?? null)}
             </div>
-            <div class="stat-label">Best Refresh</div>
+            <div class="stat-label"><span aria-hidden="true">🏆</span> Best Refresh</div>
             <div class="stat-detail">${bestEntry?.event.type ?? latestEntry?.event.type ?? "memory"}</div>
           </div>
         </div>

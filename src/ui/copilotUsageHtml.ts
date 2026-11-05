@@ -531,11 +531,11 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   const totalSessions = stats.bySession.size;
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
-  <copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" label="Accepted Completions"></copilot-stat-card>
-  <copilot-stat-card show-download value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" label="Acceptance Rate"></copilot-stat-card>
-  <copilot-stat-card show-download value="${timeSavedDisplay}" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
-  <copilot-stat-card show-download value="${latencyDisplay}" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
-  <copilot-stat-card show-download value="${escapeHtml(String(totalSessions))}" label="Active Sessions"></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" icon="✅" label="Accepted Completions"></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" icon="📊" label="Acceptance Rate"></copilot-stat-card>
+  <copilot-stat-card show-download value="${timeSavedDisplay}" icon="⏱️" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
+  <copilot-stat-card show-download value="${latencyDisplay}" icon="⚡" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
+  <copilot-stat-card show-download value="${escapeHtml(String(totalSessions))}" icon="📂" label="Active Sessions"></copilot-stat-card>
 </div>`;
 }
 
