@@ -122,6 +122,7 @@ export class DailyUsageChart extends LitElement {
     const usage = this.usage;
     const days = this.visibleDays();
     const lastDate = this.usage?.dailyUsage.at(-1)?.date ?? null;
+    const { start } = recordedPeriod(this.period, [lastDate]);
     const fusionRange = recordedPeriod(this.period, [lastDate, ...(usage?.fusionRuns ?? []).map((run) => run.timestamp ? new Date(run.timestamp).toISOString().slice(0, 10) : null)]);
     const fusion = summarizeFusion(usage?.fusionRuns ?? [], fusionRange.start, fusionRange.end);
     const undated = (usage?.fusionRuns ?? []).filter((run) => !run.timestamp).length;
