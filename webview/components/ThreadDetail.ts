@@ -22,6 +22,7 @@
 import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { AgentStep, SessionDetailPayload } from "../../src/types";
+import { toAiCredits } from "../../src/utils";
 import {
   actorBadgeClass,
   actorIcon,
@@ -30,11 +31,15 @@ import {
   formatPause,
   formatPhaseLabel,
   formatStepDetail,
+  formatAiCredits,
+  formatUsageDate,
 } from "../dashboardUtils";
 
 /** Sort and filter threads to those with activity, newest first. */
 export function getSelectableThreadsSorted(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
-  return [...threads].filter((t) => t.stepCount > 0).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+  return [...threads]
+    .filter((t) => t.stepCount > 0 || t.usage)
+    .sort((a, b) => (Date.parse(b.startedAt) || 0) - (Date.parse(a.startedAt) || 0));
 }
 
 @customElement("copilot-thread-detail")
@@ -72,12 +77,19 @@ export class ThreadDetail extends LitElement {
         <div>
           <strong>${selectedThread.title}</strong>
           <div style="margin-top:4px;font-size:0.84em;opacity:0.74">
-            ${new Date(selectedThread.startedAt).toLocaleString()}
+            ${formatUsageDate(selectedThread.startedAt)}
           </div>
         </div>
         <div class="db-thread-detail-metrics">
-          <span class="db-tag">${selectedThread.stepCount} steps</span>
-          <span class="db-tag">${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</span>
+          <span class="db-tag">${selectedThread.stepCount} ${selectedThread.usageSource === "cli" ? "prompts" : "steps"}</span>
+          ${
+            selectedThread.usage
+              ? html`<span class="db-tag">Total: ${formatAiCredits(toAiCredits(selectedThread.usage.totalNanoAiu))} AI credits</span>
+                <span class="db-tag">${selectedThread.usage.inputTokens.toLocaleString()} input tokens</span>
+                <span class="db-tag">${selectedThread.usage.outputTokens.toLocaleString()} output tokens</span>`
+              : html`<span class="db-tag">${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</span>
+                <span class="db-tag">AI credits: unavailable</span>`
+          }
           ${
             selectedThread.longestPauseMs > 0
               ? html`<span class="db-tag">Longest wait ${formatPause(selectedThread.longestPauseMs)}</span>`
@@ -86,6 +98,14 @@ export class ThreadDetail extends LitElement {
           ${selectedThread.hasAutonomousRun ? html`<span class="db-badge">🤖 Autonomous</span>` : nothing}
         </div>
       </div>
+      ${
+        selectedThread.usageSource === "cli"
+          ? html`<p style="font-size:0.85em;opacity:0.8">Copilot CLI / SDK conversation total.
+            Prompt usage below is based on model-call records until the next prompt.
+            Cumulative accounting adjustments or calls without an associated prompt are included only in the thread total.
+            Credits are usage units, not an account-wide currency bill.</p>`
+          : nothing
+      }
       <div class="db-agent-step-timeline">${stepsContent}</div>
     `;
   }
@@ -99,7 +119,9 @@ export class ThreadDetail extends LitElement {
         ? html`<span class="db-agent-step-chip db-agent-step-chip-duration${isLongest ? " longest" : ""}">
             ⏱ ${formatPause(step.durationMs)}
           </span>`
-        : html`<span class="db-agent-step-chip db-agent-step-chip-duration pending">Current</span>`;
+        : step.usage
+          ? nothing
+          : html`<span class="db-agent-step-chip db-agent-step-chip-duration pending">Current</span>`;
 
     const pauseSeparator =
       step.isSignificantPause && step.durationMs !== undefined
@@ -112,7 +134,7 @@ export class ThreadDetail extends LitElement {
       >
         <div class="db-agent-step-body${step.isFallback ? " fallback" : ""}">
           <div class="db-agent-step-meta">
-            <span>${new Date(step.timestamp).toLocaleString()}</span>
+            <span>${formatUsageDate(step.timestamp)}</span>
           </div>
           <div class="db-agent-step-chip-row">
             <span class="db-agent-step-chip db-agent-step-chip-actor ${actorBadgeClass(step.actor)}">
@@ -122,6 +144,14 @@ export class ThreadDetail extends LitElement {
             ${durationChip}
           </div>
           <div class="db-agent-step-detail">${formatStepDetail(step.detail, step.label)}</div>
+          ${
+            step.usage
+              ? html`<div class="db-agent-step-submeta">
+                <span>${formatAiCredits(toAiCredits(step.usage.totalNanoAiu))} AI credits</span>
+                <span>${step.usage.inputTokens.toLocaleString()} input / ${step.usage.outputTokens.toLocaleString()} output tokens</span>
+              </div>`
+              : nothing
+          }
           <div class="db-agent-step-submeta">
             <span>${formatPhaseLabel(step.phase)}</span><span>${step.rawIntent || "signal"}</span>
           </div>

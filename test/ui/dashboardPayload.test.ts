@@ -2,7 +2,13 @@ import * as assert from "assert";
 import type { SessionSignalEvent } from "../../src/events/eventSchema";
 import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
-import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "../../src/ui/dashboardPayload";
+import {
+  buildCliSessionDetail,
+  buildDashboardPayload,
+  buildPromptInsightsPayload,
+  buildSessionsPayload,
+} from "../../src/ui/dashboardPayload";
+import { parseEventsJsonl } from "../../src/log/cliLogReader";
 
 function fmt(date: Date): string {
   const yyyy = date.getFullYear();
@@ -1153,6 +1159,166 @@ suite("buildDashboardPayload — CLI integration", () => {
       assert.strictEqual(entry.cliShown, 0);
       assert.strictEqual(entry.cliAccepted, 0);
     }
+  });
+
+  test("includes CLI tokens and AI credits from local usage records", () => {
+    const usage = {
+      inputTokens: 1_000,
+      outputTokens: 200,
+      cacheReadTokens: 800,
+      cacheWriteTokens: 100,
+      reasoningTokens: 50,
+      totalNanoAiu: 3_118_259_500,
+    };
+    const payload = buildDashboardPayload(
+      makeStats({
+        cliUsage: usage,
+        cliUsageByModel: new Map([["gpt-6-luna", usage]]),
+        cliByDate: new Map([
+          ["2026-02-25", { prompts: 3, outputTokens: 200, usage }],
+          [
+            "2026-02-26",
+            {
+              prompts: 1,
+              outputTokens: 50,
+              usage: { ...usage, inputTokens: 100, outputTokens: 50, totalNanoAiu: 500_000_000 },
+            },
+          ],
+        ]),
+      }),
+    );
+
+    assert.strictEqual(payload.summary.cliUsageStats?.totalTokens, 1_200);
+    assert.strictEqual(payload.summary.cliUsageStats?.totalAiCredits, 3.1182595);
+    assert.strictEqual(payload.summary.cliUsageStats?.topModels[0]?.model, "gpt-6-luna");
+    assert.strictEqual(payload.summary.cliUsageStats?.dailyUsage[0]?.date, "2026-02-25");
+  });
+
+  test("omits CLI usage cards when local usage records are unavailable", () => {
+    const payload = buildDashboardPayload(makeStats());
+    assert.strictEqual(payload.summary.cliUsageStats, null);
+  });
+
+  test("keeps more than seven daily points and exposes undated accounting differences", () => {
+    const daily = Array.from({ length: 12 }, (_, index) => {
+      const date = `2026-11-${String(index + 1).padStart(2, "0")}`;
+      return [
+        date,
+        {
+          prompts: 1,
+          outputTokens: 20,
+          usage: {
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheReadTokens: 60,
+            cacheWriteTokens: 30,
+            reasoningTokens: 5,
+            totalNanoAiu: 1_000_000_000,
+          },
+        },
+      ] as const;
+    });
+    const payload = buildDashboardPayload(
+      makeStats({
+        cliByDate: new Map(daily),
+        cliUsage: {
+          inputTokens: 1_300,
+          outputTokens: 260,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalNanoAiu: 13_500_000_000,
+        },
+      }),
+    );
+    assert.strictEqual(payload.summary.cliUsageStats?.dailyUsage.length, 12);
+    assert.deepStrictEqual(payload.summary.cliUsageStats?.dailyUsage[0], {
+      date: "2026-11-01",
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      aiCredits: 1,
+    });
+    assert.strictEqual(payload.summary.cliUsageStats?.unattributedTokens, 120);
+    assert.strictEqual(payload.summary.cliUsageStats?.unattributedAiCredits, 1.5);
+  });
+
+  test("preserves missing daily and total credit values instead of converting them to zero", () => {
+    const usage = {
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalNanoAiu: null,
+    };
+    const payload = buildDashboardPayload(
+      makeStats({ cliUsage: usage, cliByDate: new Map([["2026-11-01", { prompts: 1, outputTokens: 20, usage }]]) }),
+    );
+    assert.strictEqual(payload.summary.cliUsageStats?.totalAiCredits, null);
+    assert.strictEqual(payload.summary.cliUsageStats?.dailyUsage[0].aiCredits, null);
+    assert.strictEqual(payload.summary.cliUsageStats?.unattributedAiCredits, null);
+  });
+});
+
+suite("CLI conversation consumption in Sessions", () => {
+  test("connects parsed CLI threads and prompt totals to the Sessions list and detail", () => {
+    const result = parseEventsJsonl(
+      [
+        { type: "session.start", data: { sessionId: "s1", startTime: "2026-11-01T23:00:00Z" } },
+        { type: "user.message", timestamp: "2026-11-01T23:00:00Z", data: { content: "Implement charts" } },
+        {
+          type: "session.usage_record",
+          timestamp: "2026-11-02T01:00:00Z",
+          data: {
+            usage: {
+              inputTokens: 100,
+              outputTokens: 20,
+              model: "model-a",
+              copilotUsage: { totalNanoAiu: 1_250_000_000 },
+            },
+          },
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join("\n"),
+    );
+    assert.ok(result.thread);
+    const stats = makeStats({ cliThreads: [result.thread], cliUsage: result.usage, cliByDate: result.byDate });
+    const sessions = buildSessionsPayload(stats);
+    assert.strictEqual(sessions.sessionSummaries.length, 2);
+    assert.ok(
+      sessions.sessionSummaries.some((entry) => entry.sessionId === "s1"),
+      "Editor session remains separate",
+    );
+    assert.ok(sessions.sessionSummaries.some((entry) => entry.sessionId === "cli:s1"));
+    const detail = buildCliSessionDetail(stats, "cli:s1");
+    assert.strictEqual(detail?.threads[0].title, "Implement charts");
+    assert.strictEqual(detail?.threads[0].usageSource, "cli");
+    assert.strictEqual(detail?.threads[0].usage?.totalNanoAiu, 1_250_000_000);
+    assert.strictEqual(detail?.stepsByThread["cli:s1"][0].usage?.outputTokens, 20);
+    assert.strictEqual(buildCliSessionDetail(stats, "s1"), null);
+    assert.strictEqual(buildCliSessionDetail(stats, "cli:missing"), null);
+  });
+
+  test("keeps snapshot-only threads inspectable even without prompt steps", () => {
+    const result = parseEventsJsonl(
+      JSON.stringify({
+        type: "session.shutdown",
+        data: {
+          totalNanoAiu: 500_000_000,
+          modelMetrics: { "model-a": { usage: { inputTokens: 100 }, totalNanoAiu: 500_000_000 } },
+        },
+      }),
+      "CLI",
+      "snapshot-thread",
+    );
+    assert.ok(result.thread);
+    const stats = makeStats({ cliThreads: [result.thread] });
+    const detail = buildCliSessionDetail(stats, "cli:snapshot-thread");
+    assert.strictEqual(detail?.threads[0].stepCount, 0);
+    assert.strictEqual(detail?.threads[0].usage?.totalNanoAiu, 500_000_000);
+    assert.deepStrictEqual(detail?.stepsByThread["cli:snapshot-thread"], []);
   });
 });
 

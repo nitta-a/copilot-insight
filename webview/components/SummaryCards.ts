@@ -16,7 +16,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { DashboardPayload } from "../../src/ui/dashboardMessages";
-import { trunc } from "../dashboardUtils";
+import { formatAiCredits, trunc } from "../dashboardUtils";
 
 @customElement("copilot-summary-cards")
 export class SummaryCards extends LitElement {
@@ -114,6 +114,41 @@ export class SummaryCards extends LitElement {
         label="Raw Acceptance Rate"
       ></copilot-stat-card>
       ${this._renderTokenCards(s.tokenStats)}
+      ${this._renderCliUsageCards(s.cliUsageStats)}
+    `;
+  }
+
+  private _renderCliUsageCards(cliUsageStats: DashboardPayload["summary"]["cliUsageStats"]) {
+    if (!cliUsageStats) {
+      return nothing;
+    }
+
+    const topModel = cliUsageStats.topModels[0];
+    const modelDetails = cliUsageStats.topModels
+      .map((model) => `${model.model}: ${formatAiCredits(model.aiCredits)} AI credits`)
+      .join("\n");
+
+    return html`
+      <copilot-stat-card
+        show-download
+        .value=${formatAiCredits(cliUsageStats.totalAiCredits)}
+        label="Copilot CLI AI Credits"
+        .subtext=${"Local sessions only; not account-wide billing"}
+      ></copilot-stat-card>
+      <copilot-stat-card
+        show-download
+        .value=${cliUsageStats.totalTokens.toLocaleString()}
+        label="Copilot CLI Tokens"
+        .subtext=${`${cliUsageStats.inputTokens.toLocaleString()} input / ${cliUsageStats.outputTokens.toLocaleString()} output`}
+        .title=${`${cliUsageStats.cacheReadTokens.toLocaleString()} cache-read / ${cliUsageStats.cacheWriteTokens.toLocaleString()} cache-write tokens`}
+      ></copilot-stat-card>
+      <copilot-stat-card
+        show-download
+        .value=${topModel ? trunc(topModel.model, 18) : "—"}
+        label="Top CLI Model (Credits)"
+        .subtext=${topModel ? `${formatAiCredits(topModel.aiCredits)} AI credits` : "no model usage data"}
+        .title=${modelDetails || "No per-model usage data"}
+      ></copilot-stat-card>
     `;
   }
 

@@ -55,6 +55,8 @@ export interface SessionThreadSummary {
   stepCount: number;
   longestPauseMs: number;
   hasSelectableTitle: boolean;
+  usage?: CliUsageStat;
+  usageSource?: "cli";
 }
 
 export type AgentStepLabel =
@@ -81,6 +83,7 @@ export interface AgentStep {
   durationMs?: number;
   isFallback?: boolean;
   isSignificantPause?: boolean;
+  usage?: CliUsageStat;
 }
 
 export interface ContextFatigueMarker {
@@ -154,6 +157,36 @@ export interface CliDateStat {
   prompts: number;
   /** Total output tokens returned by the AI on this day. */
   outputTokens: number;
+  /** Token and AI credit usage reported by the CLI runtime. */
+  usage?: CliUsageStat;
+}
+
+/** Token and AI credit totals reported by a Copilot CLI session. */
+export interface CliUsageStat {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  /** Total nano-AI units; null when credit accounting is incomplete or unavailable. */
+  totalNanoAiu: number | null;
+}
+
+export interface CliUsageTurn {
+  timestamp: string | null;
+  /** A bounded prompt preview, kept locally for identifying the interaction. */
+  prompt: string;
+  usage: CliUsageStat;
+}
+
+export interface CliThreadUsage {
+  sessionId: string;
+  title: string;
+  startedAt: string | null;
+  lastActivityAt: string | null;
+  prompts: number;
+  usage: CliUsageStat;
+  turns: CliUsageTurn[];
 }
 
 export interface SessionStat {
@@ -387,6 +420,12 @@ export interface CopilotUsageStats {
   // CLI usage (GitHub Copilot CLI / copilot-agent sessions)
   /** Per-date CLI interaction statistics (prompts + output tokens). */
   cliByDate: Map<string, CliDateStat>;
+  /** Aggregated CLI token and AI credit usage, when reported by the runtime. */
+  cliUsage?: CliUsageStat;
+  /** Per-model CLI token and AI credit usage, when reported by the runtime. */
+  cliUsageByModel?: Map<string, CliUsageStat>;
+  /** One entry per local CLI conversation, including per-prompt usage. */
+  cliThreads?: CliThreadUsage[];
   /** Total number of CLI prompt interactions across all sessions. */
   cliTotalInteractions: number;
   /** CLI tool execution stats keyed by tool name. */

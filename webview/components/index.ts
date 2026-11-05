@@ -4,6 +4,7 @@ export { CopilotStatCard } from "./CopilotStatCard";
 export { InsightsList } from "./InsightsList";
 export { RefreshAnalysis } from "./RefreshAnalysis";
 export { SummaryCards } from "./SummaryCards";
+export { DailyUsageChart } from "./DailyUsageChart";
 export { TagCloud } from "./TagCloud";
 export { ThreadDetail } from "./ThreadDetail";
 export { getSelectableThreadsSorted } from "./ThreadDetail";

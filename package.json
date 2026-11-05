@@ -2,7 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {
@@ -13,7 +13,9 @@
     "vscode": "^1.105.0",
     "node": ">=22.22.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
@@ -119,7 +121,11 @@
         "copilot-insight.defaultDisplayDays": {
           "type": "integer",
           "default": 14,
-          "enum": [7, 14, 30],
+          "enum": [
+            7,
+            14,
+            30
+          ],
           "description": "Default number of days to show in the Daily Usage chart."
         },
         "copilot-insight.enableAdvancedAnalysis": {
@@ -154,7 +160,11 @@
     "mcpServers": {
       "copilot-insight": {
         "command": "node",
-        "args": ["${extensionPath}/bin/mcp-server.js", "--storage", "${globalStoragePath}"]
+        "args": [
+          "${extensionPath}/bin/mcp-server.js",
+          "--storage",
+          "${globalStoragePath}"
+        ]
       }
     }
   },
@@ -191,15 +201,15 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/vscode": "1.105.0",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.27.4",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^6.0.2"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "chart.js": "^4.5.1",
     "html2canvas": "^1.4.1",
     "lit": "^3.3.2",
@@ -213,6 +223,14 @@
     "hono": ">=4.12.7",
     "undici": ">=7.23.0",
     "@hono/node-server": ">=1.19.10",
-    "serialize-javascript": ">7.0.4"
+    "serialize-javascript": ">7.0.4",
+    "body-parser": "^2.4.0",
+    "@vscode/test-cli": {
+      "glob": "^14.0.3",
+      "minimatch": "^11.0.4"
+    },
+    "@vscode/vsce": {
+      "minimatch": "^11.0.4"
+    }
   }
 }

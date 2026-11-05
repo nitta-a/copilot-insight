@@ -1,4 +1,5 @@
 import type { CopilotUsageStats, UsageStatCount, SessionStat } from "../types";
+import { toAiCredits } from "../utils";
 
 /** Convert CopilotUsageStats to a CSV string. */
 export function exportAsCsv(stats: CopilotUsageStats): string {
@@ -18,18 +19,64 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   lines.push(`Chat Avg Latency (ms),${stats.chatAvgLatencyMs.toFixed(0)}`);
   lines.push(`Total Errors,${stats.totalErrors}`);
   lines.push(`Log Files Parsed,${stats.logFilesFound}`);
+  if (stats.cliUsage) {
+    const totalTokens = stats.cliUsage.inputTokens + stats.cliUsage.outputTokens;
+    lines.push(`Copilot CLI Input Tokens,${stats.cliUsage.inputTokens}`);
+    lines.push(`Copilot CLI Output Tokens,${stats.cliUsage.outputTokens}`);
+    lines.push(`Copilot CLI Total Tokens,${totalTokens}`);
+    lines.push(`Copilot CLI AI Credits,${toAiCredits(stats.cliUsage.totalNanoAiu)?.toFixed(9) ?? ""}`);
+  }
   lines.push("");
 
   // By Date section
   lines.push("# By Date");
-  lines.push("Date,Shown,Accepted,Rate,Chat");
-  const sortedDates = Array.from(stats.byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  for (const [dateStr, stat] of sortedDates) {
+  lines.push("Date,Shown,Accepted,Rate,Chat,CLI Prompts,CLI Tokens,CLI AI Credits");
+  const sortedDates = Array.from(new Set([...stats.byDate.keys(), ...stats.cliByDate.keys()])).sort();
+  for (const dateStr of sortedDates) {
+    const stat = stats.byDate.get(dateStr) ?? { shown: 0, accepted: 0 };
     const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
     const chatCount = stats.chatByDate.get(dateStr) ?? 0;
-    lines.push(`${dateStr},${stat.shown},${stat.accepted},${rate}%,${chatCount}`);
+    const cliStat = stats.cliByDate.get(dateStr);
+    const cliUsage = cliStat?.usage;
+    const cliTokens = cliUsage ? cliUsage.inputTokens + cliUsage.outputTokens : 0;
+    const cliCredits = cliUsage ? (toAiCredits(cliUsage.totalNanoAiu)?.toFixed(9) ?? "") : "";
+    lines.push(
+      `${dateStr},${stat.shown},${stat.accepted},${rate}%,${chatCount},${cliStat?.prompts ?? 0},${cliTokens},${cliCredits}`,
+    );
   }
   lines.push("");
+
+  if (stats.cliUsageByModel && stats.cliUsageByModel.size > 0) {
+    lines.push("# Copilot CLI Model Usage");
+    lines.push("Model,Input Tokens,Output Tokens,Cache Read Tokens,Cache Write Tokens,Reasoning Tokens,AI Credits");
+    for (const [model, usage] of Array.from(stats.cliUsageByModel.entries()).sort(
+      (a, b) => (b[1].totalNanoAiu ?? -1) - (a[1].totalNanoAiu ?? -1),
+    )) {
+      lines.push(
+        `${csvEscape(model)},${usage.inputTokens},${usage.outputTokens},${usage.cacheReadTokens},${usage.cacheWriteTokens},${usage.reasoningTokens},${toAiCredits(usage.totalNanoAiu)?.toFixed(9) ?? ""}`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (stats.cliThreads?.length) {
+    lines.push("# Copilot CLI Threads");
+    lines.push("Session,Title,Started At,Prompts,Input Tokens,Output Tokens,AI Credits");
+    for (const thread of stats.cliThreads) {
+      lines.push(
+        [
+          csvEscape(spreadsheetText(thread.sessionId)),
+          csvEscape(spreadsheetText(thread.title)),
+          thread.startedAt ?? "",
+          thread.prompts,
+          thread.usage.inputTokens,
+          thread.usage.outputTokens,
+          toAiCredits(thread.usage.totalNanoAiu)?.toFixed(9) ?? "",
+        ].join(","),
+      );
+    }
+    lines.push("");
+  }
 
   // By Model section
   if (stats.byModel.size > 0) {
@@ -138,6 +185,13 @@ export function exportAsJson(stats: CopilotUsageStats): string {
       chatLatencyP95: Number(stats.chatLatencyP95.toFixed(0)),
       totalErrors: stats.totalErrors,
       logFilesFound: stats.logFilesFound,
+      cliUsage: stats.cliUsage
+        ? {
+            ...stats.cliUsage,
+            totalTokens: stats.cliUsage.inputTokens + stats.cliUsage.outputTokens,
+            aiCredits: toAiCredits(stats.cliUsage.totalNanoAiu),
+          }
+        : null,
     },
     byDate: Object.fromEntries(
       Array.from(stats.byDate.entries()).map(([dateStr, stat]) => [
@@ -145,6 +199,9 @@ export function exportAsJson(stats: CopilotUsageStats): string {
         { ...stat, chat: stats.chatByDate.get(dateStr) ?? 0 },
       ]),
     ),
+    cliUsageByDate: Object.fromEntries(stats.cliByDate),
+    cliUsageByModel: stats.cliUsageByModel ? mapToObject(stats.cliUsageByModel) : {},
+    cliThreads: stats.cliThreads ?? [],
     byModel: mapToObject<UsageStatCount>(stats.byModel),
     byChatModel: mapToObject<number>(stats.byChatModel),
     byChatIntent: mapToObject<number>(stats.byChatIntent),
@@ -181,6 +238,11 @@ function mapToObject<T>(map: Map<string, T>): Record<string, T> {
     obj[key] = value;
   }
   return obj;
+}
+
+function spreadsheetText(value: string): string {
+  // Quoting alone does not stop spreadsheet applications from evaluating formulas.
+  return /^[\t\r\n]/.test(value) || /^\s*[=+@-]/.test(value) ? `'${value}` : value;
 }
 
 function csvEscape(value: string): string {

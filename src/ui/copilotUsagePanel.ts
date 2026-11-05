@@ -13,8 +13,13 @@ import type {
 import { todayDateString } from "../utils";
 import type { DbWorkerClient } from "../worker/dbWorkerClient";
 import { getHtmlContent } from "./copilotUsageHtml";
-import type { SessionsData, WebviewToHostMessage } from "./dashboardMessages";
-import { buildDashboardPayload, buildPromptInsightsPayload, buildSessionsPayload } from "./dashboardPayload";
+import type { HostToWebviewMessage, SessionsData, WebviewToHostMessage } from "./dashboardMessages";
+import {
+  buildCliSessionDetail,
+  buildDashboardPayload,
+  buildPromptInsightsPayload,
+  buildSessionsPayload,
+} from "./dashboardPayload";
 import { loadMoreCopilotLogs, readWorkspaceChatSessions } from "../log/copilotLogParser";
 import { getLogChannel, isTimingLogsEnabled } from "../log/logChannel";
 
@@ -161,6 +166,14 @@ export class CopilotUsagePanel {
         break;
       }
       case "requestSessionDetail": {
+        const cliDetail = buildCliSessionDetail(this._stats, msg.payload.sessionId);
+        if (cliDetail) {
+          void this._panel.webview.postMessage({
+            type: "sessionDetailData",
+            payload: cliDetail,
+          } satisfies HostToWebviewMessage);
+          break;
+        }
         const buildInMemoryDetail = (sessionId: string): SessionDetailPayload | null => {
           const session = (this._stats.chatSessions ?? []).find((s) => s.chatSessionId === sessionId);
           if (!session) {

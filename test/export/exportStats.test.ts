@@ -99,7 +99,7 @@ suite("exportStats", () => {
       const csv = exportAsCsv(makeStats());
       const dateLine = csv.split("\n").find((l) => l.startsWith("2026-02-27"));
       assert.ok(dateLine);
-      assert.ok(dateLine.endsWith(",7"), "Should end with chat count 7");
+      assert.strictEqual(dateLine.split(",")[4], "7", "Should include chat count 7");
     });
 
     test("includes model section with rate", () => {
@@ -184,6 +184,63 @@ suite("exportStats", () => {
       assert.ok(csv.includes("# Session Memory Signals"));
       assert.ok(csv.includes("compact,1"));
     });
+
+    test("includes Copilot CLI daily and per-model token and credit usage", () => {
+      const usage = {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 10,
+        reasoningTokens: 5,
+        totalNanoAiu: 1_500_000_000,
+      };
+      const csv = exportAsCsv(
+        makeStats({
+          cliByDate: new Map([["2026-03-01", { prompts: 2, outputTokens: 20, usage }]]),
+          cliUsage: usage,
+          cliUsageByModel: new Map([["gpt-6-luna", usage]]),
+        }),
+      );
+
+      assert.ok(csv.includes("Copilot CLI AI Credits,1.500000000"));
+      assert.ok(csv.includes("2026-03-01,0,0,0.0%,0,2,120,1.500000000"));
+      assert.ok(csv.includes("gpt-6-luna,100,20,80,10,5,1.500000000"));
+    });
+
+    test("exports thread totals without treating unknown credits as zero or evaluating titles", () => {
+      const usage = {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        totalNanoAiu: null,
+      };
+      for (const title of ["=1+2", "+SUM(1,2)", "@SUM(A1)", "-1", "\t1+1", "  =1+1"]) {
+        const stats = makeStats({
+          cliUsage: usage,
+          cliThreads: [
+            {
+              sessionId: "thread-a",
+              title,
+              startedAt: null,
+              lastActivityAt: null,
+              prompts: 1,
+              usage,
+              turns: [],
+            },
+          ],
+        });
+        const csv = exportAsCsv(stats);
+        assert.ok(csv.includes("# Copilot CLI Threads"));
+        assert.ok(csv.includes(`'${title}`));
+        assert.ok(csv.includes(",1,100,20,\n"));
+        const exported = JSON.parse(exportAsJson(stats));
+        assert.strictEqual(exported.cliThreads[0].title, title);
+        assert.strictEqual(exported.cliThreads[0].usage.totalNanoAiu, null);
+        assert.strictEqual(exported.summary.cliUsage.aiCredits, null);
+      }
+    });
   });
 
   suite("exportAsJson", () => {
@@ -201,6 +258,30 @@ suite("exportStats", () => {
       assert.strictEqual(parsed.summary.totalChat, 15);
       assert.strictEqual(parsed.summary.totalErrors, 2);
       assert.strictEqual(parsed.summary.logFilesFound, 5);
+    });
+
+    test("includes CLI usage totals, daily records, and model breakdown", () => {
+      const usage = {
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 10,
+        reasoningTokens: 5,
+        totalNanoAiu: 1_500_000_000,
+      };
+      const parsed = JSON.parse(
+        exportAsJson(
+          makeStats({
+            cliByDate: new Map([["2026-03-01", { prompts: 2, outputTokens: 20, usage }]]),
+            cliUsage: usage,
+            cliUsageByModel: new Map([["gpt-6-luna", usage]]),
+          }),
+        ),
+      );
+
+      assert.strictEqual(parsed.summary.cliUsage.aiCredits, 1.5);
+      assert.strictEqual(parsed.cliUsageByDate["2026-03-01"].usage.totalNanoAiu, 1_500_000_000);
+      assert.strictEqual(parsed.cliUsageByModel["gpt-6-luna"].inputTokens, 100);
     });
 
     test("merges chat count into byDate entries", () => {

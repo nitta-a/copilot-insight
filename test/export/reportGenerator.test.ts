@@ -113,6 +113,59 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("| Chat Requests | 15 |"));
   });
 
+  test("includes Copilot CLI token and AI credit usage", () => {
+    const usage = {
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 10,
+      reasoningTokens: 5,
+      totalNanoAiu: 1_500_000_000,
+    };
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        cliUsage: usage,
+        cliUsageByModel: new Map([["gpt-6-luna", usage]]),
+      }),
+    });
+
+    assert.ok(md.includes("## Copilot CLI Token and AI Credit Usage"));
+    assert.ok(md.includes("| AI Credits | 1.500000 |"));
+    assert.ok(md.includes("| gpt-6-luna | 100 | 20 | 1.500000 |"));
+  });
+
+  test("includes escaped conversation totals and unavailable credit values", () => {
+    const usage = {
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalNanoAiu: null,
+    };
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({
+        cliUsage: usage,
+        cliThreads: [
+          {
+            sessionId: "thread-a",
+            title: "Fix | <example>",
+            startedAt: null,
+            lastActivityAt: null,
+            prompts: 1,
+            usage,
+            turns: [],
+          },
+        ],
+      }),
+    });
+    assert.ok(md.includes("Copilot CLI Thread Totals"));
+    assert.ok(md.includes("| 1 | 120 | Unavailable |"));
+    assert.ok(!md.includes("Fix | <example>"));
+  });
+
   test("includes project name when provided", () => {
     const md = generateMarkdownReport({
       period: "test",

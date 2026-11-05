@@ -5,6 +5,14 @@
 
 import type { AgentStep } from "../src/types";
 
+export function formatAiCredits(credits: number | null): string {
+  return credits === null ? "Unavailable" : credits.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+export function formatUsageDate(timestamp: string): string {
+  return timestamp ? new Date(timestamp).toLocaleString() : "Date unavailable";
+}
+
 /** Escape characters that are unsafe inside HTML text / attribute values. */
 export function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

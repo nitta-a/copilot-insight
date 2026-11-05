@@ -74,6 +74,29 @@ export interface SummaryData {
     /** Top models by total token consumption (descending). */
     topModelsByTokens: Array<{ model: string; promptTokens: number; completionTokens: number }>;
   } | null;
+  /** Copilot CLI usage from local session records; null when unavailable. */
+  cliUsageStats: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    totalAiCredits: number | null;
+    topModels: Array<{ model: string; totalTokens: number; aiCredits: number | null }>;
+    dailyUsage: DailyUsagePoint[];
+    /** Signed difference between cumulative totals and timestamped call records. */
+    unattributedTokens: number;
+    unattributedAiCredits: number | null;
+  } | null;
+}
+
+export interface DailyUsagePoint {
+  /** Date of the model call in UTC, not the session start or checkpoint date. */
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  aiCredits: number | null;
 }
 
 export interface TimelineEntry {

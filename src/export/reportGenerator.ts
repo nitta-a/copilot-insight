@@ -19,6 +19,7 @@ import type { NativeReportInput } from "../log/nativeBridge";
 import { generateMarkdownReportNative } from "../log/nativeBridge";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type { CopilotUsageStats } from "../types";
+import { toAiCredits } from "../utils";
 
 /** Input options for report generation. */
 export interface ReportOptions {
@@ -104,7 +105,7 @@ function buildNativeReportInput(options: ReportOptions): NativeReportInput {
   const typingMins = options.typingMinutesSaved ?? (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
   const agenticMins = options.agenticMinutesSaved ?? (stats.autonomousDurationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
 
-  const allDates = Array.from(stats.byDate.keys()).sort();
+  const allDates = Array.from(new Set([...stats.byDate.keys(), ...stats.cliByDate.keys()])).sort();
 
   return {
     totalShown: stats.totalShown,
@@ -148,6 +149,51 @@ function buildNativeReportInput(options: ReportOptions): NativeReportInput {
  * core sections were produced by the native Rust path or the TS fallback path.
  */
 function appendOptionalSections(lines: string[], options: ReportOptions): void {
+  const { cliUsage, cliUsageByModel } = options.stats;
+  if (cliUsage && (cliUsage.inputTokens > 0 || cliUsage.outputTokens > 0 || (cliUsage.totalNanoAiu ?? 0) > 0)) {
+    lines.push("## Copilot CLI Token and AI Credit Usage");
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Input Tokens | ${cliUsage.inputTokens} |`);
+    lines.push(`| Output Tokens | ${cliUsage.outputTokens} |`);
+    lines.push(`| Cache Read Tokens | ${cliUsage.cacheReadTokens} |`);
+    lines.push(`| Cache Write Tokens | ${cliUsage.cacheWriteTokens} |`);
+    lines.push(`| AI Credits | ${toAiCredits(cliUsage.totalNanoAiu)?.toFixed(6) ?? "Unavailable"} |`);
+    lines.push("");
+
+    if (cliUsageByModel && cliUsageByModel.size > 0) {
+      lines.push("| Model | Input Tokens | Output Tokens | AI Credits |");
+      lines.push("|-------|--------------|---------------|------------|");
+      for (const [model, usage] of Array.from(cliUsageByModel.entries()).sort(
+        (a, b) => (b[1].totalNanoAiu ?? -1) - (a[1].totalNanoAiu ?? -1),
+      )) {
+        lines.push(
+          `| ${model} | ${usage.inputTokens} | ${usage.outputTokens} | ${toAiCredits(usage.totalNanoAiu)?.toFixed(6) ?? "Unavailable"} |`,
+        );
+      }
+      lines.push("");
+    }
+  }
+
+  if (options.stats.cliThreads?.length) {
+    lines.push(
+      "## Copilot CLI Thread Totals",
+      "",
+      "| Thread | Prompts | Tokens | AI Credits |",
+      "|--------|---------|--------|------------|",
+    );
+    for (const thread of options.stats.cliThreads) {
+      const title = thread.title
+        .replace(/[<>&|`*_[\]\\]/g, (char) => `&#${char.charCodeAt(0)};`)
+        .replace(/[\r\n]/g, " ");
+      lines.push(
+        `| ${title} | ${thread.prompts} | ${thread.usage.inputTokens + thread.usage.outputTokens} | ${toAiCredits(thread.usage.totalNanoAiu)?.toFixed(6) ?? "Unavailable"} |`,
+      );
+    }
+    lines.push("");
+  }
+
   // --- 5. Acceptance Analysis ---
   if (options.trueAcceptance) {
     const ta = options.trueAcceptance;
@@ -255,7 +301,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
 
   // --- Header ---
   // Derive date range from stats.byDate and append to title for easy sharing.
-  const allDates = Array.from(stats.byDate.keys()).sort();
+  const allDates = Array.from(new Set([...stats.byDate.keys(), ...stats.cliByDate.keys()])).sort();
   const minDate = allDates[0] ?? "";
   const maxDate = allDates[allDates.length - 1] ?? "";
   const dateRangeSuffix =

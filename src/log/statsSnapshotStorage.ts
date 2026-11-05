@@ -6,6 +6,8 @@ import type {
   ChatSessionState,
   ChatSessionTitleRecord,
   CliDateStat,
+  CliThreadUsage,
+  CliUsageStat,
   CopilotUsageStats,
   DateStat,
   MemoryManagementEvent,
@@ -69,7 +71,11 @@ interface SerializedCopilotUsageStats {
   agentDebugEvents: number;
   agentDebugByType: Array<[string, number]>;
   cliByDate: Array<[string, CliDateStat]>;
+  cliUsageDateBasis?: "model-call-utc";
   cliTotalInteractions: number;
+  cliUsage?: CliUsageStat;
+  cliUsageByModel?: Array<[string, CliUsageStat]>;
+  cliThreads?: CliThreadUsage[];
   cliToolExecutions?: Array<[string, { total: number; success: number; fail: number }]>;
   cliReasoningTokens?: number;
   cliAgentTypes?: Array<[string, number]>;
@@ -142,7 +148,11 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: mapEntries(stats.agentDebugByType),
     cliByDate: mapEntries(stats.cliByDate),
+    cliUsageDateBasis: "model-call-utc",
     cliTotalInteractions: stats.cliTotalInteractions,
+    cliUsage: stats.cliUsage,
+    cliUsageByModel: mapEntries(stats.cliUsageByModel ?? new Map()),
+    cliThreads: stats.cliThreads,
     cliToolExecutions: mapEntries(stats.cliToolExecutions ?? new Map()),
     cliReasoningTokens: stats.cliReasoningTokens ?? 0,
     cliAgentTypes: mapEntries(stats.cliAgentTypes ?? new Map()),
@@ -207,8 +217,15 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     memoryManagementByType: toMap(stats.memoryManagementByType),
     agentDebugEvents: stats.agentDebugEvents,
     agentDebugByType: toMap(stats.agentDebugByType),
-    cliByDate: toMap(stats.cliByDate),
+    cliByDate: toMap(
+      stats.cliUsageDateBasis === "model-call-utc"
+        ? stats.cliByDate
+        : stats.cliByDate?.map(([date, stat]) => [date, { prompts: stat.prompts, outputTokens: stat.outputTokens }]),
+    ),
     cliTotalInteractions: stats.cliTotalInteractions ?? 0,
+    cliUsage: stats.cliUsage,
+    cliUsageByModel: toMap(stats.cliUsageByModel),
+    cliThreads: stats.cliThreads,
     cliToolExecutions: toMap(stats.cliToolExecutions),
     cliReasoningTokens: stats.cliReasoningTokens ?? 0,
     cliAgentTypes: toMap(stats.cliAgentTypes),
