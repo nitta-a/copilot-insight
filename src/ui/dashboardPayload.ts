@@ -13,12 +13,13 @@ import type {
   AgenticDepthStat,
   CopilotUsageStats,
   RefreshAnalysis,
+  SessionDetailPayload,
   SessionStat,
   SessionSummary,
   UsageStatCount,
 } from "../types";
 import { PROMPT_LENGTH_BUCKETS } from "../types";
-import { formatMinutesSaved } from "../utils";
+import { formatMinutesSaved, toAiCredits } from "../utils";
 import type {
   AgentIntelligenceOverview,
   AgenticFeatureSignals,
@@ -90,6 +91,67 @@ function buildTokenStats(stats: CopilotUsageStats): SummaryData["tokenStats"] {
     totalTokens: total,
     avgPromptTokensPerRequest,
     topModelsByTokens,
+  };
+}
+
+function buildCliUsageStats(stats: CopilotUsageStats): SummaryData["cliUsageStats"] {
+  const usage = stats.cliUsage;
+  if (!usage) {
+    return null;
+  }
+
+  const totalTokens = usage.inputTokens + usage.outputTokens;
+  if (
+    totalTokens === 0 &&
+    usage.totalNanoAiu === 0 &&
+    !stats.cliThreads?.length &&
+    !Array.from(stats.cliByDate.values()).some((day) => day.usage)
+  ) {
+    return null;
+  }
+
+  const topModels = Array.from(stats.cliUsageByModel ?? [])
+    .map(([model, modelUsage]) => ({
+      model,
+      totalTokens: modelUsage.inputTokens + modelUsage.outputTokens,
+      aiCredits: toAiCredits(modelUsage.totalNanoAiu),
+    }))
+    .sort((a, b) => (b.aiCredits ?? -1) - (a.aiCredits ?? -1) || b.totalTokens - a.totalTokens)
+    .slice(0, 5);
+  const dailyUsage = Array.from(stats.cliByDate.entries())
+    .flatMap(([date, stat]) =>
+      stat.usage
+        ? [
+            {
+              date,
+              inputTokens: stat.usage.inputTokens,
+              outputTokens: stat.usage.outputTokens,
+              totalTokens: stat.usage.inputTokens + stat.usage.outputTokens,
+              aiCredits: toAiCredits(stat.usage.totalNanoAiu),
+            },
+          ]
+        : [],
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const dailyNanoAiu = Array.from(stats.cliByDate.values()).reduce<number | null>((sum, day) => {
+    if (!day.usage) {
+      return sum;
+    }
+    return sum === null || day.usage.totalNanoAiu === null ? null : sum + day.usage.totalNanoAiu;
+  }, 0);
+
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+    totalTokens,
+    totalAiCredits: toAiCredits(usage.totalNanoAiu),
+    topModels,
+    dailyUsage,
+    unattributedTokens: totalTokens - dailyUsage.reduce((sum, day) => sum + day.totalTokens, 0),
+    unattributedAiCredits:
+      usage.totalNanoAiu === null || dailyNanoAiu === null ? null : (usage.totalNanoAiu - dailyNanoAiu) / 1e9,
   };
 }
 
@@ -250,6 +312,7 @@ export function buildDashboardPayload(
     estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
     tokenStats: buildTokenStats(stats),
+    cliUsageStats: buildCliUsageStats(stats),
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────
@@ -634,5 +697,61 @@ export function buildSessionsPayload(stats: CopilotUsageStats, sessionSummaries:
         }))
       : buildFallbackSessionSummaries(stats).filter((session) => Boolean(session.title?.trim()));
 
-  return { sessionSummaries: effectiveSessionSummaries };
+  const cliSummaries: SessionSummary[] = (stats.cliThreads ?? []).map((thread) => ({
+    sessionId: `cli:${thread.sessionId}`,
+    title: thread.title,
+    date: (thread.startedAt ?? thread.lastActivityAt ?? "").slice(0, 10),
+    totalActions: thread.prompts,
+    trueRate: 0,
+    autonomousDuration: 0,
+    efficiencyScore: 0,
+  }));
+  return {
+    sessionSummaries: [...effectiveSessionSummaries, ...cliSummaries].sort((a, b) => b.date.localeCompare(a.date)),
+  };
+}
+
+export function buildCliSessionDetail(stats: CopilotUsageStats, sessionId: string): SessionDetailPayload | null {
+  const thread = stats.cliThreads?.find((entry) => `cli:${entry.sessionId}` === sessionId);
+  if (!thread) {
+    return null;
+  }
+  return {
+    sessionId,
+    date: (thread.startedAt ?? "").slice(0, 10),
+    totalActions: thread.prompts,
+    trueRate: 0,
+    autonomousDuration: 0,
+    efficiencyScore: 0,
+    timeline: [],
+    episodes: [],
+    fatigueMarker: null,
+    threads: [
+      {
+        threadId: sessionId,
+        title: thread.title,
+        startedAt: thread.startedAt ?? "",
+        estimatedMinutesSaved: 0,
+        autonomousDurationMs: 0,
+        acceptedChars: 0,
+        hasAutonomousRun: false,
+        stepCount: thread.turns.length,
+        longestPauseMs: 0,
+        hasSelectableTitle: true,
+        usage: thread.usage,
+        usageSource: "cli",
+      },
+    ],
+    stepsByThread: {
+      [sessionId]: thread.turns.map((turn) => ({
+        timestamp: turn.timestamp ?? "",
+        actor: "human",
+        phase: "human",
+        label: "Prompt",
+        detail: turn.prompt || "(No prompt preview)",
+        rawIntent: "Copilot CLI",
+        usage: turn.usage,
+      })),
+    },
+  };
 }

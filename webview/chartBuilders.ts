@@ -23,7 +23,12 @@ import {
   Tooltip,
   type TooltipItem,
 } from "chart.js";
-import type { CountBreakdownEntry, PromptInsightsData, TimelineEntry } from "../src/ui/dashboardMessages";
+import type {
+  CountBreakdownEntry,
+  DailyUsagePoint,
+  PromptInsightsData,
+  TimelineEntry,
+} from "../src/ui/dashboardMessages";
 import { fmtDate } from "./dashboardUtils";
 
 // Register only the Chart.js components we actually use (tree-shaking).
@@ -97,6 +102,55 @@ export function getColors(): ChartColors {
     foreground: getCssVar("--vscode-foreground") || "#cccccc",
     grid: "rgba(128,128,128,0.15)",
   };
+}
+
+export function createDailyUsageChart(
+  canvas: HTMLCanvasElement,
+  days: DailyUsagePoint[],
+  metric: "credits" | "tokens",
+  colors: ChartColors,
+): Chart {
+  return new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: days.map((day) => day.date),
+      datasets:
+        metric === "credits"
+          ? [{ label: "AI credits", data: days.map((day) => day.aiCredits), backgroundColor: colors.purple }]
+          : [
+              {
+                label: "Input (includes cache)",
+                data: days.map((day) => day.inputTokens),
+                backgroundColor: colors.blue,
+              },
+              { label: "Output", data: days.map((day) => day.outputTokens), backgroundColor: colors.green },
+            ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { stacked: true, ticks: { color: colors.foreground }, grid: { display: false } },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          title: { display: true, text: metric === "credits" ? "AI credits" : "Tokens", color: colors.foreground },
+          ticks: { color: colors.foreground },
+          grid: { color: colors.grid },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: colors.foreground } },
+        tooltip: {
+          callbacks: {
+            label: (item) =>
+              `${item.dataset.label}: ${Number(item.raw).toLocaleString(undefined, { maximumFractionDigits: 6 })}`,
+          },
+        },
+      },
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------

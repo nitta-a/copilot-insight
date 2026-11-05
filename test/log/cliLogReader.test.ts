@@ -39,6 +39,91 @@ suite("parseEventsJsonl", () => {
     assert.strictEqual(result.byDate.get("2026-03-14")?.outputTokens, 800);
   });
 
+  test("reads token and AI credit totals from the latest session usage snapshot", () => {
+    const usage = {
+      model: "claude-sonnet-5.5",
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 10,
+      reasoningTokens: 5,
+      cost: 999,
+      copilotUsage: { totalNanoAiu: 1_000_000_000 },
+      accounting: { sourceSessionId: "session-1", usageId: "usage-1" },
+    };
+    const content = [
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
+      JSON.stringify({
+        type: "session.usage_record",
+        timestamp: "2026-03-14T04:01:00.000Z",
+        data: { usage },
+      }),
+      JSON.stringify({
+        type: "session.usage_record",
+        timestamp: "2026-03-14T04:01:00.000Z",
+        data: { usage },
+      }),
+      JSON.stringify({
+        type: "session.shutdown",
+        data: {
+          accountingSnapshot: {
+            totalNanoAiu: 1_500_000_000,
+            modelMetrics: {
+              "claude-sonnet-5.5": {
+                totalNanoAiu: 1_500_000_000,
+                usage: {
+                  inputTokens: 100,
+                  outputTokens: 20,
+                  cacheReadTokens: 80,
+                  cacheWriteTokens: 10,
+                  reasoningTokens: 5,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = parseEventsJsonl(content);
+    const expected = {
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 80,
+      cacheWriteTokens: 10,
+      reasoningTokens: 5,
+      totalNanoAiu: 1_500_000_000,
+    };
+    assert.deepStrictEqual(result.usage, expected);
+    assert.deepStrictEqual(result.usageByModel.get("claude-sonnet-5.5"), expected);
+    assert.deepStrictEqual(result.byDate.get("2026-03-14")?.usage, { ...expected, totalNanoAiu: 1_000_000_000 });
+  });
+
+  test("uses per-call usage records when no accounting snapshot is available", () => {
+    const content = JSON.stringify({
+      type: "session.usage_record",
+      timestamp: "2026-03-14T04:01:00.000Z",
+      data: {
+        usage: {
+          model: "gpt-6-luna",
+          inputTokens: 50,
+          outputTokens: 10,
+          cacheReadTokens: 30,
+          cacheWriteTokens: 5,
+          reasoningTokens: 2,
+          cost: 100,
+          copilotUsage: { totalNanoAiu: 250_000_000 },
+        },
+      },
+    });
+
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.usage.inputTokens, 50);
+    assert.strictEqual(result.usage.outputTokens, 10);
+    assert.strictEqual(result.usage.totalNanoAiu, 250_000_000);
+    assert.strictEqual(result.byDate.get("2026-03-14")?.usage?.totalNanoAiu, 250_000_000);
+  });
+
   test("uses session.start date to bucket events", () => {
     const content = [
       '{"type":"session.start","data":{"startTime":"2026-01-20T12:00:00.000Z"}}',
@@ -251,6 +336,188 @@ suite("parseEventsJsonl", () => {
 // readCliStats — integration tests (uses a temp directory)
 // ---------------------------------------------------------------------------
 
+suite("CLI daily and thread consumption", () => {
+  const start = { type: "session.start", data: { sessionId: "thread-a", startTime: "2026-11-01T23:00:00Z" } };
+  const tokens = { inputTokens: 100, outputTokens: 20, cacheReadTokens: 60, cacheWriteTokens: 30, reasoningTokens: 5 };
+  function call(sequence: number, timestamp: string | null, overrides: Record<string, unknown> = {}) {
+    return {
+      type: "session.usage_record",
+      timestamp,
+      data: {
+        usage: {
+          ...tokens,
+          model: "model-a",
+          cost: 99,
+          copilotUsage: { totalNanoAiu: 1_000_000_000 },
+          accounting: { sourceSessionId: "thread-a", sequence },
+          ...overrides,
+        },
+      },
+    };
+  }
+  function snapshot(totalNanoAiu: number) {
+    return {
+      type: "session.usage_checkpoint",
+      timestamp: "2026-11-05T20:00:00Z",
+      data: {
+        accountingSnapshot: {
+          totalNanoAiu,
+          modelMetrics: { "model-a": { usage: tokens, totalNanoAiu } },
+        },
+      },
+    };
+  }
+  const jsonl = (...events: object[]) => events.map((event) => JSON.stringify(event)).join("\n");
+
+  test("keeps each model call on its actual UTC day across midnight and shutdown", () => {
+    const result = parseEventsJsonl(
+      jsonl(start, call(1, "2026-11-01T23:59:00Z"), call(2, "2026-11-02T00:01:00Z"), {
+        type: "session.shutdown",
+        timestamp: "2026-11-05T20:00:00Z",
+        data: { accountingSnapshot: { totalNanoAiu: 2_500_000_000 } },
+      }),
+    );
+    assert.deepStrictEqual([...result.byDate.keys()], ["2026-11-01", "2026-11-02"]);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage?.totalNanoAiu, 1_000_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-02")?.usage?.inputTokens, 100);
+    assert.strictEqual(result.usage.totalNanoAiu, 2_500_000_000);
+    assert.strictEqual(result.usage.inputTokens, 200);
+  });
+
+  test("normalizes offset timestamps to UTC, without counting cached input twice", () => {
+    const result = parseEventsJsonl(jsonl(start, call(1, "2026-11-02T08:00:00+09:00")));
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage?.inputTokens, 100);
+    assert.strictEqual(result.usage.inputTokens + result.usage.outputTokens, 120);
+  });
+
+  test("adds calls after a checkpoint without replacing newer usage with old totals", () => {
+    const result = parseEventsJsonl(
+      jsonl(start, call(1, "2026-11-01T23:01:00Z"), snapshot(1_500_000_000), call(2, "2026-11-06T01:00:00Z")),
+    );
+    assert.strictEqual(result.usage.totalNanoAiu, 2_500_000_000);
+    assert.strictEqual(result.usage.inputTokens, 200);
+    assert.deepStrictEqual(result.usageByModel.get("model-a"), result.usage);
+    assert.strictEqual(result.byDate.get("2026-11-06")?.usage?.totalNanoAiu, 1_000_000_000);
+  });
+
+  test("deduplicates repeated usage sequences and repeated checkpoints", () => {
+    const record = call(1, "2026-11-01T23:01:00Z");
+    const result = parseEventsJsonl(jsonl(start, record, record, snapshot(1_500_000_000), snapshot(1_500_000_000)));
+    assert.strictEqual(result.usage.inputTokens, 100);
+    assert.strictEqual(result.usage.totalNanoAiu, 1_500_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage?.inputTokens, 100);
+  });
+
+  test("does not re-add a late record already covered by a snapshot watermark", () => {
+    const checkpoint = snapshot(1_500_000_000);
+    const result = parseEventsJsonl(
+      jsonl(
+        start,
+        {
+          ...checkpoint,
+          data: { ...checkpoint.data, usageAccountingWatermarks: { "thread-a": 1 } },
+        },
+        call(1, "2026-11-01T23:01:00Z"),
+        call(2, "2026-11-06T00:00:00Z"),
+      ),
+    );
+    assert.strictEqual(result.usage.inputTokens, 200);
+    assert.strictEqual(result.usage.totalNanoAiu, 2_500_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage?.inputTokens, 100);
+  });
+
+  test("keeps snapshot-only and undated usage in thread totals, not an invented day", () => {
+    const result = parseEventsJsonl(jsonl(start, snapshot(1_500_000_000), call(2, null)));
+    assert.strictEqual(result.byDate.size, 0);
+    assert.strictEqual(result.thread?.sessionId, "thread-a");
+    assert.strictEqual(result.thread?.usage.totalNanoAiu, 2_500_000_000);
+  });
+
+  test("retains separate per-prompt totals and a bounded thread title", () => {
+    const prompt = "Fix ".repeat(70);
+    const result = parseEventsJsonl(
+      jsonl(
+        start,
+        { type: "user.message", timestamp: "2026-11-01T23:01:00Z", data: { content: prompt } },
+        call(1, "2026-11-01T23:02:00Z"),
+        call(2, "2026-11-01T23:03:00Z"),
+        { type: "user.message", timestamp: "2026-11-02T00:01:00Z", data: { content: "Second prompt" } },
+        call(3, "2026-11-02T00:02:00Z"),
+        { type: "user.message", data: { content: "Unanswered prompt" } },
+      ),
+    );
+    assert.strictEqual(result.thread?.prompts, 3);
+    assert.strictEqual(result.thread?.title.length, 160);
+    assert.strictEqual(result.thread?.turns[0].usage.totalNanoAiu, 2_000_000_000);
+    assert.strictEqual(result.thread?.turns[1].usage.totalNanoAiu, 1_000_000_000);
+    assert.strictEqual(result.thread?.turns[2].usage.totalNanoAiu, null);
+    assert.strictEqual(result.thread?.usage.totalNanoAiu, 3_000_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-02")?.prompts, 1);
+  });
+
+  test("preserves real zero credits and treats missing or invalid credits as unavailable", () => {
+    for (const amount of [undefined, -1, "3", Number.MAX_SAFE_INTEGER + 1]) {
+      const result = parseEventsJsonl(
+        jsonl(start, call(1, "2026-11-01T23:01:00Z", { copilotUsage: { totalNanoAiu: amount } })),
+      );
+      assert.strictEqual(result.usage.totalNanoAiu, null);
+    }
+    const zero = parseEventsJsonl(jsonl(start, call(1, "2026-11-01T23:01:00Z", { copilotUsage: { totalNanoAiu: 0 } })));
+    assert.strictEqual(zero.usage.totalNanoAiu, 0);
+    const corrected = parseEventsJsonl(jsonl(start, call(1, "2026-11-01T23:01:00Z"), snapshot(0)));
+    assert.strictEqual(corrected.usage.totalNanoAiu, 0);
+  });
+
+  test("keeps incomplete credit accounting unavailable even when a number is reported", () => {
+    const result = parseEventsJsonl(jsonl(start, call(1, "2026-11-01T23:01:00Z", { aiCreditsStatus: "partial" })));
+    assert.strictEqual(result.usage.totalNanoAiu, null);
+    assert.strictEqual(result.usage.outputTokens, 20);
+  });
+
+  test("does not double count assistant.message tokens alongside usage records", () => {
+    const result = parseEventsJsonl(
+      jsonl(start, { type: "assistant.message", data: { outputTokens: 20 } }, call(1, "2026-11-01T23:01:00Z")),
+    );
+    assert.strictEqual(result.usage.outputTokens, 20);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.outputTokens, 20);
+  });
+
+  test("does not invent credits for token-only snapshot models", () => {
+    const result = parseEventsJsonl(
+      jsonl(start, {
+        type: "session.shutdown",
+        data: { modelMetrics: { "model-a": { usage: tokens } } },
+      }),
+    );
+    assert.strictEqual(result.usage.totalNanoAiu, null);
+    assert.strictEqual(result.usageByModel.get("model-a")?.totalNanoAiu, null);
+    assert.strictEqual(result.usage.inputTokens, 100);
+  });
+
+  test("preserves legacy output tokens when a snapshot only reports credits", () => {
+    const result = parseEventsJsonl(
+      jsonl(
+        start,
+        { type: "assistant.message", data: { outputTokens: 25 } },
+        { type: "session.shutdown", data: { totalNanoAiu: 1_000_000_000, modelMetrics: {} } },
+      ),
+    );
+    assert.strictEqual(result.usage.outputTokens, 25);
+    assert.strictEqual(result.usage.totalNanoAiu, 1_000_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage, undefined);
+  });
+
+  test("handles valid JSON primitives and uses the log-directory identity when start is missing", () => {
+    const result = parseEventsJsonl(
+      `null\n1\n[]\n${jsonl(call(1, "2026-11-01T23:01:00Z"))}`,
+      "Copilot CLI",
+      "directory-id",
+    );
+    assert.strictEqual(result.thread?.sessionId, "directory-id");
+    assert.strictEqual(result.thread?.usage.inputTokens, 100);
+  });
+});
+
 suite("readCliStats", () => {
   let tmpDir: string;
 
@@ -290,6 +557,73 @@ suite("readCliStats", () => {
     assert.strictEqual(result.byDate.get("2026-03-14")?.prompts, 1);
     assert.strictEqual(result.byDate.get("2026-03-14")?.outputTokens, 400);
     assert.strictEqual(result.interactionsByModel.get("claude-opus-4.6"), 1);
+  });
+
+  test("invalidates cached usage when an existing session log changes", async () => {
+    const sessionDir = path.join(tmpDir, "session-cache");
+    const eventsPath = path.join(sessionDir, "events.jsonl");
+    await fs.mkdir(sessionDir, { recursive: true });
+    await fs.writeFile(
+      eventsPath,
+      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}\n{"type":"user.message","data":{}}',
+      "utf8",
+    );
+
+    const initial = await readCliStats(tmpDir);
+    assert.strictEqual(initial.totalInteractions, 1);
+
+    await fs.appendFile(eventsPath, '\n{"type":"user.message","data":{}}', "utf8");
+    const refreshed = await readCliStats(tmpDir);
+    assert.strictEqual(refreshed.totalInteractions, 2);
+  });
+
+  test("retains different threads and their usage when their titles and dates match", async () => {
+    for (const sessionId of ["one", "two"]) {
+      const dir = path.join(tmpDir, sessionId);
+      await fs.mkdir(dir);
+      await fs.writeFile(
+        path.join(dir, "events.jsonl"),
+        [
+          JSON.stringify({ type: "session.start", data: { sessionId, startTime: "2026-11-01T00:00:00Z" } }),
+          JSON.stringify({ type: "user.message", data: { content: "Same title" } }),
+          JSON.stringify({
+            type: "session.usage_record",
+            timestamp: "2026-11-02T00:00:00Z",
+            data: {
+              usage: {
+                model: "model-a",
+                inputTokens: 100,
+                outputTokens: 20,
+                copilotUsage: { totalNanoAiu: 1_000_000_000 },
+              },
+            },
+          }),
+        ].join("\n"),
+      );
+    }
+    const result = await readCliStats(tmpDir);
+    assert.deepStrictEqual(result.threads.map((thread) => thread.sessionId).sort(), ["one", "two"]);
+    assert.strictEqual(result.usage.totalNanoAiu, 2_000_000_000);
+    assert.strictEqual(result.byDate.get("2026-11-02")?.usage?.totalNanoAiu, 2_000_000_000);
+  });
+
+  test("retains daily usage when merging a legacy session on the same date", async () => {
+    for (const sessionId of ["a-detailed", "z-legacy"]) {
+      const dir = path.join(tmpDir, sessionId);
+      await fs.mkdir(dir);
+      const event =
+        sessionId === "a-detailed"
+          ? {
+              type: "session.usage_record",
+              timestamp: "2026-11-01T00:00:00Z",
+              data: { usage: { inputTokens: 100, outputTokens: 20, copilotUsage: { totalNanoAiu: 100 } } },
+            }
+          : { type: "user.message", timestamp: "2026-11-01T00:00:00Z", data: { content: "Hello" } };
+      await fs.writeFile(path.join(dir, "events.jsonl"), JSON.stringify(event));
+    }
+    const result = await readCliStats(tmpDir);
+    assert.strictEqual(result.byDate.get("2026-11-01")?.usage?.inputTokens, 100);
+    assert.strictEqual(result.usage.totalNanoAiu, null);
   });
 
   test("merges stats across multiple session directories on the same date", async () => {

@@ -9,7 +9,7 @@ import {
   readAllChatSessionData,
   resolveWorkspaceStorageRoot,
 } from "./chatSessionTitleReader";
-import { readCliStats } from "./cliLogReader";
+import { addUsage, readCliStats } from "./cliLogReader";
 import { getLogChannel, isTimingLogsEnabled } from "./logChannel";
 import {
   findCopilotDirs,
@@ -408,7 +408,17 @@ export async function parseCopilotLogs(
       ctx.cliByDate.set(date, {
         prompts: existing.prompts + stat.prompts,
         outputTokens: existing.outputTokens + stat.outputTokens,
+        ...(existing.usage || stat.usage
+          ? { usage: stat.usage ? addUsage(existing.usage, stat.usage) : existing.usage }
+          : {}),
       });
+    }
+    ctx.cliUsage = cliResult.usage;
+    ctx.cliThreads = cliResult.threads;
+    ctx.cliUsageByModel ??= new Map();
+    for (const [model, usage] of cliResult.usageByModel) {
+      const existing = ctx.cliUsageByModel.get(model);
+      ctx.cliUsageByModel.set(model, addUsage(existing, usage));
     }
     ctx.cliTotalInteractions = cliResult.totalInteractions;
     for (const [toolName, counts] of cliResult.toolExecutions) {

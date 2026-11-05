@@ -17,24 +17,52 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CliDateStat } from "../types";
+import type { CliDateStat, CliThreadUsage, CliUsageStat, CliUsageTurn } from "../types";
 import { getPromptLengthBucket } from "../types";
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-/** In-process cache for CLI stats: invalidated when the session-state dir mtime changes. */
+/** In-process cache for CLI stats: invalidated when any session event file changes. */
 interface CliStatsCache {
   stats: CliStats;
   rootDir: string;
-  dirMtimeMs: number;
+  signature: string;
+  defaultModel: string;
 }
 let _cliStatsCache: CliStatsCache | null = null;
+
+async function getCacheSignature(rootDir: string): Promise<string> {
+  const entries = await fs.readdir(rootDir, { withFileTypes: true });
+  const signatures = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const eventsPath = path.join(rootDir, entry.name, "events.jsonl");
+        try {
+          const stat = await fs.stat(eventsPath);
+          return `${entry.name}:${stat.size}:${stat.mtimeMs}`;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") {
+            return `${entry.name}:missing`;
+          }
+          return `${entry.name}:${code ?? "error"}`;
+        }
+      }),
+  );
+  return signatures.sort().join("|");
+}
 
 export interface CliStats {
   /** Per-date CLI interaction statistics (prompts + output tokens). */
   byDate: Map<string, CliDateStat>;
+  /** Aggregated CLI token and AI credit usage. */
+  usage: CliUsageStat;
+  /** Per-model CLI token and AI credit usage. */
+  usageByModel: Map<string, CliUsageStat>;
+  threads: CliThreadUsage[];
   /** Total number of CLI prompt interactions across all scanned sessions. */
   totalInteractions: number;
   /** Number of assistant-turn interactions attributed to each model name. */
@@ -70,10 +98,15 @@ export interface CliStats {
 export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot CLI"): Promise<CliStats> {
   const rootDir = cliLogDir?.trim() ? cliLogDir.trim() : path.join(os.homedir(), ".copilot", "session-state");
 
-  // Check mtime-based in-memory cache: skip full scan when directory hasn't changed.
+  let cacheSignature: string | undefined;
   try {
-    const dirStat = await fs.stat(rootDir);
-    if (_cliStatsCache && _cliStatsCache.rootDir === rootDir && _cliStatsCache.dirMtimeMs === dirStat.mtimeMs) {
+    cacheSignature = await getCacheSignature(rootDir);
+    if (
+      _cliStatsCache &&
+      _cliStatsCache.rootDir === rootDir &&
+      _cliStatsCache.signature === cacheSignature &&
+      _cliStatsCache.defaultModel === defaultModel
+    ) {
       return _cliStatsCache.stats;
     }
   } catch {
@@ -81,6 +114,9 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   }
 
   const byDate = new Map<string, CliDateStat>();
+  const usage = emptyUsage();
+  const usageByModel = new Map<string, CliUsageStat>();
+  const threads: CliThreadUsage[] = [];
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
@@ -99,6 +135,9 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     // Directory does not exist — CLI not installed or never used.
     return {
       byDate,
+      usage,
+      usageByModel,
+      threads,
       totalInteractions,
       interactionsByModel,
       promptEffectiveness,
@@ -115,7 +154,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     const eventsPath = path.join(sessionDir, "events.jsonl");
     try {
       const raw = await fs.readFile(eventsPath, "utf8");
-      const result = parseEventsJsonl(raw, defaultModel);
+      const result = parseEventsJsonl(raw, defaultModel, path.basename(sessionDir));
 
       // Merge per-date stats.
       for (const [dateKey, stat] of result.byDate) {
@@ -123,7 +162,23 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
         byDate.set(dateKey, {
           prompts: existing.prompts + stat.prompts,
           outputTokens: existing.outputTokens + stat.outputTokens,
+          ...(existing.usage || stat.usage
+            ? { usage: stat.usage ? addUsage(existing.usage, stat.usage) : existing.usage }
+            : {}),
         });
+      }
+      addUsageInPlace(usage, result.usage);
+      for (const [model, modelUsage] of result.usageByModel) {
+        usageByModel.set(model, addUsage(usageByModel.get(model), modelUsage));
+      }
+      if (
+        result.thread &&
+        (result.totalInteractions > 0 ||
+          result.usage.inputTokens > 0 ||
+          result.usage.outputTokens > 0 ||
+          (result.usage.totalNanoAiu ?? 0) > 0)
+      ) {
+        threads.push(result.thread);
       }
       totalInteractions += result.totalInteractions;
       // Merge per-model counts.
@@ -168,6 +223,9 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
 
   const result: CliStats = {
     byDate,
+    usage,
+    usageByModel,
+    threads,
     totalInteractions,
     interactionsByModel,
     promptEffectiveness,
@@ -181,8 +239,11 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
 
   // Update in-memory cache.
   try {
-    const dirStat = await fs.stat(rootDir);
-    _cliStatsCache = { stats: result, rootDir, dirMtimeMs: dirStat.mtimeMs };
+    const endSignature = await getCacheSignature(rootDir);
+    // A session can grow while being read; never cache that partial scan as up to date.
+    if (cacheSignature === endSignature) {
+      _cliStatsCache = { stats: result, rootDir, signature: endSignature, defaultModel };
+    }
   } catch {
     // Non-fatal — cache will simply be absent.
   }
@@ -196,6 +257,9 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
 
 interface ParseResult {
   byDate: Map<string, CliDateStat>;
+  usage: CliUsageStat;
+  usageByModel: Map<string, CliUsageStat>;
+  thread?: CliThreadUsage;
   totalInteractions: number;
   interactionsByModel: Map<string, number>;
   promptEffectiveness: Record<string, { shown: number; accepted: number }>;
@@ -207,14 +271,91 @@ interface ParseResult {
   modelChanges: number;
 }
 
+function emptyUsage(): CliUsageStat {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    totalNanoAiu: 0,
+  };
+}
+
+export function addUsage(left: CliUsageStat | undefined, right: CliUsageStat): CliUsageStat {
+  const result = left ? { ...left } : emptyUsage();
+  addUsageInPlace(result, right);
+  return result;
+}
+
+function addUsageInPlace(target: CliUsageStat, value: CliUsageStat): void {
+  target.inputTokens += value.inputTokens;
+  target.outputTokens += value.outputTokens;
+  target.cacheReadTokens += value.cacheReadTokens;
+  target.cacheWriteTokens += value.cacheWriteTokens;
+  target.reasoningTokens += value.reasoningTokens;
+  target.totalNanoAiu =
+    target.totalNanoAiu === null || value.totalNanoAiu === null ? null : target.totalNanoAiu + value.totalNanoAiu;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function nonNegativeNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function creditAmount(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function usageFromMetrics(value: unknown, fallback = emptyUsage()): CliUsageStat {
+  const metrics = asRecord(value);
+  return {
+    inputTokens: metrics?.inputTokens === undefined ? fallback.inputTokens : nonNegativeNumber(metrics.inputTokens),
+    outputTokens: metrics?.outputTokens === undefined ? fallback.outputTokens : nonNegativeNumber(metrics.outputTokens),
+    cacheReadTokens:
+      metrics?.cacheReadTokens === undefined ? fallback.cacheReadTokens : nonNegativeNumber(metrics.cacheReadTokens),
+    cacheWriteTokens:
+      metrics?.cacheWriteTokens === undefined ? fallback.cacheWriteTokens : nonNegativeNumber(metrics.cacheWriteTokens),
+    reasoningTokens:
+      metrics?.reasoningTokens === undefined ? fallback.reasoningTokens : nonNegativeNumber(metrics.reasoningTokens),
+    totalNanoAiu: fallback.totalNanoAiu,
+  };
+}
+
+function eventTimestamp(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value))
+    ? new Date(value).toISOString()
+    : null;
+}
+
 /**
  * Parse a single `events.jsonl` file content.
  *
- * Date key is derived from `session.start.data.startTime`.  If no
- * `session.start` event is found the date falls back to today.
+ * Daily usage uses the model-call timestamp in UTC. Cumulative snapshots
+ * update thread totals only: their reconciliation delta has no known call date.
  */
-export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"): ParseResult {
+export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", fallbackSessionId = ""): ParseResult {
   const byDate = new Map<string, CliDateStat>();
+  const usage = emptyUsage();
+  const usageByModel = new Map<string, CliUsageStat>();
+  const usageByDate = new Map<string, CliUsageStat>();
+  const seenUsageIds = new Set<string>();
+  const usageWatermarks = new Map<string, number>();
+  const turns: CliUsageTurn[] = [];
+  let currentTurn: CliUsageTurn | undefined;
+  let currentTurnHasUsage = false;
+  let sessionId = fallbackSessionId;
+  let title = "";
+  let startedAt: string | null = null;
+  let lastActivityAt: string | null = null;
+  let hasDetailedUsage = false;
+  let hasTokenUsage = false;
+  let legacyOutputTokens = 0;
   const interactionsByModel = new Map<string, number>();
   let totalInteractions = 0;
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
@@ -239,36 +380,184 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       continue;
     }
 
-    let event: Record<string, unknown>;
+    let event: Record<string, unknown> | undefined;
     try {
-      event = JSON.parse(trimmed) as Record<string, unknown>;
+      event = asRecord(JSON.parse(trimmed));
     } catch {
       continue;
     }
 
-    const type = event.type as string | undefined;
+    const type = event?.type;
+    if (!event || typeof type !== "string") {
+      continue;
+    }
+    const timestamp = eventTimestamp(event.timestamp);
+    if (timestamp) {
+      startedAt ??= timestamp;
+      if (timestamp.localeCompare(lastActivityAt ?? "") > 0) {
+        lastActivityAt = timestamp;
+      }
+    }
     if (!type) {
       continue;
     }
 
     if (type === "session.start") {
       // Extract YYYY-MM-DD from the session start timestamp.
-      const data = event.data as Record<string, unknown> | undefined;
-      const startTime = data?.startTime as string | undefined;
+      const data = asRecord(event.data);
+      const startTime = eventTimestamp(data?.startTime);
       if (startTime && /^\d{4}-\d{2}-\d{2}/.test(startTime)) {
         dateKey = startTime.substring(0, 10);
+        if (!startedAt || startTime < startedAt) {
+          startedAt = startTime;
+        }
+      }
+      sessionId = typeof data?.sessionId === "string" ? data.sessionId : sessionId;
+      if (typeof data?.title === "string") {
+        title = data.title.slice(0, 160);
       }
       // Extract optional session-level model name (e.g. "claude-opus-4.6").
-      const model = data?.model as string | undefined;
-      sessionModel = model?.trim() || defaultModel;
+      const model = data?.model ?? data?.selectedModel;
+      sessionModel = typeof model === "string" && model.trim() ? model.trim() : defaultModel;
       // Reset pending bucket when a new session starts.
       pendingBucket = null;
+      currentTurn = undefined;
+      currentTurnHasUsage = false;
+      continue;
+    }
+
+    if (type === "session.title_changed") {
+      const data = asRecord(event.data);
+      if (typeof data?.title === "string" && data.title.trim()) {
+        title = data.title.trim().slice(0, 160);
+      }
+      continue;
+    }
+
+    if (type === "session.usage_record") {
+      const data = asRecord(event.data);
+      const record = asRecord(data?.usage);
+      if (record) {
+        const accounting = asRecord(record.accounting);
+        const usageId = accounting?.usageId;
+        const sourceSessionId = accounting?.sourceSessionId;
+        const sequence = accounting?.sequence;
+        const dedupeId =
+          typeof usageId === "string" && typeof sourceSessionId === "string"
+            ? `${sourceSessionId}:${usageId}`
+            : typeof sourceSessionId === "string" && typeof sequence === "number"
+              ? `${sourceSessionId}:${sequence}`
+              : typeof event.id === "string"
+                ? event.id
+                : undefined;
+        if (!dedupeId || !seenUsageIds.has(dedupeId)) {
+          if (dedupeId) {
+            seenUsageIds.add(dedupeId);
+          }
+          const recordUsage: CliUsageStat = {
+            inputTokens: nonNegativeNumber(record.inputTokens),
+            outputTokens: nonNegativeNumber(record.outputTokens),
+            cacheReadTokens: nonNegativeNumber(record.cacheReadTokens),
+            cacheWriteTokens: nonNegativeNumber(record.cacheWriteTokens),
+            reasoningTokens: nonNegativeNumber(record.reasoningTokens),
+            totalNanoAiu:
+              record.aiCreditsStatus === undefined || record.aiCreditsStatus === "complete"
+                ? creditAmount(asRecord(record.copilotUsage)?.totalNanoAiu)
+                : null,
+          };
+          hasDetailedUsage = true;
+          hasTokenUsage = true;
+          if (timestamp) {
+            const usageDate = timestamp.slice(0, 10);
+            usageByDate.set(usageDate, addUsage(usageByDate.get(usageDate), recordUsage));
+          }
+          const model = typeof record.model === "string" && record.model.trim() ? record.model.trim() : sessionModel;
+          const alreadyInSnapshot =
+            typeof sourceSessionId === "string" &&
+            typeof sequence === "number" &&
+            sequence <= (usageWatermarks.get(sourceSessionId) ?? -1);
+          if (!alreadyInSnapshot) {
+            addUsageInPlace(usage, recordUsage);
+            usageByModel.set(model, addUsage(usageByModel.get(model), recordUsage));
+            if (currentTurn) {
+              currentTurn.usage = currentTurnHasUsage ? addUsage(currentTurn.usage, recordUsage) : { ...recordUsage };
+              currentTurnHasUsage = true;
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (type === "session.usage_checkpoint" || type === "session.shutdown") {
+      const data = asRecord(event.data);
+      const snapshot = asRecord(data?.accountingSnapshot) ?? data;
+      if (snapshot) {
+        const rawModelMetrics = asRecord(snapshot.modelMetrics);
+        let hasModelMetrics = false;
+        if (rawModelMetrics) {
+          for (const [model, rawMetrics] of Object.entries(rawModelMetrics)) {
+            const modelMetrics = asRecord(rawMetrics);
+            if (!modelMetrics) {
+              continue;
+            }
+            hasModelMetrics = true;
+            if (asRecord(modelMetrics.usage)) {
+              hasTokenUsage = true;
+            }
+            const previous = usageByModel.get(model) ?? emptyUsage();
+            const modelUsage = usageFromMetrics(modelMetrics.usage, previous);
+            modelUsage.totalNanoAiu =
+              modelMetrics.aiCreditsStatus === undefined || modelMetrics.aiCreditsStatus === "complete"
+                ? creditAmount(modelMetrics.totalNanoAiu)
+                : null;
+            for (const key of [
+              "inputTokens",
+              "outputTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "reasoningTokens",
+            ] as const) {
+              usage[key] += modelUsage[key] - previous[key];
+            }
+            if (usage.totalNanoAiu !== null && modelUsage.totalNanoAiu !== null && previous.totalNanoAiu !== null) {
+              usage.totalNanoAiu += modelUsage.totalNanoAiu - previous.totalNanoAiu;
+            } else {
+              usage.totalNanoAiu = null;
+            }
+            usageByModel.set(model, modelUsage);
+          }
+        }
+        const totalNanoAiu = creditAmount(snapshot.totalNanoAiu);
+        if (totalNanoAiu !== null || hasModelMetrics) {
+          hasDetailedUsage = true;
+          usage.totalNanoAiu = totalNanoAiu ?? usage.totalNanoAiu;
+          if (snapshot.aiCreditsStatus !== undefined && snapshot.aiCreditsStatus !== "complete") {
+            usage.totalNanoAiu = null;
+          }
+          for (const [source, sequence] of Object.entries(asRecord(data?.usageAccountingWatermarks) ?? {})) {
+            if (typeof sequence === "number") {
+              usageWatermarks.set(source, sequence);
+            }
+          }
+        }
+      }
       continue;
     }
 
     if (type === "user.message") {
       const data = event.data as Record<string, unknown> | undefined;
       const content = typeof data?.content === "string" ? data.content : "";
+      currentTurn = {
+        timestamp,
+        prompt: content.replace(/\s+/g, " ").trim().slice(0, 160),
+        usage: { ...emptyUsage(), totalNanoAiu: null },
+      };
+      currentTurnHasUsage = false;
+      turns.push(currentTurn);
+      if (!title && currentTurn.prompt) {
+        title = currentTurn.prompt;
+      }
       const bucket = getPromptLengthBucket(content.length);
 
       // If a prior user message was never answered, it still counts as shown.
@@ -281,8 +570,9 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       // Record pending bucket for the next assistant.message.
       pendingBucket = bucket;
 
-      const dateStat = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
-      byDate.set(dateKey, { ...dateStat, prompts: dateStat.prompts + 1 });
+      const promptDate = timestamp?.slice(0, 10) ?? dateKey;
+      const dateStat = byDate.get(promptDate) ?? { prompts: 0, outputTokens: 0 };
+      byDate.set(promptDate, { ...dateStat, prompts: dateStat.prompts + 1 });
       totalInteractions++;
       continue;
     }
@@ -291,8 +581,10 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
       const data = event.data as Record<string, unknown> | undefined;
       const outputTokens = typeof data?.outputTokens === "number" ? data.outputTokens : 0;
       if (outputTokens > 0) {
-        const dateStat = byDate.get(dateKey) ?? { prompts: 0, outputTokens: 0 };
-        byDate.set(dateKey, { ...dateStat, outputTokens: dateStat.outputTokens + outputTokens });
+        legacyOutputTokens += outputTokens;
+        const outputDate = timestamp?.slice(0, 10) ?? dateKey;
+        const dateStat = byDate.get(outputDate) ?? { prompts: 0, outputTokens: 0 };
+        byDate.set(outputDate, { ...dateStat, outputTokens: dateStat.outputTokens + outputTokens });
 
         // The preceding user.message was "accepted" (AI produced a response).
         if (pendingBucket !== null) {
@@ -360,8 +652,35 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI"):
     }
   }
 
+  if (!hasTokenUsage) {
+    usage.outputTokens = legacyOutputTokens;
+  }
+  if (!hasDetailedUsage) {
+    usage.totalNanoAiu = legacyOutputTokens > 0 || totalInteractions > 0 ? null : 0;
+    for (const turn of turns) {
+      turn.usage.totalNanoAiu = null;
+    }
+  }
+  for (const [date, dateUsage] of usageByDate) {
+    const existing = byDate.get(date) ?? { prompts: 0, outputTokens: 0 };
+    byDate.set(date, { ...existing, outputTokens: dateUsage.outputTokens, usage: dateUsage });
+  }
+
   return {
     byDate,
+    usage,
+    usageByModel,
+    thread: sessionId
+      ? {
+          sessionId,
+          title: title || `Copilot CLI ${sessionId.slice(0, 8)}`,
+          startedAt,
+          lastActivityAt,
+          prompts: totalInteractions,
+          usage,
+          turns,
+        }
+      : undefined,
     totalInteractions,
     interactionsByModel,
     promptEffectiveness,

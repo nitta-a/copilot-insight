@@ -41,6 +41,7 @@ import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
 import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
   AgentIntelligenceOverview,
+  DailyUsageChart,
   InsightsList,
   RefreshAnalysis,
   SummaryCards,
@@ -121,6 +122,20 @@ function renderSummaryCards(summary: DashboardPayload["summary"]): void {
     el.appendChild(comp);
   }
   comp.summary = summary;
+}
+
+function renderDailyUsage(usage: DashboardPayload["summary"]["cliUsageStats"]): void {
+  const host = document.getElementById("db-daily-usage");
+  if (!host) {
+    return;
+  }
+  let component = host.querySelector<DailyUsageChart>("copilot-daily-usage-chart");
+  if (!component) {
+    component = document.createElement("copilot-daily-usage-chart") as DailyUsageChart;
+    component.addEventListener("show-usage-threads", () => activateTab("sessions"));
+    host.replaceChildren(component);
+  }
+  component.usage = usage;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,6 +584,9 @@ function onTabChange(tabId: string): void {
   if (tabId === "health" && timelineChart) {
     timelineChart.resize();
   }
+  if (tabId === "overview") {
+    document.querySelector<DailyUsageChart>("copilot-daily-usage-chart")?.resizeCharts();
+  }
   if (tabId === "prompt-insights" && promptInsightsLoaded) {
     intentDonutChart?.resize();
     commandDonutChart?.resize();
@@ -694,11 +712,11 @@ function renderAllThreads(): void {
   }
   const flat: Array<{ thread: SessionThreadSummary; sessionId: string }> = [];
   for (const [sessionId, detail] of allSessionDetails) {
-    for (const thread of detail.threads.filter((t) => t.stepCount > 0)) {
+    for (const thread of getSelectableThreadsSorted(detail.threads)) {
       flat.push({ thread, sessionId });
     }
   }
-  flat.sort((a, b) => Date.parse(b.thread.startedAt) - Date.parse(a.thread.startedAt));
+  flat.sort((a, b) => (Date.parse(b.thread.startedAt) || 0) - (Date.parse(a.thread.startedAt) || 0));
 
   let comp = el.querySelector<ThreadList>("copilot-thread-list");
   if (!comp) {
@@ -733,7 +751,7 @@ function renderThreadDetail(): void {
   // Sync selectedThreadId if the component would fall back to the first thread.
   if (detail && selectedThreadId) {
     const firstThread = getSelectableThreadsSorted(detail.threads)[0];
-    if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId && t.stepCount > 0)) {
+    if (firstThread && !detail.threads.find((t) => t.threadId === selectedThreadId && (t.stepCount > 0 || t.usage))) {
       selectedThreadId = firstThread.threadId;
     }
   }
@@ -833,6 +851,7 @@ function render(payload: DashboardPayload): void {
   currentPayload = payload;
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
+  renderDailyUsage(payload.summary.cliUsageStats);
   renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);

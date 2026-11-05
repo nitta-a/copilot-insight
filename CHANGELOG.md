@@ -3,6 +3,15 @@
 All notable changes to the "copilot-insight" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+
+## [Unreleased]
+
+## [1.1.10] - 2026-11-05
+
+### Security
+- Updated the MCP SDK, esbuild, VS Code test tooling, and VSCE, and refreshed the npm lockfile to resolve known dependency vulnerabilities.
+- Added patched `body-parser`, `glob`, and `minimatch` overrides. The glob/minimatch overrides are scoped to the affected test and packaging tools to preserve `npm-run-all` compatibility.
+
 ## [1.1.9] - 2026-03-31
 
 ### Fixed

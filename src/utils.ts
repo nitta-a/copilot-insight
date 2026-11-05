@@ -3,6 +3,10 @@ export function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function toAiCredits(nanoAiu: number | null): number | null {
+  return nanoAiu === null ? null : nanoAiu / 1e9;
+}
+
 /**
  * Formats a duration in minutes into a human-readable string.
  * Examples: 0 → "0m", 45 → "45m", 90 → "1h 30m", 120 → "2h"

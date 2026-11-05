@@ -21,6 +21,8 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import type { SessionThreadSummary } from "../../src/types";
+import { toAiCredits } from "../../src/utils";
+import { formatAiCredits, formatUsageDate } from "../dashboardUtils";
 
 export interface ThreadSelectDetail {
   threadId: string;
@@ -71,6 +73,7 @@ export class ThreadList extends LitElement {
     }
     .db-thread-row-meta {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       font-size: 0.76em;
       opacity: 0.7;
@@ -115,11 +118,17 @@ export class ThreadList extends LitElement {
               ${thread.hasAutonomousRun ? "\uD83E\uDD16 " : ""}${thread.title}
             </div>
             <div class="db-thread-row-subtext">
-              ${new Date(thread.startedAt).toLocaleString()}
+              ${thread.usageSource === "cli" ? "Copilot CLI / SDK · " : ""}${formatUsageDate(thread.startedAt)}
             </div>
             <div class="db-thread-row-meta">
-              <span>${thread.stepCount} steps</span>
-              <span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span>
+              <span>${thread.stepCount} ${thread.usageSource === "cli" ? "prompts" : "steps"}</span>
+              ${
+                thread.usage
+                  ? html`<span>${formatAiCredits(toAiCredits(thread.usage.totalNanoAiu))} AI credits</span>
+                    <span>${(thread.usage.inputTokens + thread.usage.outputTokens).toLocaleString()} tokens</span>`
+                  : html`<span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span>
+                    <span>AI credits: unavailable</span>`
+              }
             </div>
           </button>
         `;
