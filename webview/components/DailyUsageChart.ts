@@ -9,6 +9,7 @@ import { toAiCredits } from "../../src/utils";
 import { createDailyUsageChart, createProjectUsageChart, getColors } from "../chartBuilders";
 import { formatAiCredits } from "../dashboardUtils";
 import { formatProjectShare, projectChartRows, projectPeriodRange, projectsForPeriod, type ProjectPeriod } from "../utils/projectUsage";
+import { recordedPeriod } from "../utils/recordedPeriod";
 
 @customElement("copilot-daily-usage-chart")
 export class DailyUsageChart extends LitElement {
@@ -121,18 +122,14 @@ export class DailyUsageChart extends LitElement {
     const usage = this.usage;
     const days = this.visibleDays();
     const lastDate = this.usage?.dailyUsage.at(-1)?.date ?? null;
-    const start = this.period === "all" || !lastDate ? null : new Date(Date.parse(`${lastDate}T00:00:00Z`) - (Number(this.period) - 1) * 86_400_000).toISOString().slice(0, 10);
-    const fusion = summarizeFusion(this.period !== "all" && !lastDate ? [] : usage?.fusionRuns ?? [], start, this.period === "all" ? null : lastDate);
+    const fusionRange = recordedPeriod(this.period, [lastDate, ...(usage?.fusionRuns ?? []).map((run) => run.timestamp ? new Date(run.timestamp).toISOString().slice(0, 10) : null)]);
+    const fusion = summarizeFusion(usage?.fusionRuns ?? [], fusionRange.start, fusionRange.end);
     const undated = (usage?.fusionRuns ?? []).filter((run) => !run.timestamp).length;
     const interventionThreads = usage?.interventionThreads ?? [];
     const interventionDates = interventionThreads.flatMap(({ interventions }) => interventions
       ? [...interventions.permissions.flatMap((p) => [p.requestedAt, p.respondedAt]), ...interventions.steering, ...interventions.stops].filter((date): date is string => !!date).map((date) => date.slice(0, 10))
       : []).sort();
-    const interventionLastDate = lastDate ?? interventionDates.at(-1) ?? null;
-    const interventionStart = this.period === "all" ? null : interventionLastDate
-      ? new Date(Date.parse(`${interventionLastDate}T00:00:00Z`) - (Number(this.period) - 1) * 86_400_000).toISOString().slice(0, 10)
-      : "9999-99-99";
-    const interventionEnd = this.period === "all" ? null : interventionLastDate;
+    const { start: interventionStart, end: interventionEnd } = recordedPeriod(this.period, [lastDate, ...interventionDates]);
     const intervention = summarizeInterventions(interventionThreads, interventionStart, interventionEnd);
     const projectInterventions = new Map<string | null, typeof interventionThreads>();
     for (const thread of interventionThreads) {
@@ -214,7 +211,7 @@ export class DailyUsageChart extends LitElement {
       }
       ${interventionThreads.some((thread) => thread.interventions) ? html`<section>
         <h3>Permission confirmations and other observed events</h3>
-        <p>Period (UTC): ${this.period === "all" ? "all recorded dates" : interventionLastDate ? `${interventionStart} – ${interventionLastDate}` : "no dated events"}. Responses use response dates; messages and stops use event dates. Undated events are excluded.</p>
+        <p>Period (UTC): ${this.period === "all" ? "all recorded dates" : interventionEnd ? `${interventionStart} – ${interventionEnd}` : "no dated events"}. Responses use response dates; messages and stops use event dates. Undated events are excluded.</p>
         <dl class="permission-metrics">
           <div class="permission-metric"><dt>Human permission responses</dt><dd>${intervention.human.toLocaleString()}</dd></div>
           <div class="permission-metric"><dt>Sessions with human responses</dt><dd>${intervention.humanSessions.toLocaleString()} / ${intervention.observedSessions.toLocaleString()}</dd><small>Out of sessions with a permission request or response</small></div>
@@ -239,7 +236,7 @@ export class DailyUsageChart extends LitElement {
       </section>` : nothing}
       ${usage?.fusionRuns?.length ? html`<section>
         <h3>Fusion execution paths</h3>
-        <p>Period (UTC): ${start ?? "all recorded dates"} to ${this.period === "all" ? "all recorded dates" : lastDate ?? "unavailable"}. ${fusion.count} runs; ${undated} undated runs excluded. Dates use the first observed Fusion event. Fusion usage is part of session usage, not an additional charge.</p>
+        <p>Period (UTC): ${this.period === "all" ? "all recorded dates" : fusionRange.end ? `${fusionRange.start} – ${fusionRange.end}` : "no dated events"}. ${fusion.count} runs; ${undated} undated runs excluded. Dates use the first observed Fusion event. Fusion usage is part of session usage, not an additional charge.</p>
         <h4>Observed paths</h4>
         <p>Only recorded phases are shown; the planned pattern may differ. Bars compare run counts.</p>
         ${fusion.paths.length ? html`<ul class="fusion-list">${fusion.paths.map(([path, count]) => html`

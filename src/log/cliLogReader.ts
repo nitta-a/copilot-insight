@@ -245,6 +245,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   for (const thread of threads) {
     if (assignedSessions.has(thread.sessionId)) {
       thread.interventions = undefined;
+      thread.fusionRuns = undefined;
       continue;
     }
     assignedSessions.add(thread.sessionId);
@@ -252,6 +253,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       (interventionSources.get(thread.sessionId) ?? []).join("\n"),
       seenInterventionEvents,
     );
+    thread.fusionRuns = parseFusion((interventionSources.get(thread.sessionId) ?? []).join("\n"));
   }
 
   const result: CliStats = {

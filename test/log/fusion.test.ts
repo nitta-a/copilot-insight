@@ -1,5 +1,8 @@
 import * as assert from "node:assert/strict";
-import { parseEventsJsonl } from "../../src/log/cliLogReader";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { parseEventsJsonl, readCliStats } from "../../src/log/cliLogReader";
 import { fusionReconciliation, parseFusion, summarizeFusion } from "../../src/log/fusion";
 
 suite("Fusion accounting", () => {
@@ -125,5 +128,28 @@ suite("Fusion accounting", () => {
     assert.deepEqual(withFusion.usage, base.usage);
     assert.equal(withFusion.thread?.fusionRuns?.length, 1);
     assert.equal(withFusion.usage.cacheReadTokens, 3);
+  });
+
+  test("merges overlapping session files while keeping complementary phases and separate sessions", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fusion-"));
+    try {
+      const write = async (folder: string, session: string, lines: string[]) => {
+        await fs.mkdir(path.join(root, folder));
+        await fs.writeFile(
+          path.join(root, folder, "events.jsonl"),
+          jsonl(event("session.start", { sessionId: session }), ...lines),
+        );
+      };
+      await write("a", "one", [resolve("f", "cascade"), phase("f", "primary")]);
+      await write("b", "one", [phase("f", "primary"), phase("f", "judge")]);
+      await write("c", "two", [resolve("f", "single"), phase("f", "primary")]);
+      const stats = await readCliStats(root);
+      const runs = stats.threads.flatMap((thread) => thread.fusionRuns ?? []);
+      assert.equal(runs.length, 2);
+      assert.deepEqual(runs.map((run) => run.phases.length).sort(), [1, 2]);
+      assert.equal(summarizeFusion(runs, null, null).roles.find(([role]) => role === "primary")?.[1], 200);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });
