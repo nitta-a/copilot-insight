@@ -196,8 +196,25 @@ export interface FusionRun {
   mode: string | null;
   pattern: string | null;
   plan: Array<{ kind: string | null; role: string | null; scope: string | null; conditional: boolean | null }>;
-  phases: Array<{ phaseId: string; kind: string | null; role: string | null; scope: string | null; model: string | null; status: string | null; verdict: string | null; durationMs: number | null; usage: FusionUsage; reasoningEffort: string | null }>;
-  completed: { finalModel: string | null; finalPhaseId: string | null; durationMs: number | null; outcome: string | null; usage: FusionUsage } | null;
+  phases: Array<{
+    phaseId: string;
+    kind: string | null;
+    role: string | null;
+    scope: string | null;
+    model: string | null;
+    status: string | null;
+    verdict: string | null;
+    durationMs: number | null;
+    usage: FusionUsage;
+    reasoningEffort: string | null;
+  }>;
+  completed: {
+    finalModel: string | null;
+    finalPhaseId: string | null;
+    durationMs: number | null;
+    outcome: string | null;
+    usage: FusionUsage;
+  } | null;
 }
 
 export interface PermissionRecord {

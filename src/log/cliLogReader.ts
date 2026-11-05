@@ -183,7 +183,11 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       if (
         result.thread &&
         (Boolean(result.thread.fusionRuns?.length) ||
-          Boolean(result.thread.interventions?.permissions.length || result.thread.interventions?.steering.length || result.thread.interventions?.stops.length) ||
+          Boolean(
+            result.thread.interventions?.permissions.length ||
+              result.thread.interventions?.steering.length ||
+              result.thread.interventions?.stops.length,
+          ) ||
           result.totalInteractions > 0 ||
           result.usage.inputTokens > 0 ||
           result.usage.outputTokens > 0 ||
@@ -244,7 +248,10 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       continue;
     }
     assignedSessions.add(thread.sessionId);
-    thread.interventions = parseInterventions((interventionSources.get(thread.sessionId) ?? []).join("\n"), seenInterventionEvents);
+    thread.interventions = parseInterventions(
+      (interventionSources.get(thread.sessionId) ?? []).join("\n"),
+      seenInterventionEvents,
+    );
   }
 
   const result: CliStats = {

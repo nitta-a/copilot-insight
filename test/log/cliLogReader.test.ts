@@ -370,10 +370,13 @@ suite("CLI daily and thread consumption", () => {
   const jsonl = (...events: object[]) => events.map((event) => JSON.stringify(event)).join("\n");
 
   test("uses the first session's absolute git root, falling back to cwd or unknown", () => {
-    const project = (context: unknown) => parseEventsJsonl(jsonl(
-      { type: "session.start", data: { sessionId: "s", context } },
-      { type: "session.start", data: { context: { gitRoot: "/later" } } },
-    )).thread?.projectPath;
+    const project = (context: unknown) =>
+      parseEventsJsonl(
+        jsonl(
+          { type: "session.start", data: { sessionId: "s", context } },
+          { type: "session.start", data: { context: { gitRoot: "/later" } } },
+        ),
+      ).thread?.projectPath;
     assert.strictEqual(project({ gitRoot: "/repos/project", cwd: "/repos/project/sub" }), "/repos/project");
     assert.strictEqual(project({ gitRoot: "relative", cwd: "/work/project" }), "/work/project");
     assert.strictEqual(project({ cwd: "relative" }), null);

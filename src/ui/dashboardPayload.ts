@@ -164,18 +164,26 @@ function buildCliUsageStats(stats: CopilotUsageStats): SummaryData["cliUsageStat
     totalTokens,
     totalAiCredits: toAiCredits(usage.totalNanoAiu),
     topModels,
-    projects: !threads || (threads.length === 0 && (totalTokens > 0 || usage.totalNanoAiu !== 0)) || threads.some((thread) => thread.projectPath === undefined)
-      ? null
-      : Array.from(projects, ([projectPath, projectUsage]) => ({
-          path: projectPath,
-          name: projectPath ? path.basename(projectPath) || projectPath : "Unknown",
-          inputTokens: projectUsage.inputTokens,
-          outputTokens: projectUsage.outputTokens,
-          cacheReadTokens: projectUsage.cacheReadTokens,
-          cacheWriteTokens: projectUsage.cacheWriteTokens,
-          aiCredits: toAiCredits(projectUsage.totalNanoAiu),
-          dailyUsage: Array.from(projectDailyUsage.get(projectPath) ?? [], ([date, dailyUsage]) => ({ date, usage: dailyUsage })),
-        })).sort((a, b) => b.inputTokens + b.outputTokens - a.inputTokens - a.outputTokens || a.name.localeCompare(b.name)),
+    projects:
+      !threads ||
+      (threads.length === 0 && (totalTokens > 0 || usage.totalNanoAiu !== 0)) ||
+      threads.some((thread) => thread.projectPath === undefined)
+        ? null
+        : Array.from(projects, ([projectPath, projectUsage]) => ({
+            path: projectPath,
+            name: projectPath ? path.basename(projectPath) || projectPath : "Unknown",
+            inputTokens: projectUsage.inputTokens,
+            outputTokens: projectUsage.outputTokens,
+            cacheReadTokens: projectUsage.cacheReadTokens,
+            cacheWriteTokens: projectUsage.cacheWriteTokens,
+            aiCredits: toAiCredits(projectUsage.totalNanoAiu),
+            dailyUsage: Array.from(projectDailyUsage.get(projectPath) ?? [], ([date, dailyUsage]) => ({
+              date,
+              usage: dailyUsage,
+            })),
+          })).sort(
+            (a, b) => b.inputTokens + b.outputTokens - a.inputTokens - a.outputTokens || a.name.localeCompare(b.name),
+          ),
     projectDailyUsageAvailable: !!threads && threads.every((thread) => thread.usageByDate !== undefined),
     dailyUsage,
     fusionRuns: (threads ?? []).flatMap((thread) => thread.fusionRuns ?? []),
