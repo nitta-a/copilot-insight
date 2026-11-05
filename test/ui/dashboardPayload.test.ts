@@ -1,14 +1,14 @@
 import * as assert from "assert";
 import type { SessionSignalEvent } from "../../src/events/eventSchema";
 import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
-import type { CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
+import type { CliUsageStat, CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
 import {
   buildCliSessionDetail,
   buildDashboardPayload,
   buildPromptInsightsPayload,
   buildSessionsPayload,
 } from "../../src/ui/dashboardPayload";
-import { parseEventsJsonl } from "../../src/log/cliLogReader";
+import { addUsage, parseEventsJsonl } from "../../src/log/cliLogReader";
 
 function fmt(date: Date): string {
   const yyyy = date.getFullYear();
@@ -1262,6 +1262,62 @@ suite("buildDashboardPayload — CLI integration", () => {
 });
 
 suite("CLI conversation consumption in Sessions", () => {
+  test("aggregates timestamped project records across sessions and detects old snapshots", () => {
+    const makeThread = (id: string, date: string, credits: number | null) => parseEventsJsonl([
+      { type: "session.start", data: { sessionId: id, context: { cwd: "/work/a" } } },
+      { type: "session.usage_record", timestamp: `${date}T12:00:00Z`, data: { usage: {
+        inputTokens: 10, cacheReadTokens: 4, copilotUsage: { totalNanoAiu: credits },
+      } } },
+    ].map((event) => JSON.stringify(event)).join("\n")).thread!;
+    const threads = [makeThread("a", "2026-11-01", 1_000_000_000), makeThread("b", "2026-11-01", null), makeThread("c", "2026-11-02", 1_000_000_000)];
+    const usage = threads.reduce((sum, thread) => addUsage(sum, thread.usage), undefined as CliUsageStat | undefined)!;
+    const payload = buildDashboardPayload(makeStats({ cliThreads: threads, cliUsage: usage })).summary.cliUsageStats!;
+    assert.equal(payload.projectDailyUsageAvailable, true);
+    assert.equal(payload.projects?.[0].dailyUsage[0].usage.inputTokens, 20);
+    assert.equal(payload.projects?.[0].dailyUsage[0].usage.cacheReadTokens, 8);
+    assert.equal(payload.projects?.[0].dailyUsage[0].usage.totalNanoAiu, null);
+    assert.equal(payload.projects?.[0].dailyUsage[1].usage.totalNanoAiu, 1_000_000_000);
+    const old = buildDashboardPayload(makeStats({ cliThreads: [{ ...threads[0], usageByDate: undefined }], cliUsage: usage })).summary.cliUsageStats!;
+    assert.equal(old.projectDailyUsageAvailable, false);
+    assert.ok(old.projects);
+  });
+  test("aggregates reconciled sessions by full project path and preserves unknown credits", () => {
+    const session = (id: string, context: object, credits: number | undefined, checkpoint = false) => {
+      const events: object[] = [
+        { type: "session.start", data: { sessionId: id, context } },
+        { type: "session.usage_record", data: { usage: {
+          inputTokens: 100, outputTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 10,
+          copilotUsage: credits === undefined ? {} : { totalNanoAiu: credits },
+        } } },
+      ];
+      if (checkpoint) {
+        events.push({ type: "session.shutdown", data: { accountingSnapshot: {
+          totalNanoAiu: 2_000_000_000,
+          modelMetrics: { "Copilot CLI": { usage: { inputTokens: 150, outputTokens: 25, cacheReadTokens: 40, cacheWriteTokens: 15 }, totalNanoAiu: 2_000_000_000 } },
+        } } });
+      }
+      return parseEventsJsonl(events.map((event) => JSON.stringify(event)).join("\n"));
+    };
+    const results = [
+      session("a", { gitRoot: "/one/project", cwd: "/other" }, 1_000_000_000, true),
+      session("b", { cwd: "/one/project" }, undefined),
+      session("c", { cwd: "/two/project" }, 1_000_000_000),
+      session("d", {}, 1_000_000_000),
+    ];
+    const threads = results.map((result) => result.thread!);
+    const total = results.reduce((sum, result) => addUsage(sum, result.usage), undefined as CliUsageStat | undefined)!;
+    const usage = buildDashboardPayload(makeStats({ cliThreads: threads, cliUsage: total })).summary.cliUsageStats!;
+    assert.deepStrictEqual(usage.projects?.map((project) => [project.path, project.name, project.inputTokens, project.outputTokens, project.cacheReadTokens, project.cacheWriteTokens, project.aiCredits]), [
+      ["/one/project", "project", 250, 45, 70, 25, null],
+      ["/two/project", "project", 100, 20, 30, 10, 1],
+      [null, "Unknown", 100, 20, 30, 10, 1],
+    ]);
+    for (const field of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"] as const) {
+      assert.strictEqual(usage.projects?.reduce((sum, project) => sum + project[field], 0), total[field]);
+    }
+    assert.strictEqual(usage.totalAiCredits, null);
+    assert.strictEqual(buildDashboardPayload(makeStats({ cliUsage: total, cliThreads: [{ ...threads[0], projectPath: undefined }] })).summary.cliUsageStats?.projects, null);
+  });
   test("connects parsed CLI threads and prompt totals to the Sessions list and detail", () => {
     const result = parseEventsJsonl(
       [

@@ -5,12 +5,15 @@
  * requiring a VS Code process.
  */
 
+import * as path from "node:path";
+import { addUsage } from "../log/cliLogReader";
 import { extractTopKeywords } from "../log/keywordExtractor";
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type {
   AgenticDepthStat,
+  CliUsageStat,
   CopilotUsageStats,
   RefreshAnalysis,
   SessionDetailPayload,
@@ -140,6 +143,19 @@ function buildCliUsageStats(stats: CopilotUsageStats): SummaryData["cliUsageStat
     return sum === null || day.usage.totalNanoAiu === null ? null : sum + day.usage.totalNanoAiu;
   }, 0);
 
+  const threads = stats.cliThreads;
+  const projects = new Map<string | null, CliUsageStat>();
+  const projectDailyUsage = new Map<string | null, Map<string, CliUsageStat>>();
+  for (const thread of threads ?? []) {
+    const projectPath = thread.projectPath ?? null;
+    projects.set(projectPath, addUsage(projects.get(projectPath), thread.usage));
+    const daily = projectDailyUsage.get(projectPath) ?? new Map<string, CliUsageStat>();
+    for (const entry of thread.usageByDate ?? []) {
+      daily.set(entry.date, addUsage(daily.get(entry.date), entry.usage));
+    }
+    projectDailyUsage.set(projectPath, daily);
+  }
+
   return {
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -148,7 +164,22 @@ function buildCliUsageStats(stats: CopilotUsageStats): SummaryData["cliUsageStat
     totalTokens,
     totalAiCredits: toAiCredits(usage.totalNanoAiu),
     topModels,
+    projects: !threads || (threads.length === 0 && (totalTokens > 0 || usage.totalNanoAiu !== 0)) || threads.some((thread) => thread.projectPath === undefined)
+      ? null
+      : Array.from(projects, ([projectPath, projectUsage]) => ({
+          path: projectPath,
+          name: projectPath ? path.basename(projectPath) || projectPath : "Unknown",
+          inputTokens: projectUsage.inputTokens,
+          outputTokens: projectUsage.outputTokens,
+          cacheReadTokens: projectUsage.cacheReadTokens,
+          cacheWriteTokens: projectUsage.cacheWriteTokens,
+          aiCredits: toAiCredits(projectUsage.totalNanoAiu),
+          dailyUsage: Array.from(projectDailyUsage.get(projectPath) ?? [], ([date, dailyUsage]) => ({ date, usage: dailyUsage })),
+        })).sort((a, b) => b.inputTokens + b.outputTokens - a.inputTokens - a.outputTokens || a.name.localeCompare(b.name)),
+    projectDailyUsageAvailable: !!threads && threads.every((thread) => thread.usageByDate !== undefined),
     dailyUsage,
+    fusionRuns: (threads ?? []).flatMap((thread) => thread.fusionRuns ?? []),
+    interventionThreads: (threads ?? []).map(({ projectPath, interventions }) => ({ projectPath, interventions })),
     unattributedTokens: totalTokens - dailyUsage.reduce((sum, day) => sum + day.totalTokens, 0),
     unattributedAiCredits:
       usage.totalNanoAiu === null || dailyNanoAiu === null ? null : (usage.totalNanoAiu - dailyNanoAiu) / 1e9,
@@ -740,6 +771,8 @@ export function buildCliSessionDetail(stats: CopilotUsageStats, sessionId: strin
         hasSelectableTitle: true,
         usage: thread.usage,
         usageSource: "cli",
+        fusionRuns: thread.fusionRuns,
+        interventions: thread.interventions,
       },
     ],
     stepsByThread: {

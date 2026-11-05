@@ -21,7 +21,9 @@
 
 import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import type { AgentStep, SessionDetailPayload } from "../../src/types";
+import type { AgentStep, FusionUsage, SessionDetailPayload } from "../../src/types";
+import { elapsedMs } from "../../src/log/interventions";
+import { fusionReconciliation } from "../../src/log/fusion";
 import { toAiCredits } from "../../src/utils";
 import {
   actorBadgeClass,
@@ -34,6 +36,10 @@ import {
   formatAiCredits,
   formatUsageDate,
 } from "../dashboardUtils";
+
+function fusionUsageText(usage: FusionUsage): string {
+  return `requests ${usage.requestCount?.toLocaleString() ?? "unavailable"} · input ${usage.inputTokens?.toLocaleString() ?? "unavailable"} · output ${usage.outputTokens?.toLocaleString() ?? "unavailable"} · cache read ${usage.cachedTokens?.toLocaleString() ?? "unavailable"} · cache write ${usage.cacheWriteTokens?.toLocaleString() ?? "unavailable"} · ${formatAiCredits(toAiCredits(usage.totalNanoAiu))} AI credits`;
+}
 
 /** Sort and filter threads to those with activity, newest first. */
 export function getSelectableThreadsSorted(threads: SessionDetailPayload["threads"]): SessionDetailPayload["threads"] {
@@ -106,6 +112,32 @@ export class ThreadDetail extends LitElement {
             Credits are usage units, not an account-wide currency bill.</p>`
           : nothing
       }
+      ${selectedThread.interventions?.permissions.length ? html`<section>
+        <h3>Permission confirmations</h3>
+        <p>${selectedThread.interventions.permissions.filter((p) => p.decisionSource === "human_response" && p.responseRecorded).length} human responses · ${selectedThread.interventions.permissions.filter((p) => p.decisionSource === "host_policy" && p.responseRecorded).length} host policy decisions · ${selectedThread.interventions.permissions.filter((p) => !p.responseRecorded).length} without a response record</p>
+        ${selectedThread.interventions.permissions.map((p) => html`<div class="db-agent-step-row"><div class="db-agent-step-body">
+          <strong>${p.kind ?? "Unknown target"}</strong>${p.toolName ? html` · ${p.toolName}` : nothing}
+          <div>Decision source: ${p.responseRecorded ? p.decisionSource === "human_response" ? "Human response" : p.decisionSource === "host_policy" ? "Host policy" : "Unknown" : "Not recorded"} · Result: ${p.responseRecorded ? p.result ?? "Unknown" : "No response record"}</div>
+          <div>Requested: ${p.requestedAt ? formatUsageDate(p.requestedAt) : "Unknown"} · Responded: ${p.respondedAt ? formatUsageDate(p.respondedAt) : "Unknown"}</div>
+          <div>Elapsed from request to response: ${elapsedMs(p) === null ? "Unknown" : formatPause(elapsedMs(p)!)}</div>
+        </div></div>`)}
+      </section>` : nothing}
+      ${selectedThread.fusionRuns?.length ? html`<section>
+        <h3>Fusion execution breakdown</h3>
+        <p>Observed phases explain part of the session accounting; they are not added to session totals. Cache read is reported as cachedTokens; it is not added to input tokens. Model verdicts do not indicate user acceptance.</p>
+        ${selectedThread.fusionRuns.map((run) => html`<div class="db-agent-step-row"><div class="db-agent-step-body">
+          <strong>${run.mode ?? "Unknown mode"} / planned ${run.pattern ?? "unknown pattern"}</strong>
+          <div>Planned: ${run.plan.map((p) => `${p.kind ?? "unknown"}${p.conditional ? " (conditional)" : ""}`).join(" → ") || "unavailable"}</div>
+          <div>Elapsed: ${run.completed?.durationMs == null ? "unavailable" : formatPause(run.completed.durationMs)} · Phase / completion totals: ${fusionReconciliation(run)}</div>
+          ${run.phases.map((phase) => html`<div style="margin-top:8px">
+            <strong>${phase.kind ?? "unknown phase"}</strong> (${phase.role ?? "unknown role"}) — ${phase.model ?? "unknown model"} · ${phase.status ?? "unknown status"}${phase.verdict ? ` · model verdict: ${phase.verdict}` : ""}
+            <div>${phase.durationMs === null ? "Time unavailable" : formatPause(phase.durationMs)} · input ${phase.usage.inputTokens?.toLocaleString() ?? "unavailable"} · output ${phase.usage.outputTokens?.toLocaleString() ?? "unavailable"} · cache read ${phase.usage.cachedTokens?.toLocaleString() ?? "unavailable"} · cache write ${phase.usage.cacheWriteTokens?.toLocaleString() ?? "unavailable"} · ${formatAiCredits(toAiCredits(phase.usage.totalNanoAiu))} AI credits</div>
+          </div>`)}
+          <div style="margin-top:8px">Final source model: ${run.phases.find((phase) => phase.phaseId === run.completed?.finalPhaseId)?.model ?? run.completed?.finalModel ?? "unavailable"}</div>
+          <div>Completion: ${run.completed?.outcome ?? "not recorded"}. ${run.completed ? fusionUsageText(run.completed.usage) : "Completion totals unavailable"}</div>
+          <div>Session accounting includes other usage and adjustments; direct reconciliation is unavailable.</div>
+        </div></div>`)}
+      </section>` : nothing}
       <div class="db-agent-step-timeline">${stepsContent}</div>
     `;
   }

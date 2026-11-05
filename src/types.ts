@@ -57,6 +57,8 @@ export interface SessionThreadSummary {
   hasSelectableTitle: boolean;
   usage?: CliUsageStat;
   usageSource?: "cli";
+  fusionRuns?: FusionRun[];
+  interventions?: CliInterventions;
 }
 
 export type AgentStepLabel =
@@ -179,14 +181,58 @@ export interface CliUsageTurn {
   usage: CliUsageStat;
 }
 
+export interface FusionUsage {
+  requestCount: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  cacheWriteTokens: number | null;
+  totalNanoAiu: number | null;
+}
+
+export interface FusionRun {
+  fusionId: string;
+  timestamp: string | null;
+  mode: string | null;
+  pattern: string | null;
+  plan: Array<{ kind: string | null; role: string | null; scope: string | null; conditional: boolean | null }>;
+  phases: Array<{ phaseId: string; kind: string | null; role: string | null; scope: string | null; model: string | null; status: string | null; verdict: string | null; durationMs: number | null; usage: FusionUsage; reasoningEffort: string | null }>;
+  completed: { finalModel: string | null; finalPhaseId: string | null; durationMs: number | null; outcome: string | null; usage: FusionUsage } | null;
+}
+
+export interface PermissionRecord {
+  requestId: string;
+  kind: string | null;
+  toolCallId: string | null;
+  toolName: string | null;
+  requestedAt: string | null;
+  respondedAt: string | null;
+  decisionSource: "human_response" | "host_policy" | null;
+  result: "approved" | "denied" | "cancelled" | null;
+  requestRecorded: boolean;
+  responseRecorded: boolean;
+}
+
+export interface CliInterventions {
+  permissions: PermissionRecord[];
+  steering: string[];
+  stops: string[];
+}
+
 export interface CliThreadUsage {
   sessionId: string;
+  /** Absolute project folder at session start; absent in older snapshots. */
+  projectPath?: string | null;
+  /** Timestamped model-call records in UTC; absent in older snapshots. */
+  usageByDate?: Array<{ date: string; usage: CliUsageStat }>;
   title: string;
   startedAt: string | null;
   lastActivityAt: string | null;
   prompts: number;
   usage: CliUsageStat;
   turns: CliUsageTurn[];
+  fusionRuns?: FusionRun[];
+  interventions?: CliInterventions;
 }
 
 export interface SessionStat {

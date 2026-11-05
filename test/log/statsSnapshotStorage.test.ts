@@ -233,6 +233,21 @@ suite("StatsSnapshotStorage", () => {
     }
   });
 
+  test("invalidates snapshots predating permission parsing", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-stats-fusion-"));
+    try {
+      const storage = new StatsSnapshotStorage(tempRoot);
+      await storage.write(makeStats());
+      const snapshotPath = path.join(tempRoot, "usage-stats.json");
+      const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf-8"));
+      snapshot.version = 3;
+      await fs.writeFile(snapshotPath, JSON.stringify(snapshot));
+      assert.equal(await storage.read(), undefined);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   test("returns undefined for missing snapshot", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-stats-missing-"));
     try {

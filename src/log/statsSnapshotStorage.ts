@@ -16,7 +16,7 @@ import type {
 } from "../types";
 
 interface SerializedStatsSnapshot {
-  version: 1 | 2;
+  version: 1 | 2 | 3 | 4;
   stats: SerializedCopilotUsageStats;
 }
 
@@ -250,7 +250,7 @@ export class StatsSnapshotStorage {
     try {
       const raw = await fs.readFile(this.snapshotPath, "utf-8");
       const snapshot = JSON.parse(raw) as SerializedStatsSnapshot;
-      if (snapshot.version !== 1 && snapshot.version !== 2) {
+      if (snapshot.version !== 4) {
         return undefined;
       }
       return deserializeStats(snapshot.stats);
@@ -261,7 +261,7 @@ export class StatsSnapshotStorage {
 
   async write(stats: CopilotUsageStats): Promise<void> {
     const payload: SerializedStatsSnapshot = {
-      version: 2,
+      version: 4,
       stats: serializeStats(stats),
     };
     try {

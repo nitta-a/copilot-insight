@@ -62,6 +62,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${trueRateStr}
+        icon="🎯"
         label="True Acceptance Rate"
         highlight="blue"
         .subtext=${"vs " + s.acceptanceRate.toFixed(1) + "% raw"}
@@ -69,6 +70,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${totalHours + " hours"}
+        icon="⏱️"
         label="Estimated Time Saved"
         highlight="blue"
         .subtext=${roiDetail}
@@ -77,6 +79,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${trunc(topChatModelStr, 18)}
+        icon="💬"
         label="Top Chat Model"
         highlight="blue"
         .subtext=${topChatModelDetail}
@@ -85,6 +88,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${trunc(topAskModelStr, 18)}
+        icon="❓"
         label="Top Ask Model"
         highlight="blue"
         .subtext=${topAskModelDetail}
@@ -93,6 +97,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${trunc(topPlanModelStr, 18)}
+        icon="📋"
         label="Top Plan Model"
         highlight="blue"
         .subtext=${topPlanModelDetail}
@@ -101,16 +106,19 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${String(s.totalShown)}
+        icon="👀"
         label="Suggestions Shown"
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
         .value=${String(s.totalAccepted)}
+        icon="✅"
         label="Suggestions Accepted"
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
         .value=${s.acceptanceRate.toFixed(1) + "%"}
+        icon="📊"
         label="Raw Acceptance Rate"
       ></copilot-stat-card>
       ${this._renderTokenCards(s.tokenStats)}
@@ -132,12 +140,14 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${formatAiCredits(cliUsageStats.totalAiCredits)}
+        icon="💳"
         label="Copilot CLI AI Credits"
         .subtext=${"Local sessions only; not account-wide billing"}
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
         .value=${cliUsageStats.totalTokens.toLocaleString()}
+        icon="🪙"
         label="Copilot CLI Tokens"
         .subtext=${`${cliUsageStats.inputTokens.toLocaleString()} input / ${cliUsageStats.outputTokens.toLocaleString()} output`}
         .title=${`${cliUsageStats.cacheReadTokens.toLocaleString()} cache-read / ${cliUsageStats.cacheWriteTokens.toLocaleString()} cache-write tokens`}
@@ -145,6 +155,7 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${topModel ? trunc(topModel.model, 18) : "—"}
+        icon="🏆"
         label="Top CLI Model (Credits)"
         .subtext=${topModel ? `${formatAiCredits(topModel.aiCredits)} AI credits` : "no model usage data"}
         .title=${modelDetails || "No per-model usage data"}
@@ -168,12 +179,14 @@ export class SummaryCards extends LitElement {
       <copilot-stat-card
         show-download
         .value=${totalK + "k"}
+        icon="🪙"
         label="Total Tokens Used"
         .subtext=${promptK + "k prompt / " + completionK + "k completion"}
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
         .value=${topModelStr}
+        icon="🏆"
         label="Top Model (Tokens)"
         .subtext=${topModelDetail}
       ></copilot-stat-card>
