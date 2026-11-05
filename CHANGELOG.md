@@ -4,6 +4,11 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.12] - 2026-11-06
+
+### Fixed
+- Fix the Overview daily token and AI credit section failing to render because its displayed date range referenced an undefined value.
+
 ## [1.1.11] - 2026-11-06
 
 ### Added
