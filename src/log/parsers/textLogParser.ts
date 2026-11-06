@@ -277,9 +277,7 @@ function parseCcreqLine(
     recordInlineShown(ctx, dateKey, hourKey, model, latency, timestamp, line);
   } else if (isNesAccepted) {
     recordInlineAccepted(ctx, dateKey, hourKey, model, latency);
-    // An inline-completion acceptance is the strongest acceptance signal in
-    // plain-text Copilot logs — mark the current session as accepted so that
-    // the Turn Churn chart can compute per-bucket resolution rates.
+    // Preserve the logged inline acceptance in the legacy session state.
     if (ctx.currentSessionId) {
       const existing = ctx.chatSessionStates.get(ctx.currentSessionId) ?? {
         sessionId: ctx.currentSessionId,
@@ -291,9 +289,7 @@ function parseCcreqLine(
     }
   } else {
     recordChatRequest(ctx, dateKey, hourKey, model, latency);
-    // Track each chat request as a turn so that the Turn Churn chart can
-    // bucket sessions by turn count. This is the primary population path
-    // because real Copilot Chat logs are plain-text ccreq lines, not JSON.
+    // Preserve logged chat requests in the legacy session state.
     if (ctx.currentSessionId) {
       const existing = ctx.chatSessionStates.get(ctx.currentSessionId) ?? {
         sessionId: ctx.currentSessionId,

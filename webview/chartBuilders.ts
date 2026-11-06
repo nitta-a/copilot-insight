@@ -293,10 +293,10 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
   const labels = timeline.map((e) => fmtDate(e.date));
   const editorInline = timeline.map((e) => e.editorAccepted);
   const editorChat = timeline.map((e) => e.chatCount);
-  const cliAccepted = timeline.map((e) => e.cliAccepted);
+  const cliPrompts = timeline.map((e) => e.cliPrompts);
   const rates = timeline.map((e) => e.rate);
   const trueRates = timeline.map((e) =>
-    e.trueAccepted !== null ? (e.trueAccepted / Math.max(e.shown, 1)) * 100 : null,
+    e.trueAccepted !== null && e.shown > 0 ? (e.trueAccepted / e.shown) * 100 : null,
   );
   const hasTrueRates = trueRates.some((r) => r !== null);
 
@@ -333,7 +333,7 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
       datasets: [
         {
           type: "bar" as const,
-          label: "Editor (Inline)",
+          label: "Editor (Inline accepted)",
           data: editorInline,
           backgroundColor: `${c.blue}B3`,
           // biome-ignore lint/style/useNamingConvention: Chart.js API property
@@ -353,8 +353,8 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
         },
         {
           type: "bar" as const,
-          label: "CLI",
-          data: cliAccepted,
+          label: "CLI / SDK prompts",
+          data: cliPrompts,
           backgroundColor: `${c.purple}B3`,
           // biome-ignore lint/style/useNamingConvention: Chart.js API property
           yAxisID: "yCount",
@@ -434,7 +434,7 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
 }
 
 // ---------------------------------------------------------------------------
-// Prompt Length vs Acceptance Rate Scatter (Bubble) chart factory
+// Prompt Length vs Observed Response Rate Scatter (Bubble) chart factory
 // ---------------------------------------------------------------------------
 
 export function createPromptLengthScatterChart(
@@ -463,7 +463,7 @@ export function createPromptLengthScatterChart(
           callbacks: {
             label: (item: TooltipItem<"bubble">) => {
               const raw = item.raw as { x: number; y: number; r: number };
-              return `Midpoint: ${raw.x} chars | Acceptance: ${raw.y.toFixed(1)}%`;
+              return `Midpoint: ${raw.x} chars | Responses observed: ${raw.y.toFixed(1)}%`;
             },
           },
         },
@@ -476,7 +476,7 @@ export function createPromptLengthScatterChart(
           beginAtZero: true,
         },
         y: {
-          title: { display: true, text: "Acceptance Rate (%)", color: c.foreground },
+          title: { display: true, text: "Observed Response Rate (%)", color: c.foreground },
           ticks: { color: c.foreground, callback: (v) => `${v}%` },
           grid: { color: c.grid },
           beginAtZero: true,
@@ -488,7 +488,7 @@ export function createPromptLengthScatterChart(
 }
 
 // ---------------------------------------------------------------------------
-// Turn Churn Mixed chart factory (bar + line)
+// Chat request-count distribution chart factory
 // ---------------------------------------------------------------------------
 
 export function createTurnChurnChart(
@@ -498,10 +498,6 @@ export function createTurnChurnChart(
 ): Chart {
   const labels = turnStats.map((b) => b.bucket);
   const sessionCounts = turnStats.map((b) => b.sessionCount);
-  const resolutionRates = turnStats.map((b) =>
-    // Round to one decimal place: (acceptedCount / sessionCount) * 100
-    b.sessionCount > 0 ? Math.round((b.acceptedCount / b.sessionCount) * 1000) / 10 : 0,
-  );
 
   return new Chart(canvas, {
     type: "bar",
@@ -517,17 +513,6 @@ export function createTurnChurnChart(
           borderWidth: 1,
           yAxisID: "yLeft",
         },
-        {
-          type: "line",
-          label: "Resolution Rate (%)",
-          data: resolutionRates,
-          borderColor: c.green,
-          backgroundColor: `${c.green}33`,
-          borderWidth: 2,
-          pointRadius: 4,
-          tension: 0.3,
-          yAxisID: "yRight",
-        },
       ],
     },
     options: {
@@ -538,9 +523,6 @@ export function createTurnChurnChart(
         tooltip: {
           callbacks: {
             label: (item: TooltipItem<"bar" | "line">) => {
-              if (item.datasetIndex === 1) {
-                return `Resolution Rate: ${item.formattedValue}%`;
-              }
               return `Sessions: ${item.formattedValue}`;
             },
           },
@@ -558,15 +540,6 @@ export function createTurnChurnChart(
           ticks: { color: c.foreground },
           grid: { color: c.grid },
           beginAtZero: true,
-        },
-        yRight: {
-          type: "linear",
-          position: "right",
-          title: { display: true, text: "Resolution Rate (%)", color: c.foreground },
-          ticks: { color: c.foreground, callback: (v) => `${v}%` },
-          grid: { drawOnChartArea: false },
-          beginAtZero: true,
-          max: 100,
         },
       },
     },

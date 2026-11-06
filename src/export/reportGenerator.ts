@@ -326,7 +326,7 @@ export function generateMarkdownReport(options: ReportOptions): string {
   lines.push("|--------|-------|");
   lines.push(`| Suggestions Shown | ${stats.totalShown} |`);
   lines.push(`| Suggestions Accepted | ${stats.totalAccepted} |`);
-  lines.push(`| Acceptance Rate | ${stats.acceptanceRate.toFixed(1)}% |`);
+  lines.push(`| Acceptance Rate | ${stats.totalShown > 0 ? `${stats.acceptanceRate.toFixed(1)}%` : "Unavailable"} |`);
   lines.push(`| Chat Requests | ${stats.totalChat} |`);
   lines.push(`| Avg Latency | ${stats.avgLatencyMs > 0 ? `${stats.avgLatencyMs.toFixed(0)}ms` : "—"} |`);
   lines.push(`| Errors | ${stats.totalErrors} |`);

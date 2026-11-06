@@ -10,6 +10,7 @@ import {
   resolveWorkspaceStorageRoot,
 } from "./chatSessionTitleReader";
 import { addUsage, readCliStats } from "./cliLogReader";
+import { readAgentHostMetadata } from "./agentHostMetadata";
 import { getLogChannel, isTimingLogsEnabled } from "./logChannel";
 import {
   findCopilotDirs,
@@ -414,7 +415,12 @@ export async function parseCopilotLogs(
       });
     }
     ctx.cliUsage = cliResult.usage;
-    ctx.cliThreads = cliResult.threads;
+    const hostChats = await readAgentHostMetadata(resolveLogSearchPaths(logUri.fsPath).logBaseDir);
+    ctx.cliThreads = cliResult.threads.map((thread) => ({
+      ...thread,
+      agentHostChildChats: hostChats.get(thread.sessionId)?.length,
+      agentHostChats: hostChats.get(thread.sessionId),
+    }));
     ctx.cliUsageByModel ??= new Map();
     for (const [model, usage] of cliResult.usageByModel) {
       const existing = ctx.cliUsageByModel.get(model);
@@ -432,13 +438,6 @@ export async function parseCopilotLogs(
     ctx.cliReasoningTokens = (ctx.cliReasoningTokens ?? 0) + cliResult.reasoningTokens;
     for (const [agentName, count] of cliResult.agentTypes) {
       ctx.cliAgentTypes?.set(agentName, (ctx.cliAgentTypes?.get(agentName) ?? 0) + count);
-    }
-    // Merge CLI per-model interactions into subagentByModel and byChatModel so that
-    // CLI models appear in "Autonomous Ratio by Model" and agentic charts.
-    // CLI sessions are fully autonomous, so both maps receive the same count (ratio = 100%).
-    for (const [model, count] of cliResult.interactionsByModel) {
-      ctx.byChatModel.set(model, (ctx.byChatModel.get(model) ?? 0) + count);
-      ctx.subagentByModel.set(model, (ctx.subagentByModel.get(model) ?? 0) + count);
     }
     // Merge prompt-length effectiveness buckets from CLI logs.
     for (const [bucket, counts] of Object.entries(cliResult.promptEffectiveness)) {

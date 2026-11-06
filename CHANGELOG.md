@@ -4,6 +4,16 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.13] - 2026-11-06
+
+### Changed
+- Support newer Copilot CLI and SDK events, Agent Host session relationships, and additional session diagnostics.
+- Show observed response and chat request counts without presenting them as acceptance or task resolution.
+
+### Fixed
+- Distinguish unavailable inline acceptance data from zero and correct related charts and exports.
+- Keep custom agent names aligned with requests in saved chat sessions.
+
 ## [1.1.12] - 2026-11-06
 
 ### Fixed

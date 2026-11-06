@@ -54,9 +54,7 @@ export class SummaryCards extends LitElement {
 
     const topPlanModelStr = s.topPlanModel ?? "—";
     const topPlanModelDetail =
-      s.topPlanModel && s.topPlanModelCount > 0
-        ? `${s.topPlanModelCount} plan & agent calls`
-        : "no plan or agent data";
+      s.topPlanModel && s.topPlanModelCount > 0 ? `${s.topPlanModelCount} plan & agent calls` : "no plan or agent data";
 
     return html`
       <copilot-stat-card
@@ -65,7 +63,7 @@ export class SummaryCards extends LitElement {
         icon="🎯"
         label="True Acceptance Rate"
         highlight="blue"
-        .subtext=${"vs " + s.acceptanceRate.toFixed(1) + "% raw"}
+        .subtext=${s.totalShown > 0 ? "vs " + s.acceptanceRate.toFixed(1) + "% raw" : "No recorded suggestions"}
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
@@ -117,7 +115,7 @@ export class SummaryCards extends LitElement {
       ></copilot-stat-card>
       <copilot-stat-card
         show-download
-        .value=${s.acceptanceRate.toFixed(1) + "%"}
+        .value=${s.totalShown > 0 ? s.acceptanceRate.toFixed(1) + "%" : "—"}
         icon="📊"
         label="Raw Acceptance Rate"
       ></copilot-stat-card>

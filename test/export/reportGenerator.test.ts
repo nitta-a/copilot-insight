@@ -113,6 +113,11 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("| Chat Requests | 15 |"));
   });
 
+  test("marks the acceptance rate unavailable when no suggestions were shown", () => {
+    const md = generateMarkdownReport({ period: "test", stats: makeStats({ totalShown: 0, acceptanceRate: 0 }) });
+    assert.ok(md.includes("| Acceptance Rate | Unavailable |"));
+  });
+
   test("includes Copilot CLI token and AI credit usage", () => {
     const usage = {
       inputTokens: 100,

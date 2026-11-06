@@ -11,7 +11,7 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   lines.push(`Total Shown,${stats.totalShown}`);
   lines.push(`Total Accepted,${stats.totalAccepted}`);
   lines.push(`Total Rejected,${stats.totalRejected}`);
-  lines.push(`Acceptance Rate,${stats.acceptanceRate.toFixed(1)}%`);
+  lines.push(`Acceptance Rate,${stats.totalShown > 0 ? `${stats.acceptanceRate.toFixed(1)}%` : ""}`);
   lines.push(`Total Chat,${stats.totalChat}`);
   lines.push(`Avg Latency (ms),${stats.avgLatencyMs.toFixed(0)}`);
   lines.push(`Latency P50 (ms),${stats.latencyP50.toFixed(0)}`);
@@ -34,14 +34,14 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
   const sortedDates = Array.from(new Set([...stats.byDate.keys(), ...stats.cliByDate.keys()])).sort();
   for (const dateStr of sortedDates) {
     const stat = stats.byDate.get(dateStr) ?? { shown: 0, accepted: 0 };
-    const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
+    const rate = stat.shown > 0 ? `${((stat.accepted / stat.shown) * 100).toFixed(1)}%` : "";
     const chatCount = stats.chatByDate.get(dateStr) ?? 0;
     const cliStat = stats.cliByDate.get(dateStr);
     const cliUsage = cliStat?.usage;
     const cliTokens = cliUsage ? cliUsage.inputTokens + cliUsage.outputTokens : 0;
     const cliCredits = cliUsage ? (toAiCredits(cliUsage.totalNanoAiu)?.toFixed(9) ?? "") : "";
     lines.push(
-      `${dateStr},${stat.shown},${stat.accepted},${rate}%,${chatCount},${cliStat?.prompts ?? 0},${cliTokens},${cliCredits}`,
+      `${dateStr},${stat.shown},${stat.accepted},${rate},${chatCount},${cliStat?.prompts ?? 0},${cliTokens},${cliCredits}`,
     );
   }
   lines.push("");
@@ -83,8 +83,8 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
     lines.push("# Inline Completion Model");
     lines.push("Model,Shown,Accepted,Rate");
     for (const [model, stat] of Array.from(stats.byModel.entries()).sort((a, b) => b[1].shown - a[1].shown)) {
-      const rate = stat.shown > 0 ? ((stat.accepted / stat.shown) * 100).toFixed(1) : "0.0";
-      lines.push(`${csvEscape(model)},${stat.shown},${stat.accepted},${rate}%`);
+      const rate = stat.shown > 0 ? `${((stat.accepted / stat.shown) * 100).toFixed(1)}%` : "";
+      lines.push(`${csvEscape(model)},${stat.shown},${stat.accepted},${rate}`);
     }
     lines.push("");
   }
@@ -128,8 +128,8 @@ export function exportAsCsv(stats: CopilotUsageStats): string {
     lines.push("Session,Shown,Accepted,Rate,Chat,Errors");
     const sessions = Array.from(stats.bySession.values()).sort((a, b) => b.sessionId.localeCompare(a.sessionId));
     for (const s of sessions) {
-      const rate = s.shown > 0 ? ((s.accepted / s.shown) * 100).toFixed(1) : "0.0";
-      lines.push(`${csvEscape(s.sessionId)},${s.shown},${s.accepted},${rate}%,${s.chat},${s.errors}`);
+      const rate = s.shown > 0 ? `${((s.accepted / s.shown) * 100).toFixed(1)}%` : "";
+      lines.push(`${csvEscape(s.sessionId)},${s.shown},${s.accepted},${rate},${s.chat},${s.errors}`);
     }
     lines.push("");
   }
@@ -175,6 +175,7 @@ export function exportAsJson(stats: CopilotUsageStats): string {
       totalAccepted: stats.totalAccepted,
       totalRejected: stats.totalRejected,
       acceptanceRate: Number(stats.acceptanceRate.toFixed(1)),
+      acceptanceRateAvailable: stats.totalShown > 0,
       totalChat: stats.totalChat,
       avgLatencyMs: Number(stats.avgLatencyMs.toFixed(0)),
       latencyP50: Number(stats.latencyP50.toFixed(0)),

@@ -129,7 +129,7 @@ class CategoryItem extends vscode.TreeItem {
 
     const items: StatItem[] = [
       new StatItem("Accepted", String(stats.totalAccepted), "check"),
-      new StatItem("Acceptance Rate", `${stats.acceptanceRate.toFixed(1)}%`, "percentage"),
+      new StatItem("Acceptance Rate", stats.totalShown > 0 ? `${stats.acceptanceRate.toFixed(1)}%` : "—", "percentage"),
       new StatItem("Time Saved (ROI)", timeSavedLabel, "clock", roiRank?.color),
     ];
 
