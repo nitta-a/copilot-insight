@@ -20,6 +20,8 @@ Stop guessing if AI is making you faster. Measure your ROI, track your prompt ef
 
 - **100% Local & Privacy-First** — No telemetry, no cloud servers. It parses local VS Code extension host logs and Copilot CLI session records on your machine.
 - **ROI & True Acceptance Rate** — Tracks overall acceptance rate, declined suggestions, and estimated **minutes saved (ROI)** split into typing savings and agentic/autonomous savings.
+- **Inline data limits** — Suggestion counts depend on local logs and can be incomplete. VS Code does not expose another extension's live Copilot completion events. True acceptance is unavailable without recorded acceptance observations and shown counts.
+- **Exported rates** — CSV leaves acceptance rates empty when no suggestions were shown. JSON retains its numeric `summary.acceptanceRate` for compatibility and includes `summary.acceptanceRateAvailable` to indicate whether that value can be used.
 - **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness. Includes **token consumption** (prompt + completion tokens per model), Copilot CLI AI credits from local session records, and a **finish-reason distribution** chart showing how often completions end normally versus hitting the context-window limit.
 - **Copilot CLI Usage** — Shows input/output and cached token totals, AI credits, and daily/model breakdowns from local CLI session records. VS Code Chat credits are not included in this CLI total.
 - **Daily Consumption & Thread Costs** — Overview charts show AI credits and input/output tokens by model-call date (UTC), with 7-day, 30-day, and full-history views. Sessions includes CLI/SDK conversation totals and per-prompt consumption alongside editor threads.
@@ -36,9 +38,9 @@ Copilot Insight is built for extreme performance without bloating your editor:
 ### 🗂️ Dashboard Tabs
 
 - 📊 **Overview (ROI)**: Summary cards, auto-generated Insights, and Weekly Trends.
-- 🔍 **Health (Diagnostics)**: True Acceptance Rate timelines, daily usage, and **Agent Intelligence Overview** (Planning & Execution stats, autonomous action counts).
+- 🔍 **Health (Diagnostics)**: Activity and acceptance-rate timelines, daily usage, and **Agent Intelligence Overview** (Planning & Execution stats, autonomous action counts). CLI / SDK prompt counts are shown separately from accepted inline suggestions.
 - 🌊 **Flow (Velocity)**: KPM scatter plots, activity heatmaps, and **Context Effectiveness** breakdown by source (Active File, Workspace, Symbol, Embeddings).
-- 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, Prompt Length scatter chart, and **Context Leverage** chart (Context size vs. Acceptance rate).
+- 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, prompt length versus observed response rate, saved chat sessions by request count, and **Context Leverage** chart (Context size vs. Acceptance rate). A recorded response is not a measure of acceptance, quality, or task completion.
 - 📂 **Sessions**: Session Intelligence Explorer. Drill down into chat threads, user prompts, file edits, and memory refreshes.
 
 <details>
@@ -76,6 +78,7 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 - Select **View thread totals** or open **Sessions**, then select a **Copilot CLI / SDK** thread. Its header shows the conversation total; each prompt shows the calls recorded before the next prompt. Previews stay local and are limited to 160 characters.
 - Cumulative checkpoints can include adjustments (for example Fusion accounting) without a call timestamp or prompt association. These remain in the thread total; differences from the daily graphs are shown separately, never assigned to the session start date. New calls after a checkpoint are included.
 - Cached input is already part of input tokens. Missing credit data is **Unavailable**, not zero. Credits are Copilot usage units, not a currency bill; other devices and unrecorded VS Code Chat usage are not covered. Use **Copilot Insight: Refresh** to read newly appended records. Existing snapshots without thread details require a refresh.
+- The same view shows observed model-call timing across the recorded history and separates human permission responses from host policy decisions. Sessions show recorded context compactions and subagent relationships. Timing comparisons do not control for task differences; unavailable fields are not inferred. Agent-origin messages are shown separately from human prompts. Refresh older snapshots to populate these details.
 
 ### Configuration
 
@@ -110,11 +113,19 @@ cd native-parser && cargo test
 
 Restart the VS Code extension host (**Developer: Reload Window**) to apply.
 
+### Integration tests
+
+Run `npm test` for the VS Code integration suite. To build and install a VSIX in an isolated profile and test the dashboard, set `VSCODE_EXECUTABLE_PATH` to the VS Code executable and run `npm run test:vsix`. This smoke test requires Rust and a graphical display; on Linux it can run under `xvfb-run -a`.
+
 ---
 
 <a name="japanese"></a>
 
 ## 日本語
+
+インライン補完の件数はローカルログに記録された範囲に限られます。VS Code は他の拡張機能の Copilot 補完イベントをリアルタイムに公開していません。採用イベントまたは表示件数が記録されていない場合、True Acceptance Rate は算出できません。
+
+表示件数がゼロの場合、CSV の採用率は空欄です。JSON は互換性のため数値を保持し、`summary.acceptanceRateAvailable` で率を算出できるかを示します。
 
 GitHub Copilot のローカルログファイルを解析し、使用統計を高速かつリアクティブなダッシュボードで可視化する、100%ローカル・プライバシーファーストな VS Code 拡張機能です。
 
@@ -214,3 +225,7 @@ cd native-parser && cargo test
 ```
 
 適用するには VS Code ウィンドウを再読み込み (**Developer: Reload Window**) してください。
+
+### 結合テスト
+
+`npm test` で VS Code の結合テストを実行します。VSIX をビルドして隔離プロファイルにインストールし、ダッシュボードを検証するには、`VSCODE_EXECUTABLE_PATH` に VS Code の実行ファイルを指定して `npm run test:vsix` を実行します。Rust と画面表示環境が必要です。Linux では `xvfb-run -a` を利用できます。

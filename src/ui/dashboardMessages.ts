@@ -96,6 +96,7 @@ export interface SummaryData {
     projectDailyUsageAvailable: boolean;
     dailyUsage: DailyUsagePoint[];
     fusionRuns?: import("../types").FusionRun[];
+    modelCalls?: import("../types").CliDiagnostics["modelCalls"];
     interventionThreads?: Array<{ projectPath?: string | null; interventions?: import("../types").CliInterventions }>;
     /** Signed difference between cumulative totals and timestamped call records. */
     unattributedTokens: number;
@@ -119,8 +120,8 @@ export interface TimelineEntry {
   accepted: number;
   /** True accepted count (null when no event data). */
   trueAccepted: number | null;
-  /** Acceptance rate as percentage 0–100. */
-  rate: number;
+  /** Acceptance rate as percentage 0–100, or null when no suggestions were shown. */
+  rate: number | null;
   /** True when this day's acceptance rate is a statistical anomaly (|z| > threshold). */
   isAnomaly: boolean;
   /** Human-readable explanation of why this day is anomalous, or null when not anomalous. */
@@ -133,10 +134,8 @@ export interface TimelineEntry {
   editorAccepted: number;
   /** Chat interactions from VS Code editor for this day. */
   chatCount: number;
-  /** Completions shown from Copilot CLI. */
-  cliShown: number;
-  /** Completions accepted from Copilot CLI. */
-  cliAccepted: number;
+  /** Human prompts recorded by Copilot CLI or SDK. */
+  cliPrompts: number;
 }
 
 export interface VelocityPoint {
@@ -269,12 +268,10 @@ export interface AgentIntelligenceOverview {
 
 /** A single bucket in the chat-session turn-count distribution. */
 export interface TurnBucket {
-  /** Human-readable bucket label (e.g. "1 turn", "2-3 turns"). */
+  /** Human-readable request-count bucket label. */
   bucket: string;
   /** Total number of chat sessions that fall into this bucket. */
   sessionCount: number;
-  /** Number of sessions in this bucket where code was copied or applied. */
-  acceptedCount: number;
 }
 
 /**
@@ -289,9 +286,9 @@ export interface PromptInsightsData {
   /** Completion finish-reason breakdown sorted by count desc (e.g. stop, length). */
   finishReasonBreakdown: CountBreakdownEntry[];
   /**
-   * Scatter data for the Prompt Length vs Acceptance Rate bubble chart.
+   * Scatter data for the Prompt Length vs Observed Response Rate bubble chart.
    * - `x`: prompt character count midpoint of the bucket
-   * - `y`: acceptance rate (0–100)
+   * - `y`: observed response rate (0–100)
    * - `r`: bubble radius proportional to the number of samples (shown)
    */
   promptLengthScatterData: { x: number; y: number; r: number }[];
@@ -301,8 +298,7 @@ export interface PromptInsightsData {
    */
   topKeywords: { word: string; count: number }[];
   /**
-   * Turn-count distribution for chat sessions, bucketed into four ranges.
-   * Used to render the Turn Churn mixed chart in the Prompt Insights tab.
+   * Request-count distribution for saved VS Code chat sessions.
    */
   turnStats: TurnBucket[];
 }

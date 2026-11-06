@@ -10,6 +10,68 @@ import { PROMPT_LENGTH_BUCKETS, getPromptLengthBucket } from "../../src/types";
 // ---------------------------------------------------------------------------
 
 suite("parseEventsJsonl", () => {
+  test("joins SDK tool calls and follows newModel with legacy fallback", () => {
+    const content = [
+      { type: "session.start", data: { model: "old" } },
+      { type: "session.model_change", data: { newModel: "new" } },
+      { type: "tool.execution_start", data: { toolCallId: "one", toolName: "view" } },
+      { type: "tool.execution_start", data: { toolCallId: "two", toolName: "bash" } },
+      { type: "tool.execution_complete", data: { toolCallId: "two", success: false } },
+      { type: "tool.execution_complete", data: { toolCallId: "one", success: true } },
+      { type: "assistant.message", data: {} },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    const result = parseEventsJsonl(content);
+    assert.deepStrictEqual(result.toolExecutions.get("view"), { total: 1, success: 1, fail: 0 });
+    assert.deepStrictEqual(result.toolExecutions.get("bash"), { total: 1, success: 0, fail: 1 });
+    assert.strictEqual(result.toolModelUsage.get("view")?.get("new"), 1);
+    assert.strictEqual(result.interactionsByModel.get("new"), 1);
+  });
+
+  test("separates agent messages and captures SDK diagnostics without message contents", () => {
+    const content = [
+      { type: "session.start", data: { sessionId: "s", selectedModel: "m" } },
+      { type: "user.message", data: { content: "human" } },
+      { type: "user.message", data: { content: "agent text", source: "agent-123" } },
+      { type: "session.usage_record", data: { usage: { model: "m", duration: 1200, timeToFirstTokenMs: 300 } } },
+      {
+        type: "session.compaction_complete",
+        data: {
+          success: true,
+          trigger: "threshold",
+          preCompactionTokens: 100,
+          postCompactionTokens: 40,
+          summaryContent: "private",
+        },
+      },
+      { type: "subagent.started", data: { toolCallId: "a", parentId: "parent", agentName: "review", model: "m" } },
+      { type: "subagent.completed", data: { toolCallId: "a", durationMs: 500 } },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    const result = parseEventsJsonl(content);
+    assert.strictEqual(result.totalInteractions, 1);
+    assert.strictEqual(result.thread?.turns[1].actor, "ai");
+    assert.deepStrictEqual(result.thread?.diagnostics?.modelCalls, [
+      { model: "m", durationMs: 1200, firstTokenMs: 300 },
+    ]);
+    assert.deepStrictEqual(result.thread?.diagnostics?.compactions[0], {
+      timestamp: null,
+      trigger: "threshold",
+      success: true,
+      before: 100,
+      after: 40,
+    });
+    assert.deepStrictEqual(result.thread?.diagnostics?.subagents[0], {
+      id: "a",
+      parentId: "parent",
+      name: "review",
+      model: "m",
+      durationMs: 500,
+    });
+    assert.ok(!JSON.stringify(result.thread?.diagnostics).includes("private"));
+  });
   test("returns empty result for empty content", () => {
     const result = parseEventsJsonl("");
     assert.strictEqual(result.byDate.size, 0);
@@ -793,6 +855,51 @@ suite("parseEventsJsonl — promptEffectiveness", () => {
     const result = parseEventsJsonl(content);
     assert.strictEqual(result.promptEffectiveness["0-50"]?.shown, 1);
     assert.strictEqual(result.promptEffectiveness["0-50"]?.accepted, 0);
+  });
+
+  test("counts a matching text response once and ignores nested, unrelated and tool-only messages", () => {
+    const events = [
+      { type: "user.message", data: { messageId: "prompt-1", content: "hello" } },
+      {
+        type: "assistant.message",
+        data: { originatingMessageId: "prompt-1", parentToolCallId: "tool", content: "nested" },
+      },
+      { type: "assistant.message", data: { originatingMessageId: "other", content: "unrelated" } },
+      { type: "assistant.message", data: { originatingMessageId: "prompt-1", outputTokens: 10, toolRequests: [{}] } },
+    ];
+    const parse = () => parseEventsJsonl(events.map((event) => JSON.stringify(event)).join("\n"));
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 0 });
+    events.push(
+      { type: "assistant.message", data: { originatingMessageId: "prompt-1", content: "response" } },
+      { type: "assistant.message", data: { originatingMessageId: "prompt-1", content: "another response" } },
+    );
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 1 });
+  });
+
+  test("preserves a human prompt across agent messages and requires matching IDs", () => {
+    const events = [
+      { type: "user.message", data: { messageId: "human", content: "hello" } },
+      { type: "user.message", data: { messageId: "agent", source: "agent-1", content: "coordination" } },
+      { type: "assistant.message", data: { originatingMessageId: "agent", content: "agent reply" } },
+      { type: "assistant.message", data: { content: "unknown origin" } },
+    ];
+    const parse = () => parseEventsJsonl(events.map((event) => JSON.stringify(event)).join("\n"));
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 0 });
+    events.push({ type: "assistant.message", data: { originatingMessageId: "human", content: "human reply" } });
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 1 });
+  });
+
+  test("does not infer an agent-interleaved response when the human message has no ID", () => {
+    const content = [
+      { type: "user.message", data: { content: "hello" } },
+      { type: "user.message", data: { source: "agent-1", content: "coordination" } },
+      { type: "assistant.message", data: { content: "ambiguous" } },
+      { type: "user.message", data: { content: "next" } },
+      { type: "assistant.message", data: { content: "legacy response" } },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    assert.deepStrictEqual(parseEventsJsonl(content).promptEffectiveness["0-50"], { shown: 2, accepted: 1 });
   });
 
   test("routes messages to correct buckets by length", () => {

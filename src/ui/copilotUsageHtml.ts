@@ -399,6 +399,7 @@ export function getHtmlContent(
 </head>
 <body>
   <h1>🤖 GitHub Copilot Usage Dashboard</h1>
+  <p>Inline suggestion counts reflect only events found in local logs; zero may mean no data was recorded. Live Copilot completion tracking is unavailable.</p>
   ${dateRangeLabel}
   ${warningSection}
   <section id="db-interactive">
@@ -434,7 +435,7 @@ export function getHtmlContent(
       <div class="db-panel-view" id="db-tab-health">
         <div style="width:100%">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <h2 style="margin:0">📈 True Acceptance Rate Timeline</h2>
+            <h2 style="margin:0">📈 Activity and Acceptance Rate Timeline</h2>
             <button id="db-btn-export-png-health" class="db-export-btn">🖼️ Save Chart (PNG)</button>
           </div>
           <canvas id="db-timeline-chart" style="max-height:280px"></canvas>
@@ -532,7 +533,7 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
   <copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" icon="✅" label="Accepted Completions"></copilot-stat-card>
-  <copilot-stat-card show-download value="${escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`)}" icon="📊" label="Acceptance Rate"></copilot-stat-card>
+  <copilot-stat-card show-download value="${stats.totalShown > 0 ? escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`) : "—"}" icon="📊" label="Acceptance Rate"></copilot-stat-card>
   <copilot-stat-card show-download value="${timeSavedDisplay}" icon="⏱️" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
   <copilot-stat-card show-download value="${latencyDisplay}" icon="⚡" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
   <copilot-stat-card show-download value="${escapeHtml(String(totalSessions))}" icon="📂" label="Active Sessions"></copilot-stat-card>

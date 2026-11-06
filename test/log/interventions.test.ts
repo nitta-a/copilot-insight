@@ -76,6 +76,7 @@ suite("CLI permission observations", () => {
       "2026-01-02",
       "2026-01-04",
     );
+    assert.strictEqual(summary.hostPolicy, 1);
     assert.deepStrictEqual(
       [
         summary.human,

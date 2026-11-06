@@ -167,6 +167,15 @@ suite("CopilotUsageTreeProvider", () => {
       assert.strictEqual(rateItem.description, "75.3%");
     });
 
+    test("shows an unavailable acceptance rate when no suggestions were observed", () => {
+      const provider = new CopilotUsageTreeProvider();
+      provider.updateStats(makeStats({ totalShown: 0, acceptanceRate: 0 }));
+      const section = provider.getChildren().find((item) => item.label === "Key Performance Indicators");
+      assert.ok(section);
+      const rate = provider.getChildren(section).find((item) => item.label === "Acceptance Rate");
+      assert.strictEqual(rate?.description, "—");
+    });
+
     test("includes avg latency when > 0", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ avgLatencyMs: 300 }));

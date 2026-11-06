@@ -17,7 +17,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { CliDateStat, CliThreadUsage, CliUsageStat, CliUsageTurn } from "../types";
+import type { CliDateStat, CliDiagnostics, CliThreadUsage, CliUsageStat, CliUsageTurn } from "../types";
 import { getPromptLengthBucket } from "../types";
 import { parseFusion } from "./fusion";
 import { parseInterventions } from "./interventions";
@@ -246,6 +246,7 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     if (assignedSessions.has(thread.sessionId)) {
       thread.interventions = undefined;
       thread.fusionRuns = undefined;
+      thread.diagnostics = undefined;
       continue;
     }
     assignedSessions.add(thread.sessionId);
@@ -254,6 +255,10 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       seenInterventionEvents,
     );
     thread.fusionRuns = parseFusion((interventionSources.get(thread.sessionId) ?? []).join("\n"));
+    const sources = interventionSources.get(thread.sessionId) ?? [];
+    if (sources.length > 1) {
+      thread.diagnostics = parseEventsJsonl(sources.join("\n"), defaultModel, thread.sessionId).thread?.diagnostics;
+    }
   }
 
   const result: CliStats = {
@@ -380,6 +385,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   const usageByModel = new Map<string, CliUsageStat>();
   const usageByDate = new Map<string, CliUsageStat>();
   const seenUsageIds = new Set<string>();
+  const seenDiagnosticIds = new Set<string>();
   const usageWatermarks = new Map<string, number>();
   const turns: CliUsageTurn[] = [];
   let currentTurn: CliUsageTurn | undefined;
@@ -398,6 +404,8 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
   const toolExecutions = new Map<string, { total: number; success: number; fail: number }>();
   const toolModelUsage = new Map<string, Map<string, number>>();
+  const toolNames = new Map<string, string>();
+  const diagnostics: CliDiagnostics = { compactions: [], modelCalls: [], subagents: [] };
   let reasoningTokens = 0;
   const agentTypes = new Map<string, number>();
   let turnCount = 0;
@@ -410,6 +418,8 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   let sessionModel = defaultModel;
   // Track the bucket of the most recent user.message awaiting an assistant response.
   let pendingBucket: string | null = null;
+  let pendingMessageId: string | null = null;
+  let agentIntervened = false;
 
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
@@ -437,6 +447,14 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
     }
     if (!type) {
       continue;
+    }
+    if (type === "session.compaction_complete" || type === "subagent.started" || type === "subagent.completed") {
+      if (typeof event.id === "string" && seenDiagnosticIds.has(event.id)) {
+        continue;
+      }
+      if (typeof event.id === "string") {
+        seenDiagnosticIds.add(event.id);
+      }
     }
 
     if (type === "session.start") {
@@ -466,6 +484,8 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       sessionModel = typeof model === "string" && model.trim() ? model.trim() : defaultModel;
       // Reset pending bucket when a new session starts.
       pendingBucket = null;
+      pendingMessageId = null;
+      agentIntervened = false;
       currentTurn = undefined;
       currentTurnHasUsage = false;
       continue;
@@ -517,6 +537,19 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
             usageByDate.set(usageDate, addUsage(usageByDate.get(usageDate), recordUsage));
           }
           const model = typeof record.model === "string" && record.model.trim() ? record.model.trim() : sessionModel;
+          const durationMs =
+            typeof record.duration === "number" && Number.isFinite(record.duration) && record.duration >= 0
+              ? record.duration
+              : null;
+          const firstTokenMs =
+            typeof record.timeToFirstTokenMs === "number" &&
+            Number.isFinite(record.timeToFirstTokenMs) &&
+            record.timeToFirstTokenMs >= 0
+              ? record.timeToFirstTokenMs
+              : null;
+          if (durationMs !== null || firstTokenMs !== null) {
+            diagnostics.modelCalls.push({ model, durationMs, firstTokenMs });
+          }
           const alreadyInSnapshot =
             typeof sourceSessionId === "string" &&
             typeof sequence === "number" &&
@@ -593,13 +626,19 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
     if (type === "user.message") {
       const data = event.data as Record<string, unknown> | undefined;
       const content = typeof data?.content === "string" ? data.content : "";
+      const agentMessage = typeof data?.source === "string" && data.source.startsWith("agent-");
       currentTurn = {
         timestamp,
         prompt: content.replace(/\s+/g, " ").trim().slice(0, 160),
         usage: { ...emptyUsage(), totalNanoAiu: null },
+        ...(agentMessage ? { actor: "ai" } : {}),
       };
       currentTurnHasUsage = false;
       turns.push(currentTurn);
+      if (agentMessage) {
+        agentIntervened = true;
+        continue;
+      }
       if (!title && currentTurn.prompt) {
         title = currentTurn.prompt;
       }
@@ -614,6 +653,8 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
 
       // Record pending bucket for the next assistant.message.
       pendingBucket = bucket;
+      pendingMessageId = typeof data?.messageId === "string" ? data.messageId : null;
+      agentIntervened = false;
 
       const promptDate = timestamp?.slice(0, 10) ?? dateKey;
       const dateStat = byDate.get(promptDate) ?? { prompts: 0, outputTokens: 0 };
@@ -630,13 +671,22 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
         const outputDate = timestamp?.slice(0, 10) ?? dateKey;
         const dateStat = byDate.get(outputDate) ?? { prompts: 0, outputTokens: 0 };
         byDate.set(outputDate, { ...dateStat, outputTokens: dateStat.outputTokens + outputTokens });
-
-        // The preceding user.message was "accepted" (AI produced a response).
-        if (pendingBucket !== null) {
-          const existing = promptEffectiveness[pendingBucket] ?? { shown: 0, accepted: 0 };
-          promptEffectiveness[pendingBucket] = { shown: existing.shown, accepted: existing.accepted + 1 };
-          pendingBucket = null;
-        }
+      }
+      const origin = typeof data?.originatingMessageId === "string" ? data.originatingMessageId : null;
+      const responseText = typeof data?.content === "string" && data.content.trim().length > 0;
+      // shortcut: without interleaving, missing message IDs use event order; upgrade when IDs are always recorded.
+      if (
+        pendingBucket !== null &&
+        !data?.parentToolCallId &&
+        (agentIntervened
+          ? !!pendingMessageId && pendingMessageId === origin
+          : !pendingMessageId || !origin || pendingMessageId === origin) &&
+        (responseText || (outputTokens > 0 && !Array.isArray(data?.toolRequests)))
+      ) {
+        const existing = promptEffectiveness[pendingBucket] ?? { shown: 0, accepted: 0 };
+        promptEffectiveness[pendingBucket] = { shown: existing.shown, accepted: existing.accepted + 1 };
+        pendingBucket = null;
+        pendingMessageId = null;
       }
       // Attribute this turn to a model (prefer per-message field over session model).
       const turnModel = (data?.model as string | undefined)?.trim() || sessionModel;
@@ -649,12 +699,25 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       continue;
     }
 
+    if (type === "tool.execution_start") {
+      const data = asRecord(event.data);
+      if (typeof data?.toolCallId === "string" && typeof data.toolName === "string") {
+        toolNames.set(data.toolCallId, data.toolName);
+      }
+      continue;
+    }
+
     if (type === "tool.execution_complete") {
       const data = event.data as Record<string, unknown> | undefined;
-      const toolName = data?.toolName as string | undefined;
-      const success = data?.success as boolean | undefined;
-      const toolModel = (data?.model as string | undefined)?.trim() || sessionModel;
-      if (toolName) {
+      const toolName =
+        typeof data?.toolName === "string"
+          ? data.toolName
+          : typeof data?.toolCallId === "string"
+            ? toolNames.get(data.toolCallId)
+            : undefined;
+      const success = data?.success;
+      const toolModel = (typeof data?.model === "string" ? data.model.trim() : "") || sessionModel;
+      if (toolName && typeof success === "boolean") {
         const existing = toolExecutions.get(toolName) ?? { total: 0, success: 0, fail: 0 };
         toolExecutions.set(toolName, {
           total: existing.total + 1,
@@ -669,11 +732,43 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       continue;
     }
 
+    if (type === "session.compaction_complete") {
+      const data = asRecord(event.data);
+      const valid = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+      diagnostics.compactions.push({
+        timestamp,
+        trigger: typeof data?.trigger === "string" ? data.trigger : null,
+        success: typeof data?.success === "boolean" ? data.success : null,
+        before: valid(data?.preCompactionTokens),
+        after: valid(data?.postCompactionTokens),
+      });
+      continue;
+    }
+
     if (type === "subagent.started") {
       const data = event.data as Record<string, unknown> | undefined;
       const agentName = data?.agentName as string | undefined;
       if (agentName) {
         agentTypes.set(agentName, (agentTypes.get(agentName) ?? 0) + 1);
+      }
+      if (typeof data?.toolCallId === "string") {
+        diagnostics.subagents.push({
+          id: data.toolCallId,
+          parentId: typeof data.parentId === "string" ? data.parentId : null,
+          name: typeof agentName === "string" ? agentName : "Unknown",
+          model: typeof data.model === "string" ? data.model : null,
+          durationMs: null,
+        });
+      }
+      continue;
+    }
+
+    if (type === "subagent.completed") {
+      const data = asRecord(event.data);
+      const agent = diagnostics.subagents.find((item) => item.id === data?.toolCallId);
+      if (agent && typeof data?.durationMs === "number" && Number.isFinite(data.durationMs) && data.durationMs >= 0) {
+        agent.durationMs = data.durationMs;
       }
       continue;
     }
@@ -689,7 +784,12 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       modelChanges++;
       // Update session-level model for subsequent events.
       const data = event.data as Record<string, unknown> | undefined;
-      const newModel = (data?.model as string | undefined)?.trim();
+      const newModel =
+        typeof data?.newModel === "string"
+          ? data.newModel.trim()
+          : typeof data?.model === "string"
+            ? data.model.trim()
+            : undefined;
       if (newModel) {
         sessionModel = newModel;
       }
@@ -728,6 +828,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
           turns,
           fusionRuns: parseFusion(content),
           interventions: parseInterventions(content),
+          diagnostics,
         }
       : undefined,
     totalInteractions,

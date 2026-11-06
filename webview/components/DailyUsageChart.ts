@@ -3,12 +3,19 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { DailyUsagePoint, SummaryData } from "../../src/ui/dashboardMessages";
 import { summarizeInterventions } from "../../src/log/interventions";
+import { summarizeModelCalls } from "../../src/log/diagnostics";
 import { formatPause } from "../dashboardUtils";
 import { summarizeFusion } from "../../src/log/fusion";
 import { toAiCredits } from "../../src/utils";
 import { createDailyUsageChart, createProjectUsageChart, getColors } from "../chartBuilders";
 import { formatAiCredits } from "../dashboardUtils";
-import { formatProjectShare, projectChartRows, projectPeriodRange, projectsForPeriod, type ProjectPeriod } from "../utils/projectUsage";
+import {
+  formatProjectShare,
+  projectChartRows,
+  projectPeriodRange,
+  projectsForPeriod,
+  type ProjectPeriod,
+} from "../utils/projectUsage";
 import { recordedPeriod } from "../utils/recordedPeriod";
 
 @customElement("copilot-daily-usage-chart")
@@ -123,15 +130,34 @@ export class DailyUsageChart extends LitElement {
     const days = this.visibleDays();
     const lastDate = this.usage?.dailyUsage.at(-1)?.date ?? null;
     const { start } = recordedPeriod(this.period, [lastDate]);
-    const fusionRange = recordedPeriod(this.period, [lastDate, ...(usage?.fusionRuns ?? []).map((run) => run.timestamp ? new Date(run.timestamp).toISOString().slice(0, 10) : null)]);
+    const fusionRange = recordedPeriod(this.period, [
+      lastDate,
+      ...(usage?.fusionRuns ?? []).map((run) =>
+        run.timestamp ? new Date(run.timestamp).toISOString().slice(0, 10) : null,
+      ),
+    ]);
     const fusion = summarizeFusion(usage?.fusionRuns ?? [], fusionRange.start, fusionRange.end);
     const undated = (usage?.fusionRuns ?? []).filter((run) => !run.timestamp).length;
     const interventionThreads = usage?.interventionThreads ?? [];
-    const interventionDates = interventionThreads.flatMap(({ interventions }) => interventions
-      ? [...interventions.permissions.flatMap((p) => [p.requestedAt, p.respondedAt]), ...interventions.steering, ...interventions.stops].filter((date): date is string => !!date).map((date) => date.slice(0, 10))
-      : []).sort();
-    const { start: interventionStart, end: interventionEnd } = recordedPeriod(this.period, [lastDate, ...interventionDates]);
+    const interventionDates = interventionThreads
+      .flatMap(({ interventions }) =>
+        interventions
+          ? [
+              ...interventions.permissions.flatMap((p) => [p.requestedAt, p.respondedAt]),
+              ...interventions.steering,
+              ...interventions.stops,
+            ]
+              .filter((date): date is string => !!date)
+              .map((date) => date.slice(0, 10))
+          : [],
+      )
+      .sort();
+    const { start: interventionStart, end: interventionEnd } = recordedPeriod(this.period, [
+      lastDate,
+      ...interventionDates,
+    ]);
     const intervention = summarizeInterventions(interventionThreads, interventionStart, interventionEnd);
+    const modelCalls = summarizeModelCalls(usage?.modelCalls ?? []);
     const projectInterventions = new Map<string | null, typeof interventionThreads>();
     for (const thread of interventionThreads) {
       const key = thread.projectPath ?? null;
@@ -140,7 +166,11 @@ export class DailyUsageChart extends LitElement {
     const maxPermissionCount = Math.max(0, ...intervention.counts.map(([, count]) => count));
     const maxPath = Math.max(0, ...fusion.paths.map(([, count]) => count));
     const maxCredits = Math.max(0, ...fusion.roles.map(([, credits]) => credits ?? 0));
-    const phaseNames = new Map([["primary", "Initial generation"], ["judge", "Judge"], ["repair", "Repair"]]);
+    const phaseNames = new Map([
+      ["primary", "Initial generation"],
+      ["judge", "Judge"],
+      ["repair", "Repair"],
+    ]);
     const phaseName = (phase: string) => phaseNames.get(phase) ?? phase;
     const projects = projectsForPeriod(usage?.projects ?? [], this.projectPeriod);
     const projectRange = projectPeriodRange(this.projectPeriod);
@@ -210,52 +240,95 @@ export class DailyUsageChart extends LitElement {
             </table></div>
           </details>`
       }
-      ${interventionThreads.some((thread) => thread.interventions) ? html`<section>
+      ${
+        modelCalls.length
+          ? html`<section>
+        <h3>Model call timing</h3>
+        <p>All recorded SDK calls; independent of the selected period. Averages describe observed calls, not model speed for equivalent tasks.</p>
+        <div class="table"><table><thead><tr><th scope="col">Model</th><th scope="col">Average call time</th><th scope="col">Average time to first token</th></tr></thead>
+        <tbody>${modelCalls.map((item) => html`<tr><td>${item.model}</td><td>${item.duration === null ? "Unavailable" : formatPause(Math.round(item.duration))} (${item.durationSamples} calls)</td><td>${item.firstToken === null ? "Unavailable" : formatPause(Math.round(item.firstToken))} (${item.firstTokenSamples} calls)</td></tr>`)}</tbody></table></div>
+      </section>`
+          : nothing
+      }
+      ${
+        interventionThreads.some((thread) => thread.interventions)
+          ? html`<section>
         <h3>Permission confirmations and other observed events</h3>
         <p>Period (UTC): ${this.period === "all" ? "all recorded dates" : interventionEnd ? `${interventionStart} – ${interventionEnd}` : "no dated events"}. Responses use response dates; messages and stops use event dates. Undated events are excluded.</p>
         <dl class="permission-metrics">
           <div class="permission-metric"><dt>Human permission responses</dt><dd>${intervention.human.toLocaleString()}</dd></div>
+          <div class="permission-metric"><dt>Host policy decisions</dt><dd>${intervention.hostPolicy.toLocaleString()}</dd><small>Decisions, not necessarily approvals</small></div>
           <div class="permission-metric"><dt>Sessions with human responses</dt><dd>${intervention.humanSessions.toLocaleString()} / ${intervention.observedSessions.toLocaleString()}</dd><small>Out of sessions with a permission request or response</small></div>
           <div class="permission-metric"><dt>Median request-to-response elapsed</dt><dd>${intervention.median === null ? "Unavailable" : formatPause(intervention.median)}</dd><small>${intervention.samples.toLocaleString()} valid samples</small></div>
         </dl>
         <h4>Human response targets</h4>
-        ${intervention.counts.length ? html`<ul class="fusion-list">${[...intervention.counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([kind, count]) => html`<li class="permission-row">
-          <span>${kind}</span><span class="fusion-track" aria-hidden="true"><span class="fusion-bar" style=${`display:block;width:${count / maxPermissionCount * 100}%`}></span></span><span class="fusion-value">${count.toLocaleString()}</span>
-        </li>`)}</ul>` : html`<p>No human permission responses in this period.</p>`}
+        ${
+          intervention.counts.length
+            ? html`<ul class="fusion-list">${[...intervention.counts]
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                .map(
+                  ([kind, count]) => html`<li class="permission-row">
+          <span>${kind}</span><span class="fusion-track" aria-hidden="true"><span class="fusion-bar" style=${`display:block;width:${(count / maxPermissionCount) * 100}%`}></span></span><span class="fusion-value">${count.toLocaleString()}</span>
+        </li>`,
+                )}</ul>`
+            : html`<p>No human permission responses in this period.</p>`
+        }
         <p>Bars compare response counts. Elapsed time can include absence, sleep, or concurrent work.</p>
         <h4>Other observed events</h4>
         <dl class="permission-metrics">
           <div class="permission-metric"><dt>Messages during execution (steering)</dt><dd>${intervention.steering.toLocaleString()}</dd><small>Message origin is not necessarily human</small></div>
           <div class="permission-metric"><dt>User-initiated stops</dt><dd>${intervention.stops.toLocaleString()}</dd></div>
         </dl>
-        ${usage?.projects !== null ? html`<details><summary>By project folder</summary><div class="table"><table>
+        ${
+          usage?.projects !== null
+            ? html`<details><summary>By project folder</summary><div class="table"><table>
           <thead><tr><th scope="col">Project</th><th scope="col">Human responses</th><th scope="col">Target breakdown</th><th scope="col">Median elapsed / samples</th><th scope="col">Sessions with human responses / observed</th><th scope="col">Steering / user stops</th></tr></thead>
           <tbody>${[...projectInterventions].map(([path, threads]) => {
             const item = summarizeInterventions(threads, interventionStart, interventionEnd);
             return html`<tr><td>${path ?? "Unknown"}</td><td>${item.human}</td><td>${item.counts.map(([kind, count]) => `${kind}: ${count}`).join(", ") || "—"}</td><td>${item.median === null ? "Unavailable" : formatPause(item.median)} / ${item.samples}</td><td>${item.humanSessions} / ${item.observedSessions}</td><td>${item.steering} / ${item.stops}</td></tr>`;
-          })}</tbody></table></div></details>` : html`<p>Project attribution unavailable for older snapshots.</p>`}
-      </section>` : nothing}
-      ${usage?.fusionRuns?.length ? html`<section>
+          })}</tbody></table></div></details>`
+            : html`<p>Project attribution unavailable for older snapshots.</p>`
+        }
+      </section>`
+          : nothing
+      }
+      ${
+        usage?.fusionRuns?.length
+          ? html`<section>
         <h3>Fusion execution paths</h3>
         <p>Period (UTC): ${this.period === "all" ? "all recorded dates" : fusionRange.end ? `${fusionRange.start} – ${fusionRange.end}` : "no dated events"}. ${fusion.count} runs; ${undated} undated runs excluded. Dates use the first observed Fusion event. Fusion usage is part of session usage, not an additional charge.</p>
         <h4>Observed paths</h4>
         <p>Only recorded phases are shown; the planned pattern may differ. Bars compare run counts.</p>
-        ${fusion.paths.length ? html`<ul class="fusion-list">${fusion.paths.map(([path, count]) => html`
+        ${
+          fusion.paths.length
+            ? html`<ul class="fusion-list">${fusion.paths.map(
+                ([path, count]) => html`
           <li class="fusion-row">
             <span class="fusion-steps">${path.split(" → ").map((phase, index) => html`${index ? html`<span aria-hidden="true">→</span><span class="sr-only"> then </span>` : nothing}<span class="fusion-step">${phaseName(phase)}</span>`)}</span>
-            <span class="fusion-track" aria-hidden="true"><span class="fusion-bar" style=${`display:block;width:${maxPath ? count / maxPath * 100 : 0}%`}></span></span>
+            <span class="fusion-track" aria-hidden="true"><span class="fusion-bar" style=${`display:block;width:${maxPath ? (count / maxPath) * 100 : 0}%`}></span></span>
             <span class="fusion-value">${count} ${count === 1 ? "run" : "runs"}</span>
-          </li>`)}</ul>` : html`<p>No execution paths in this period.</p>`}
+          </li>`,
+              )}</ul>`
+            : html`<p>No execution paths in this period.</p>`
+        }
         <h4>AI credits by phase</h4>
         <p>Bars compare recorded phase credits; unavailable amounts are not treated as zero.</p>
-        ${fusion.roles.length ? html`<ul class="fusion-list">${fusion.roles.map(([role, credits]) => html`
+        ${
+          fusion.roles.length
+            ? html`<ul class="fusion-list">${fusion.roles.map(
+                ([role, credits]) => html`
           <li class="fusion-row">
             <span class="fusion-label">${phaseName(role)}</span>
-            ${credits === null ? html`<span></span>` : html`<span class="fusion-track" aria-hidden="true"><span class="fusion-bar fusion-credit-bar" style=${`display:block;width:${maxCredits ? credits / maxCredits * 100 : 0}%`}></span></span>`}
+            ${credits === null ? html`<span></span>` : html`<span class="fusion-track" aria-hidden="true"><span class="fusion-bar fusion-credit-bar" style=${`display:block;width:${maxCredits ? (credits / maxCredits) * 100 : 0}%`}></span></span>`}
             <span class="fusion-value">${formatAiCredits(toAiCredits(credits))} AI credits</span>
-          </li>`)}</ul>` : html`<p>No phase credits in this period.</p>`}
-        <p>Repair after an observed judge: ${fusion.repaired} / ${fusion.judged} (${fusion.judged ? `${(100 * fusion.repaired / fusion.judged).toFixed(1)}%` : "unavailable"}).</p>
-      </section>` : nothing}
+          </li>`,
+              )}</ul>`
+            : html`<p>No phase credits in this period.</p>`
+        }
+        <p>Repair after an observed judge: ${fusion.repaired} / ${fusion.judged} (${fusion.judged ? `${((100 * fusion.repaired) / fusion.judged).toFixed(1)}%` : "unavailable"}).</p>
+      </section>`
+          : nothing
+      }
       <section>
         <header><h3>Usage by project</h3>
           <label>Period
@@ -274,21 +347,28 @@ export class DailyUsageChart extends LitElement {
             </select>
           </label>
         </header>
-        <p>Period (UTC): ${projectRange
-          ? `${projectRange.start} – ${projectRange.end} (inclusive)`
-          : projectDates.length && usage?.projectDailyUsageAvailable
-            ? `All time; dated records span ${projectDates[0]} – ${projectDates[projectDates.length - 1]}. Totals also include undated usage and adjustments.`
-            : "All time; date range unavailable. Totals include undated usage and adjustments."}</p>
+        <p>Period (UTC): ${
+          projectRange
+            ? `${projectRange.start} – ${projectRange.end} (inclusive)`
+            : projectDates.length && usage?.projectDailyUsageAvailable
+              ? `All time; dated records span ${projectDates[0]} – ${projectDates[projectDates.length - 1]}. Totals also include undated usage and adjustments.`
+              : "All time; date range unavailable. Totals include undated usage and adjustments."
+        }</p>
         <p>Usage is attributed to the folder at session start. Separate worktree paths are separate projects.
           AI credits show “Unavailable” when accounting is incomplete.</p>
-        ${this.projectPeriod !== "all" ? html`<p>UTC calendar days, inclusive. Only timestamped model-call records are included;
-          undated usage and cumulative accounting adjustments are excluded, so period totals may differ from reconciled session totals.</p>` : nothing}
-        ${usage?.projects === null
-          ? html`<p>Project data is unavailable in this saved snapshot. Refresh to read current session records.</p>`
-          : this.projectPeriod !== "all" && usage && !usage.projectDailyUsageAvailable
-            ? html`<p>Period data is unavailable in this saved snapshot. Refresh to read current session records.</p>`
-          : projects.length
-            ? html`<div class="charts">
+        ${
+          this.projectPeriod !== "all"
+            ? html`<p>UTC calendar days, inclusive. Only timestamped model-call records are included;
+          undated usage and cumulative accounting adjustments are excluded, so period totals may differ from reconciled session totals.</p>`
+            : nothing
+        }
+        ${
+          usage?.projects === null
+            ? html`<p>Project data is unavailable in this saved snapshot. Refresh to read current session records.</p>`
+            : this.projectPeriod !== "all" && usage && !usage.projectDailyUsageAvailable
+              ? html`<p>Period data is unavailable in this saved snapshot. Refresh to read current session records.</p>`
+              : projects.length
+                ? html`<div class="charts">
                 <section><h3>Tokens by project</h3>
                   <div class="project-chart-scroll"><div class="project-canvas" style=${`height: ${Math.max(180, (projects.length + 1) * 36 + 60)}px`}>
                     <canvas id="project-tokens" role="img" aria-label="Total and project input and output tokens; details in the project usage table"></canvas>
@@ -304,16 +384,19 @@ export class DailyUsageChart extends LitElement {
                 Chart numbers match the project rows below. The credit total is unavailable if any project's credits are unavailable.</p>
               <div class="table"><table>
                 <thead><tr><th scope="col">Project</th><th scope="col">Input tokens</th><th scope="col">Output tokens</th><th scope="col">Token share</th><th scope="col">Cache read</th><th scope="col">Cache write</th><th scope="col">AI credits</th><th scope="col">Credit share</th></tr></thead>
-                <tbody>${projects.map((project, index) => html`<tr>
+                <tbody>${projects.map(
+                  (project, index) => html`<tr>
                   <td>${index + 1}. ${project.name}${project.path ? html`<span class="project-path">${project.path}</span>` : nothing}</td>
                   <td>${project.inputTokens.toLocaleString()}</td><td>${project.outputTokens.toLocaleString()}</td>
                   <td>${formatProjectShare(project.inputTokens + project.outputTokens, projectTotals.inputTokens + projectTotals.outputTokens)}</td>
                   <td>${project.cacheReadTokens.toLocaleString()}</td><td>${project.cacheWriteTokens.toLocaleString()}</td>
                   <td>${formatAiCredits(project.aiCredits)}</td>
                   <td>${formatProjectShare(project.aiCredits, projectTotals.aiCredits)}</td>
-                </tr>`)}</tbody>
+                </tr>`,
+                )}</tbody>
               </table></div>`
-            : html`<p>No project usage is available.</p>`}
+                : html`<p>No project usage is available.</p>`
+        }
       </section>
     `;
   }

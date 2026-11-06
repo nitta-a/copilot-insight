@@ -86,6 +86,27 @@ suite("exportStats", () => {
       assert.ok(csv.includes("Log Files Parsed,5"), "Should contain log files count");
     });
 
+    test("leaves rates blank when there are no shown suggestions", () => {
+      const stats = makeStats({
+        totalShown: 0,
+        totalAccepted: 0,
+        acceptanceRate: 0,
+        byDate: new Map([["2026-03-01", { shown: 0, accepted: 0 }]]),
+        byModel: new Map([["model", { shown: 0, accepted: 0 }]]),
+      });
+      const csv = exportAsCsv(stats);
+      assert.ok(csv.includes("Acceptance Rate,\n"));
+      assert.ok(csv.includes("2026-03-01,0,0,,"));
+      assert.ok(csv.includes("model,0,0,\n"));
+      const summary = JSON.parse(exportAsJson(stats)).summary;
+      assert.strictEqual(summary.acceptanceRate, 0);
+      assert.strictEqual(summary.acceptanceRateAvailable, false);
+      assert.strictEqual(JSON.parse(exportAsJson(makeStats())).summary.acceptanceRateAvailable, true);
+      const observedZero = makeStats({ totalShown: 10, totalAccepted: 0, acceptanceRate: 0 });
+      assert.ok(exportAsCsv(observedZero).includes("Acceptance Rate,0.0%"));
+      assert.strictEqual(JSON.parse(exportAsJson(observedZero)).summary.acceptanceRateAvailable, true);
+    });
+
     test("contains date section sorted chronologically", () => {
       const csv = exportAsCsv(makeStats());
       assert.ok(csv.includes("# By Date"), "Should contain date header");
@@ -203,7 +224,7 @@ suite("exportStats", () => {
       );
 
       assert.ok(csv.includes("Copilot CLI AI Credits,1.500000000"));
-      assert.ok(csv.includes("2026-03-01,0,0,0.0%,0,2,120,1.500000000"));
+      assert.ok(csv.includes("2026-03-01,0,0,,0,2,120,1.500000000"));
       assert.ok(csv.includes("gpt-6-luna,100,20,80,10,5,1.500000000"));
     });
 
