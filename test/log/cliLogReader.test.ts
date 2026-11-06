@@ -876,6 +876,32 @@ suite("parseEventsJsonl — promptEffectiveness", () => {
     assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 1 });
   });
 
+  test("preserves a human prompt across agent messages and requires matching IDs", () => {
+    const events = [
+      { type: "user.message", data: { messageId: "human", content: "hello" } },
+      { type: "user.message", data: { messageId: "agent", source: "agent-1", content: "coordination" } },
+      { type: "assistant.message", data: { originatingMessageId: "agent", content: "agent reply" } },
+      { type: "assistant.message", data: { content: "unknown origin" } },
+    ];
+    const parse = () => parseEventsJsonl(events.map((event) => JSON.stringify(event)).join("\n"));
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 0 });
+    events.push({ type: "assistant.message", data: { originatingMessageId: "human", content: "human reply" } });
+    assert.deepStrictEqual(parse().promptEffectiveness["0-50"], { shown: 1, accepted: 1 });
+  });
+
+  test("does not infer an agent-interleaved response when the human message has no ID", () => {
+    const content = [
+      { type: "user.message", data: { content: "hello" } },
+      { type: "user.message", data: { source: "agent-1", content: "coordination" } },
+      { type: "assistant.message", data: { content: "ambiguous" } },
+      { type: "user.message", data: { content: "next" } },
+      { type: "assistant.message", data: { content: "legacy response" } },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join("\n");
+    assert.deepStrictEqual(parseEventsJsonl(content).promptEffectiveness["0-50"], { shown: 2, accepted: 1 });
+  });
+
   test("routes messages to correct buckets by length", () => {
     // Build content string with one message per length bucket.
     const short = "x".repeat(30); // 0-50

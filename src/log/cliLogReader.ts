@@ -419,6 +419,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   // Track the bucket of the most recent user.message awaiting an assistant response.
   let pendingBucket: string | null = null;
   let pendingMessageId: string | null = null;
+  let agentIntervened = false;
 
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
@@ -484,6 +485,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       // Reset pending bucket when a new session starts.
       pendingBucket = null;
       pendingMessageId = null;
+      agentIntervened = false;
       currentTurn = undefined;
       currentTurnHasUsage = false;
       continue;
@@ -634,8 +636,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       currentTurnHasUsage = false;
       turns.push(currentTurn);
       if (agentMessage) {
-        pendingBucket = null;
-        pendingMessageId = null;
+        agentIntervened = true;
         continue;
       }
       if (!title && currentTurn.prompt) {
@@ -653,6 +654,7 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       // Record pending bucket for the next assistant.message.
       pendingBucket = bucket;
       pendingMessageId = typeof data?.messageId === "string" ? data.messageId : null;
+      agentIntervened = false;
 
       const promptDate = timestamp?.slice(0, 10) ?? dateKey;
       const dateStat = byDate.get(promptDate) ?? { prompts: 0, outputTokens: 0 };
@@ -672,11 +674,13 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       }
       const origin = typeof data?.originatingMessageId === "string" ? data.originatingMessageId : null;
       const responseText = typeof data?.content === "string" && data.content.trim().length > 0;
-      // shortcut: records without message IDs are paired by event order, upgrade when IDs are always recorded.
+      // shortcut: without interleaving, missing message IDs use event order; upgrade when IDs are always recorded.
       if (
         pendingBucket !== null &&
         !data?.parentToolCallId &&
-        (!pendingMessageId || !origin || pendingMessageId === origin) &&
+        (agentIntervened
+          ? !!pendingMessageId && pendingMessageId === origin
+          : !pendingMessageId || !origin || pendingMessageId === origin) &&
         (responseText || (outputTokens > 0 && !Array.isArray(data?.toolRequests)))
       ) {
         const existing = promptEffectiveness[pendingBucket] ?? { shown: 0, accepted: 0 };
