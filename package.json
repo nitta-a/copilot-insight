@@ -2,7 +2,7 @@
   "name": "copilot-insight",
   "displayName": "Copilot Insight",
   "description": "Visualize your GitHub Copilot usage — suggestions shown/accepted and acceptance rate by date.",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "icon": "images/icon.png",
   "publisher": "nitta-a",
   "repository": {
@@ -184,6 +184,7 @@
     "format": "biome format ./src ./test",
     "format:fix": "biome format --write ./src ./test",
     "test": "vscode-test",
+    "test:vsix": "node test/smoke/vsixSmoke.cjs",
     "vsce:pre-package": "vsce package --pre-release --no-dependencies",
     "vsce:package": "vsce package",
     "vsce:pre-publish": "vsce publish --pre-release --no-dependencies",
@@ -206,6 +207,7 @@
     "@vscode/vsce": "^4.1.0",
     "esbuild": "^0.28.2",
     "npm-run-all": "^4.1.5",
+    "playwright-core": "^1.65.0",
     "typescript": "^6.0.2"
   },
   "dependencies": {

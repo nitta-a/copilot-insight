@@ -48,6 +48,10 @@ const REVERT_DELETION_THRESHOLD = 0.5;
 /** Default window (ms) within which a deletion following an accept is considered a revert. */
 const DEFAULT_REVERT_WINDOW_MS = 30_000;
 
+export function hasTrueAcceptanceData(events: TrackedEvent[], totalShown: number): boolean {
+  return totalShown > 0 && events.some((event) => event.eventType === "completionAccept");
+}
+
 /**
  * Calculate the "true" acceptance rate by checking whether accepted text was
  * deleted or heavily modified within `windowMs` milliseconds.

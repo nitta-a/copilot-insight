@@ -69,6 +69,48 @@ suite("chatSessionTitleReader", () => {
     }
   });
 
+  test("keeps agent names aligned after initial and replaced request lists", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-chat-agents-"));
+    try {
+      const dir = path.join(root, "abcdef0123456789abcdef0123456789", "chatSessions");
+      await fs.mkdir(dir, { recursive: true });
+      const mode = { kind: "agent", id: "file:///custom/agents/plan.agent.md" };
+      const request = (id: string) => ({ requestId: id, message: { text: id } });
+      await fs.writeFile(
+        path.join(dir, "initial.jsonl"),
+        [
+          { kind: 0, v: { sessionId: "initial", requests: [request("old")], inputState: { mode } } },
+          { kind: 2, k: ["requests"], v: [request("new")] },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n"),
+      );
+      await fs.writeFile(
+        path.join(dir, "replace.jsonl"),
+        [
+          { kind: 0, v: { sessionId: "replace", requests: [], inputState: { mode } } },
+          { kind: 2, k: ["requests"], v: [request("discarded")] },
+          { kind: 1, k: ["requests"], v: [request("old"), request("older")] },
+          { kind: 2, k: ["requests"], v: [request("new")] },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n"),
+      );
+      for (const records of [await readChatSessionRecords(root), (await readAllChatSessionData(root)).sessionRecords]) {
+        assert.deepStrictEqual(
+          records.find((record) => record.chatSessionId === "initial")?.requests.map((r) => r.customAgentName),
+          [null, "plan.agent.md"],
+        );
+        assert.deepStrictEqual(
+          records.find((record) => record.chatSessionId === "replace")?.requests.map((r) => r.customAgentName),
+          [null, null, "plan.agent.md"],
+        );
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("reads chat session requests and tool calls from jsonl files", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-chat-session-records-"));
     try {

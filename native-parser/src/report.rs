@@ -94,9 +94,12 @@ pub fn generate_markdown_report_native(input: ReportInput, period: String) -> St
 
     // ── 1. Executive Summary ─────────────────────────────────────────────────
     let acceptance_rate = if input.total_shown > 0 {
-        input.total_accepted as f64 / input.total_shown as f64 * 100.0
+        format!(
+            "{:.1}%",
+            input.total_accepted as f64 / input.total_shown as f64 * 100.0
+        )
     } else {
-        0.0
+        "Unavailable".to_string()
     };
     let avg_latency_display = if input.avg_latency_ms > 0.0 {
         format!("{:.0}ms", input.avg_latency_ms)
@@ -109,7 +112,7 @@ pub fn generate_markdown_report_native(input: ReportInput, period: String) -> St
     let _ = writeln!(buf, "|--------|-------|");
     let _ = writeln!(buf, "| Suggestions Shown | {} |", input.total_shown);
     let _ = writeln!(buf, "| Suggestions Accepted | {} |", input.total_accepted);
-    let _ = writeln!(buf, "| Acceptance Rate | {:.1}% |", acceptance_rate);
+    let _ = writeln!(buf, "| Acceptance Rate | {} |", acceptance_rate);
     let _ = writeln!(buf, "| Chat Requests | {} |", input.total_chat);
     let _ = writeln!(buf, "| Avg Latency | {} |", avg_latency_display);
     let _ = writeln!(buf, "| Errors | {} |", input.total_errors);
@@ -409,6 +412,14 @@ mod tests {
         assert!(report.contains("| Chat Requests | 15 |"));
         assert!(report.contains("| Errors | 2 |"));
         assert!(report.contains("| Log Files Parsed | 5 |"));
+    }
+
+    #[test]
+    fn report_marks_acceptance_rate_unavailable_without_shown_suggestions() {
+        let mut input = make_minimal_report_input();
+        input.total_shown = 0;
+        let report = generate_markdown_report_native(input, "test".to_string());
+        assert!(report.contains("| Acceptance Rate | Unavailable |"));
     }
 
     #[test]

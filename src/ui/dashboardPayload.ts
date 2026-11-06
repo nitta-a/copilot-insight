@@ -187,6 +187,7 @@ function buildCliUsageStats(stats: CopilotUsageStats): SummaryData["cliUsageStat
     projectDailyUsageAvailable: !!threads && threads.every((thread) => thread.usageByDate !== undefined),
     dailyUsage,
     fusionRuns: (threads ?? []).flatMap((thread) => thread.fusionRuns ?? []),
+    modelCalls: (threads ?? []).flatMap((thread) => thread.diagnostics?.modelCalls ?? []),
     interventionThreads: (threads ?? []).map(({ projectPath, interventions }) => ({ projectPath, interventions })),
     unattributedTokens: totalTokens - dailyUsage.reduce((sum, day) => sum + day.totalTokens, 0),
     unattributedAiCredits:
@@ -355,10 +356,12 @@ export function buildDashboardPayload(
   };
 
   // ── Timeline ─────────────────────────────────────────────────────────────
-  const dateEntries = Array.from(stats.byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const allDates = Array.from(
+    new Set([...stats.byDate.keys(), ...stats.chatByDate.keys(), ...stats.cliByDate.keys()]),
+  ).sort();
+  const dateEntries = allDates.map((date) => [date, stats.byDate.get(date) ?? { shown: 0, accepted: 0 }] as const);
 
   // ── Available range ───────────────────────────────────────────────────────
-  const allDates = Array.from(stats.byDate.keys()).sort();
   const availableRange = {
     minDate: allDates[0] ?? "",
     maxDate: allDates[allDates.length - 1] ?? "",
@@ -403,7 +406,7 @@ export function buildDashboardPayload(
       shown: stat.shown,
       accepted: stat.accepted,
       trueAccepted: null, // Per-day true-accept breakdown not available from event data
-      rate,
+      rate: stat.shown > 0 ? rate : null,
       isAnomaly,
       anomalyReason,
       // Source-category breakdown: when sourceCategory data is not available, all
@@ -411,8 +414,7 @@ export function buildDashboardPayload(
       editorShown: stat.shown,
       editorAccepted: stat.accepted,
       chatCount: stats.chatByDate.get(date) ?? 0,
-      cliShown: stats.cliByDate?.get(date)?.prompts ?? 0,
-      cliAccepted: stats.cliByDate?.get(date)?.prompts ?? 0,
+      cliPrompts: stats.cliByDate.get(date)?.prompts ?? 0,
     };
   });
 
@@ -621,37 +623,34 @@ export function buildDashboardPayload(
 }
 
 /**
- * Aggregate `chatSessionStates` into four turn-count buckets for the Turn Churn
- * mixed chart in the Prompt Insights tab.
+ * Aggregate saved chat sessions into four request-count buckets.
  *
- * Buckets: "1 turn" | "2-3 turns" | "4-5 turns" | "6+ turns"
+ * Buckets: 1, 2–3, 4–5, and 6+ requests.
  */
 function buildTurnStats(stats: CopilotUsageStats): TurnBucket[] {
   const buckets: TurnBucket[] = [
-    { bucket: "1 turn", sessionCount: 0, acceptedCount: 0 },
-    { bucket: "2-3 turns", sessionCount: 0, acceptedCount: 0 },
-    { bucket: "4-5 turns", sessionCount: 0, acceptedCount: 0 },
-    { bucket: "6+ turns", sessionCount: 0, acceptedCount: 0 },
+    { bucket: "1 request", sessionCount: 0 },
+    { bucket: "2-3 requests", sessionCount: 0 },
+    { bucket: "4-5 requests", sessionCount: 0 },
+    { bucket: "6+ requests", sessionCount: 0 },
   ];
 
-  for (const state of stats.chatSessionStates.values()) {
-    if (state.turnCount <= 0) {
+  for (const session of stats.chatSessions ?? []) {
+    const requestCount = session.requests.length;
+    if (requestCount === 0) {
       continue;
     }
     const b = (() => {
-      if (state.turnCount === 1) {
+      if (requestCount === 1) {
         return buckets[0];
-      } else if (state.turnCount <= 3) {
+      } else if (requestCount <= 3) {
         return buckets[1];
-      } else if (state.turnCount <= 5) {
+      } else if (requestCount <= 5) {
         return buckets[2];
       }
       return buckets[3];
     })();
     b.sessionCount++;
-    if (state.isAccepted) {
-      b.acceptedCount++;
-    }
   }
 
   return buckets;
@@ -665,7 +664,7 @@ function getLatestSession(stats: CopilotUsageStats): SessionStat | null {
 /**
  * Convert `promptEffectiveness` bucket counts into Chart.js bubble-chart data points.
  * - x: bucket midpoint (character count)
- * - y: acceptance rate (0–100), 0 when no samples
+ * - y: observed response rate (0–100)
  * - r: bubble radius proportional to the square root of shown count (min 4 px)
  */
 function buildPromptLengthScatterData(
@@ -774,20 +773,23 @@ export function buildCliSessionDetail(stats: CopilotUsageStats, sessionId: strin
         autonomousDurationMs: 0,
         acceptedChars: 0,
         hasAutonomousRun: false,
-        stepCount: thread.turns.length,
+        stepCount: thread.prompts,
         longestPauseMs: 0,
         hasSelectableTitle: true,
         usage: thread.usage,
         usageSource: "cli",
         fusionRuns: thread.fusionRuns,
         interventions: thread.interventions,
+        diagnostics: thread.diagnostics,
+        agentHostChildChats: thread.agentHostChildChats,
+        agentHostChats: thread.agentHostChats,
       },
     ],
     stepsByThread: {
       [sessionId]: thread.turns.map((turn) => ({
         timestamp: turn.timestamp ?? "",
-        actor: "human",
-        phase: "human",
+        actor: turn.actor ?? "human",
+        phase: turn.actor === "ai" ? "execution" : "human",
         label: "Prompt",
         detail: turn.prompt || "(No prompt preview)",
         rawIntent: "Copilot CLI",

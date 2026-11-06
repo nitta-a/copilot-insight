@@ -5,10 +5,17 @@ import {
   computeRefreshAnalysis,
   computeTrueAcceptanceRate,
   computeVelocityAnalysis,
+  hasTrueAcceptanceData,
 } from "../../src/metrics/metricsEngine";
 import type { MemoryManagementEvent } from "../../src/types";
 
 suite("metricsEngine", () => {
+  test("true acceptance requires both shown and accepted observations", () => {
+    const events: TrackedEvent[] = [makeAcceptEvent("2026-02-28T10:00:00Z", "typescript", 40)];
+    assert.strictEqual(hasTrueAcceptanceData([], 10), false);
+    assert.strictEqual(hasTrueAcceptanceData(events, 0), false);
+    assert.strictEqual(hasTrueAcceptanceData(events, 10), true);
+  });
   suite("computeTrueAcceptanceRate", () => {
     test("returns zero rates for empty events", () => {
       const result = computeTrueAcceptanceRate([], 0);

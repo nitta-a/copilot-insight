@@ -463,6 +463,7 @@ async function parseJsonlChatSessionFile(
   try {
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
+    // Snapshot requests predate the current mode; their agent is unknown.
     const agentNameByRequest: Array<string | null> = [];
 
     const rl = createInterface({
@@ -486,10 +487,16 @@ async function parseJsonlChatSessionFile(
         case 0: {
           if (entry.v && typeof entry.v === "object") {
             Object.assign(state, entry.v as Record<string, unknown>);
+            agentNameByRequest.length = 0;
+            if (Array.isArray(state.requests)) {
+              agentNameByRequest.length = state.requests.length;
+            }
             const inputState = (entry.v as Record<string, unknown>).inputState as Record<string, unknown> | undefined;
             const mode = inputState?.mode as Record<string, unknown> | undefined;
             if (mode?.kind === "agent" && typeof mode.id === "string") {
               currentAgentName = extractAgentNameFromUri(mode.id);
+            } else {
+              currentAgentName = null;
             }
           }
           break;
@@ -498,6 +505,12 @@ async function parseJsonlChatSessionFile(
           const keyPath = Array.isArray(entry.k) ? (entry.k as Array<string | number>) : [];
           if (keyPath.length > 0) {
             setNestedValue(state, keyPath, entry.v);
+            if (keyPath.length === 1 && keyPath[0] === "requests") {
+              agentNameByRequest.length = 0;
+              if (Array.isArray(entry.v)) {
+                agentNameByRequest.length = entry.v.length;
+              }
+            }
             if (keyPath[0] === "inputState" && keyPath[1] === "mode") {
               const mode = entry.v as Record<string, unknown> | undefined;
               if (mode?.kind === "agent" && typeof mode.id === "string") {
@@ -551,6 +564,7 @@ async function parseJsonlChatSessionRecord(filePath: string, workspaceId: string
   try {
     const state: Record<string, unknown> = {};
     let currentAgentName: string | null = null;
+    // Snapshot requests predate the current mode; their agent is unknown.
     const agentNameByRequest: Array<string | null> = [];
 
     const rl = createInterface({
@@ -574,10 +588,16 @@ async function parseJsonlChatSessionRecord(filePath: string, workspaceId: string
         case 0: {
           if (entry.v && typeof entry.v === "object") {
             Object.assign(state, entry.v as Record<string, unknown>);
+            agentNameByRequest.length = 0;
+            if (Array.isArray(state.requests)) {
+              agentNameByRequest.length = state.requests.length;
+            }
             const inputState = (entry.v as Record<string, unknown>).inputState as Record<string, unknown> | undefined;
             const mode = inputState?.mode as Record<string, unknown> | undefined;
             if (mode?.kind === "agent" && typeof mode.id === "string") {
               currentAgentName = extractAgentNameFromUri(mode.id);
+            } else {
+              currentAgentName = null;
             }
           }
           break;
@@ -586,6 +606,12 @@ async function parseJsonlChatSessionRecord(filePath: string, workspaceId: string
           const keyPath = Array.isArray(entry.k) ? (entry.k as Array<string | number>) : [];
           if (keyPath.length > 0) {
             setNestedValue(state, keyPath, entry.v);
+            if (keyPath.length === 1 && keyPath[0] === "requests") {
+              agentNameByRequest.length = 0;
+              if (Array.isArray(entry.v)) {
+                agentNameByRequest.length = entry.v.length;
+              }
+            }
             if (keyPath[0] === "inputState" && keyPath[1] === "mode") {
               const mode = entry.v as Record<string, unknown> | undefined;
               if (mode?.kind === "agent" && typeof mode.id === "string") {

@@ -467,7 +467,23 @@ suite("buildDashboardPayload", () => {
       const entry = payload.timeline[0];
       assert.ok(entry);
       const expectedRate = (entry.accepted / entry.shown) * 100;
-      assert.ok(Math.abs(entry.rate - expectedRate) < 0.001);
+      assert.ok(entry.rate !== null && Math.abs(entry.rate - expectedRate) < 0.001);
+    });
+
+    test("leaves missing rates empty while preserving an observed zero", () => {
+      const payload = buildDashboardPayload(
+        makeStats({
+          byDate: new Map([
+            ["2026-11-01", { shown: 0, accepted: 0 }],
+            ["2026-11-02", { shown: 10, accepted: 0 }],
+          ]),
+          chatByDate: new Map(),
+        }),
+      );
+      assert.deepStrictEqual(
+        payload.timeline.map((entry) => entry.rate),
+        [null, 0],
+      );
     });
 
     test("timeline trueAccepted is null (not available per day)", () => {
@@ -487,8 +503,7 @@ suite("buildDashboardPayload", () => {
       for (const entry of payload.timeline) {
         assert.strictEqual(entry.editorShown, entry.shown);
         assert.strictEqual(entry.editorAccepted, entry.accepted);
-        assert.strictEqual(entry.cliShown, 0);
-        assert.strictEqual(entry.cliAccepted, 0);
+        assert.strictEqual(entry.cliPrompts, 0);
       }
     });
 
@@ -514,8 +529,8 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.availableRange.maxDate, "2026-02-27");
     });
 
-    test("availableRange is empty strings when byDate is empty", () => {
-      const stats = makeStats({ byDate: new Map() });
+    test("availableRange is empty when no dated activity exists", () => {
+      const stats = makeStats({ byDate: new Map(), chatByDate: new Map(), cliByDate: new Map() });
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.availableRange.minDate, "");
       assert.strictEqual(payload.availableRange.maxDate, "");
@@ -1144,20 +1159,32 @@ suite("buildDashboardPayload — CLI integration", () => {
     assert.strictEqual(payload.summary.totalMinutesSaved.cli, 60);
   });
 
-  test("timeline cliShown/cliAccepted come from cliByDate prompts", () => {
+  test("timeline includes CLI-only and chat-only days without inventing acceptance rates", () => {
+    const cliByDate = new Map([["2026-03-01", { prompts: 3, outputTokens: 600 }]]);
+    const chatByDate = new Map([["2026-03-02", 2]]);
+    const payload = buildDashboardPayload(makeStats({ byDate: new Map(), chatByDate, cliByDate }));
+    assert.deepStrictEqual(
+      payload.timeline.map((entry) => [entry.date, entry.cliPrompts, entry.chatCount, entry.rate]),
+      [
+        ["2026-03-01", 3, 0, null],
+        ["2026-03-02", 0, 2, null],
+      ],
+    );
+    assert.deepStrictEqual(payload.availableRange, { minDate: "2026-03-01", maxDate: "2026-03-02" });
+  });
+
+  test("timeline CLI prompts come from cliByDate", () => {
     const cliByDate = new Map([["2026-02-25", { prompts: 3, outputTokens: 600 }]]);
     const payload = buildDashboardPayload(makeStats({ cliByDate, cliTotalInteractions: 3 }));
     const day = payload.timeline.find((e) => e.date === "2026-02-25");
     assert.ok(day, "Expected timeline entry for 2026-02-25");
-    assert.strictEqual(day.cliShown, 3);
-    assert.strictEqual(day.cliAccepted, 3);
+    assert.strictEqual(day.cliPrompts, 3);
   });
 
-  test("timeline cliShown/cliAccepted is 0 for dates without CLI activity", () => {
+  test("timeline CLI prompts are 0 for dates without CLI activity", () => {
     const payload = buildDashboardPayload(makeStats({ cliByDate: new Map(), cliTotalInteractions: 0 }));
     for (const entry of payload.timeline) {
-      assert.strictEqual(entry.cliShown, 0);
-      assert.strictEqual(entry.cliAccepted, 0);
+      assert.strictEqual(entry.cliPrompts, 0);
     }
   });
 
@@ -1378,6 +1405,7 @@ suite("CLI conversation consumption in Sessions", () => {
       [
         { type: "session.start", data: { sessionId: "s1", startTime: "2026-11-01T23:00:00Z" } },
         { type: "user.message", timestamp: "2026-11-01T23:00:00Z", data: { content: "Implement charts" } },
+        { type: "user.message", data: { content: "Delegate", source: "agent-123" } },
         {
           type: "session.usage_record",
           timestamp: "2026-11-02T01:00:00Z",
@@ -1386,6 +1414,7 @@ suite("CLI conversation consumption in Sessions", () => {
               inputTokens: 100,
               outputTokens: 20,
               model: "model-a",
+              duration: 1200,
               copilotUsage: { totalNanoAiu: 1_250_000_000 },
             },
           },
@@ -1395,6 +1424,7 @@ suite("CLI conversation consumption in Sessions", () => {
         .join("\n"),
     );
     assert.ok(result.thread);
+    result.thread.agentHostChats = [{ title: "Review", origin: "tool", children: [] }];
     const stats = makeStats({ cliThreads: [result.thread], cliUsage: result.usage, cliByDate: result.byDate });
     const sessions = buildSessionsPayload(stats);
     assert.strictEqual(sessions.sessionSummaries.length, 2);
@@ -1407,7 +1437,11 @@ suite("CLI conversation consumption in Sessions", () => {
     assert.strictEqual(detail?.threads[0].title, "Implement charts");
     assert.strictEqual(detail?.threads[0].usageSource, "cli");
     assert.strictEqual(detail?.threads[0].usage?.totalNanoAiu, 1_250_000_000);
-    assert.strictEqual(detail?.stepsByThread["cli:s1"][0].usage?.outputTokens, 20);
+    assert.strictEqual(detail?.threads[0].stepCount, 1);
+    assert.deepStrictEqual(detail?.threads[0].agentHostChats, result.thread.agentHostChats);
+    assert.strictEqual(detail?.stepsByThread["cli:s1"][1].actor, "ai");
+    assert.strictEqual(detail?.stepsByThread["cli:s1"][1].usage?.outputTokens, 20);
+    assert.strictEqual(buildDashboardPayload(stats).summary.cliUsageStats?.modelCalls?.[0].durationMs, 1200);
     assert.strictEqual(buildCliSessionDetail(stats, "s1"), null);
     assert.strictEqual(buildCliSessionDetail(stats, "cli:missing"), null);
   });
@@ -1610,6 +1644,17 @@ suite("buildPromptInsightsPayload — topKeywords", () => {
       provider: "copilot" as const,
     };
   }
+
+  test("turnStats buckets saved chat sessions by their recorded request count", () => {
+    const sessions = [0, 1, 2, 3, 4, 5, 6].map((count) =>
+      makeSessionRecord(`session-${count}`, null, null, Array(count).fill("request")),
+    );
+    const payload = buildPromptInsightsPayload(makeStats({ chatSessions: sessions }));
+    assert.deepStrictEqual(
+      payload.turnStats.map((bucket) => bucket.sessionCount),
+      [1, 2, 2, 1],
+    );
+  });
 
   test("topKeywords is empty when chatSessionTitles and chatSessions are both undefined", () => {
     const payload = buildPromptInsightsPayload(makeStats());

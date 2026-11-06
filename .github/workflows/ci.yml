@@ -34,6 +34,9 @@ jobs:
       - name: Build
         run: node esbuild.js
 
+      - name: Build native parser
+        run: npm run build:native
+
       - name: Prepare VS Code binaries before firewall
         run: |
           set -euo pipefail
@@ -43,5 +46,11 @@ jobs:
 
       - name: Test
         run: xvfb-run -a npm test
+        env:
+          VSCODE_EXECUTABLE_PATH: ${{ github.workspace }}/.vscode-test/code
+          REQUIRE_NATIVE_TESTS: '1'
+
+      - name: Test installed VSIX and dashboard
+        run: xvfb-run -a npm run test:vsix
         env:
           VSCODE_EXECUTABLE_PATH: ${{ github.workspace }}/.vscode-test/code

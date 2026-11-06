@@ -196,9 +196,7 @@ export class EventTracker implements vscode.Disposable {
   /**
    * Record an inline-completion acceptance event.
    *
-   * Call this from the acceptance-tracking command in `extension.ts` (or from
-   * `InlineCompletionTracker`) so that the accepted completion is persisted
-   * alongside contextual metadata.
+   * Persist an explicitly observed acceptance alongside contextual metadata.
    *
    * Returns a `Promise<void>` that resolves when the event has been written to
    * disk, allowing callers to await it when ordering guarantees are needed.

@@ -59,6 +59,15 @@ export interface SessionThreadSummary {
   usageSource?: "cli";
   fusionRuns?: FusionRun[];
   interventions?: CliInterventions;
+  diagnostics?: CliDiagnostics;
+  agentHostChildChats?: number;
+  agentHostChats?: AgentHostChat[];
+}
+
+export interface AgentHostChat {
+  title: string;
+  origin: "tool" | "user" | null;
+  children: AgentHostChat[];
 }
 
 export type AgentStepLabel =
@@ -179,6 +188,25 @@ export interface CliUsageTurn {
   /** A bounded prompt preview, kept locally for identifying the interaction. */
   prompt: string;
   usage: CliUsageStat;
+  actor?: "human" | "ai";
+}
+
+export interface CliDiagnostics {
+  compactions: Array<{
+    timestamp: string | null;
+    trigger: string | null;
+    success: boolean | null;
+    before: number | null;
+    after: number | null;
+  }>;
+  modelCalls: Array<{ model: string; durationMs: number | null; firstTokenMs: number | null }>;
+  subagents: Array<{
+    id: string;
+    parentId: string | null;
+    name: string;
+    model: string | null;
+    durationMs: number | null;
+  }>;
 }
 
 export interface FusionUsage {
@@ -250,6 +278,9 @@ export interface CliThreadUsage {
   turns: CliUsageTurn[];
   fusionRuns?: FusionRun[];
   interventions?: CliInterventions;
+  diagnostics?: CliDiagnostics;
+  agentHostChildChats?: number;
+  agentHostChats?: AgentHostChat[];
 }
 
 export interface SessionStat {

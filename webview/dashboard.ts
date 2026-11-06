@@ -3,7 +3,7 @@
  *
  * Responsibilities:
  * - Render two Chart.js visualisations:
- *   1. True Acceptance Rate Timeline (bar + line combo)
+ *   1. Activity and Acceptance Rate Timeline (bar + line combo)
  * - Render React-based charts:
  *   2. Model Autonomy Leverage Map (Recharts ScatterChart)
  * - Handle export button interactions.
@@ -241,7 +241,7 @@ function renderTimelineChart(timeline: TimelineEntry[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Prompt Length vs Acceptance Rate Scatter (Bubble) Chart
+// Prompt Length vs Observed Response Rate Scatter (Bubble) Chart
 // ---------------------------------------------------------------------------
 
 function renderPromptLengthScatterChart(scatterData: PromptInsightsData["promptLengthScatterData"]): void {
@@ -257,8 +257,8 @@ function renderPromptLengthScatterChart(scatterData: PromptInsightsData["promptL
 
   container.innerHTML = `
     <hr class="db-section-sep">
-    <h2>🔍 Prompt Length vs Acceptance Rate</h2>
-    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">Bubble size represents number of samples (shown). Data from Copilot CLI interactions.</p>
+    <h2>🔍 Prompt Length vs Observed Response Rate</h2>
+    <p style="font-size:12px;opacity:0.7;margin:0 0 12px">Bubble size represents human prompts in local CLI / SDK logs. Responses are inferred from assistant text or legacy output-token counts; they do not measure acceptance, quality, or task completion. Refresh to reprocess older snapshots.</p>
     <div class="chart-container" style="max-height:320px">
       <canvas id="db-prompt-length-scatter-chart" style="max-height:320px"></canvas>
     </div>`;
@@ -338,7 +338,7 @@ function renderFinishReasonBreakdown(finishReasonBreakdown: PromptInsightsData["
 }
 
 // ---------------------------------------------------------------------------
-// Turn Churn Mixed Chart (chat session turn-count distribution)
+// Chat session request-count distribution
 // ---------------------------------------------------------------------------
 
 function renderTurnChurnChart(turnStats: PromptInsightsData["turnStats"]): void {
@@ -359,10 +359,9 @@ function renderTurnChurnChart(turnStats: PromptInsightsData["turnStats"]): void 
 
   container.innerHTML = `
     <hr class="db-section-sep">
-    <h2>🔄 Chat Session Turn Count & Resolution Rate</h2>
+    <h2>🔄 Chat Sessions by Request Count</h2>
     <p style="font-size:12px;opacity:0.7;margin:0 0 12px">
-      Bars show session volume per turn-count bucket. The line shows the resolution rate
-      (% of sessions where code was copied or applied).
+      Saved VS Code chat sessions grouped by the number of recorded requests. Sessions without recorded requests and CLI / SDK sessions are excluded. Request counts do not indicate task resolution.
     </p>
     <div class="chart-container" style="min-height:300px;max-height:320px">
       <canvas id="db-turn-churn-chart"></canvas>

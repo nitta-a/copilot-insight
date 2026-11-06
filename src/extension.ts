@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import { EventTracker } from "./events/eventTracker";
-import { InlineCompletionTracker } from "./events/inlineCompletionWrapper";
 import { exportAsCsv, exportAsJson } from "./export/exportStats";
 import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
@@ -13,6 +12,7 @@ import {
   computeRefreshAnalysis,
   computeTrueAcceptanceRate,
   computeVelocityAnalysis,
+  hasTrueAcceptanceData,
 } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
@@ -41,35 +41,8 @@ export function activate(context: vscode.ExtensionContext) {
     ? new DbWorkerClientImpl(workerPath)
     : undefined;
 
-  // Phase 1: Event instrumentation — capture text-change, editor-switch, and
-  // completion-accept events and persist them to structured storage.
+  // Capture editor activity and persist it to structured storage.
   const eventTracker = new EventTracker(context, dbWorker);
-
-  // Install the inline-completion wrapper as early as possible so that any
-  // provider registered after activation (including GitHub Copilot) is
-  // intercepted and its show/accept events are counted in real-time.
-  const inlineTracker = new InlineCompletionTracker(context, {
-    onShown: async (metadata) => {
-      await eventTracker.recordSessionSignal({
-        languageId: metadata.languageId,
-        signalType: "completion-shown",
-        actor: "system",
-        phase: "planning",
-        intent: "inline-completion/shown",
-        rawText: metadata.acceptedText || "inline completion shown",
-        success: true,
-      });
-    },
-    onAccepted: async (metadata) => {
-      await eventTracker.recordCompletionAccept({
-        languageId: metadata.languageId,
-        acceptedText: metadata.acceptedText,
-      });
-      if (metadata.uri) {
-        eventTracker.trackActiveCompletion(metadata.uri, metadata.lineNumber, metadata.languageId);
-      }
-    },
-  });
 
   // Watch for runtime changes to the enableAdvancedAnalysis toggle.
   const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -85,16 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Phase 3: Real-time status bar indicator showing current-session
-  // Copilot contribution (acceptance rate + counts).
   const statusBar = new StatusBarIndicator();
   const statsSnapshotStorage = new StatsSnapshotStorage(context.globalStorageUri.fsPath);
-
-  // Periodically refresh the status bar from the inline tracker.
-  const statusBarRefreshMs = 3_000;
-  const statusBarTimer = setInterval(() => {
-    statusBar.update(inlineTracker.stats);
-  }, statusBarRefreshMs);
 
   const treeProvider = new CopilotUsageTreeProvider();
 
@@ -162,6 +127,7 @@ export function activate(context: vscode.ExtensionContext) {
     channel.appendLine(`[TIMING] getAdvancedMetrics: start`);
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
+    const hasAcceptanceData = hasTrueAcceptanceData(allEvents, stats.totalShown);
     channel.appendLine(`[TIMING] getAdvancedMetrics: events loaded | count=${allEvents.length}, dates=${dates.length}`);
     if (allEvents.length === 0) {
       if (timingEnabled) {
@@ -206,7 +172,7 @@ export function activate(context: vscode.ExtensionContext) {
           );
         }
         return {
-          trueAcceptance,
+          trueAcceptance: hasAcceptanceData ? trueAcceptance : undefined,
           velocity,
           modelPerformance,
           refreshAnalysis,
@@ -242,7 +208,7 @@ export function activate(context: vscode.ExtensionContext) {
       `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [fallback path]`,
     );
     return {
-      trueAcceptance,
+      trueAcceptance: hasAcceptanceData ? trueAcceptance : undefined,
       velocity,
       modelPerformance,
       refreshAnalysis,
@@ -423,7 +389,6 @@ export function activate(context: vscode.ExtensionContext) {
     eventTracker,
     statusBar,
     configWatcher,
-    { dispose: () => clearInterval(statusBarTimer) },
     showCopilotUsageDisposable,
     refreshDisposable,
     exportCsvDisposable,

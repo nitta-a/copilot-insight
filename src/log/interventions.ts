@@ -116,6 +116,7 @@ export function summarizeInterventions(
   const counts = new Map<string, number>();
   const durations: number[] = [];
   let human = 0,
+    hostPolicy = 0,
     observedSessions = 0,
     humanSessions = 0,
     steering = 0,
@@ -136,6 +137,9 @@ export function summarizeInterventions(
       humanSessions++;
     }
     human += responses.length;
+    hostPolicy += data.permissions.filter(
+      (p) => p.responseRecorded && p.decisionSource === "host_policy" && inRange(p.respondedAt),
+    ).length;
     for (const p of responses) {
       counts.set(p.kind ?? "Unknown", (counts.get(p.kind ?? "Unknown") ?? 0) + 1);
       const duration = elapsedMs(p);
@@ -151,6 +155,7 @@ export function summarizeInterventions(
   const median = durations.length ? (durations[middle] + durations[Math.floor((durations.length - 1) / 2)]) / 2 : null;
   return {
     human,
+    hostPolicy,
     observedSessions,
     humanSessions,
     counts: [...counts],
