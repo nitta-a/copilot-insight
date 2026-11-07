@@ -214,10 +214,7 @@ function findTopCountModel(byModel: Map<string, number>): { model: string | null
  * consumed by the dashboard WebView.
  *
  */
-export function buildDashboardPayload(
-  stats: CopilotUsageStats,
-  hasMoreData = false,
-): DashboardPayload {
+export function buildDashboardPayload(stats: CopilotUsageStats, hasMoreData = false): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
 
   // Normalize and merge model maps early so we can use them consistently across

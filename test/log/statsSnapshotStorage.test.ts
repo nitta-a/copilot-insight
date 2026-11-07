@@ -188,7 +188,12 @@ suite("StatsSnapshotStorage", () => {
       await storage.write(expected);
       const snapshotPath = path.join(tempRoot, "usage-stats.json");
       const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf-8"));
-      Object.assign(snapshot.stats, { agenticRatio: 42, completionRate: 50, agenticDepthByModel: [["old", {}]], byDateAgenticDepth: [["2026-01-01", {}]] });
+      Object.assign(snapshot.stats, {
+        agenticRatio: 42,
+        completionRate: 50,
+        agenticDepthByModel: [["old", {}]],
+        byDateAgenticDepth: [["2026-01-01", {}]],
+      });
       await fs.writeFile(snapshotPath, JSON.stringify(snapshot));
       const restored = await storage.read();
       assert.ok(restored);

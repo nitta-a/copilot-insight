@@ -16,12 +16,7 @@
 
 import { Worker } from "node:worker_threads";
 import type { TrackedEvent } from "../events/eventSchema";
-import type {
-  ChatSessionRecord,
-  ChatSessionTitleRecord,
-  SessionDetailPayload,
-  SessionSummary,
-} from "../types";
+import type { ChatSessionRecord, ChatSessionTitleRecord, SessionDetailPayload, SessionSummary } from "../types";
 
 /**
  * Async interface for the DB worker, modelled after {@link DuckDbClient}.

@@ -61,7 +61,13 @@ suite("Stored event consumers", () => {
       await config.update("enableAdvancedAnalysis", true, vscode.ConfigurationTarget.Global);
       tracker = new EventTracker(context, worker);
       for (let i = 0; i < 10; i++) {
-        await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "hello" });
+        await tracker.recordSessionSignal({
+          signalType: "chat-request",
+          actor: "human",
+          phase: "human",
+          intent: "vscodePrompt",
+          rawText: "hello",
+        });
       }
       assert.strictEqual(tracker.bufferSize, 0);
       assert.strictEqual(tracker.storage.listDates().flatMap((date) => tracker!.storage.readByDate(date)).length, 10);

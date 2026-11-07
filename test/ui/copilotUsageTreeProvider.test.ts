@@ -204,9 +204,6 @@ suite("CopilotUsageTreeProvider", () => {
       assert.strictEqual(latencyItem, undefined, "Should not include latency when 0");
     });
 
-
-
-
     test("shows Active Sessions count", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats());
@@ -220,7 +217,6 @@ suite("CopilotUsageTreeProvider", () => {
       assert.ok(sessItem, "Should have Active Sessions item");
       assert.strictEqual(sessItem.description, "1"); // makeStats has 1 session
     });
-
   });
 
   suite("getChildren (daily category)", () => {

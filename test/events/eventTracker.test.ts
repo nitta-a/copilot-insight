@@ -95,13 +95,18 @@ suite("EventTracker", () => {
   });
 
   test("sessionId is derived from logUri", async () => {
-    await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+    await tracker.recordSessionSignal({
+      signalType: "chat-request",
+      actor: "human",
+      phase: "human",
+      intent: "vscodePrompt",
+      rawText: "test",
+    });
     const today = new Date().toISOString().substring(0, 10);
     const events = tracker.storage.readByDate(today);
     const last = events[events.length - 1];
     assert.strictEqual(last.sessionId, "session-abc123");
   });
-
 });
 
 suite("EventTracker — batching", () => {
@@ -123,7 +128,13 @@ suite("EventTracker — batching", () => {
 
     // Adding 9 events should NOT trigger a flush (threshold is 10).
     for (let i = 0; i < 9; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
 
     assert.strictEqual(worker.calls.length, 0, "no flush before batch size is reached");
@@ -136,7 +147,13 @@ suite("EventTracker — batching", () => {
     const tracker = new EventTracker(makeContext(storagePath), worker);
 
     for (let i = 0; i < 10; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
 
     assert.strictEqual(worker.calls.length, 1, "exactly one ingest call after 10 events");
@@ -151,7 +168,13 @@ suite("EventTracker — batching", () => {
 
     // Add 10 events — triggers a flush that will fail.
     for (let i = 0; i < 10; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
 
     // Worker call failed: buffer must still contain the 10 events.
@@ -159,7 +182,13 @@ suite("EventTracker — batching", () => {
     assert.strictEqual(tracker.bufferSize, 10, "events retained after worker error");
 
     // Add one more event and trigger a second batch flush (now 11 events ≥ 10).
-    await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+    await tracker.recordSessionSignal({
+      signalType: "chat-request",
+      actor: "human",
+      phase: "human",
+      intent: "vscodePrompt",
+      rawText: "test",
+    });
 
     // Worker is healthy now — should have flushed all 11.
     assert.strictEqual(worker.calls.length, 1);
@@ -174,7 +203,13 @@ suite("EventTracker — batching", () => {
 
     // Add fewer than BATCH_SIZE events so no automatic flush occurs.
     for (let i = 0; i < 5; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
     assert.strictEqual(worker.calls.length, 0, "no flush yet");
 
@@ -232,7 +267,13 @@ suite("EventTracker — enableAdvancedAnalysis toggle", () => {
 
     // Even with 10+ events, the worker must never receive them.
     for (let i = 0; i < 10; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
 
     assert.strictEqual(worker.calls.length, 0, "worker must not be called when analysis is disabled");
@@ -249,7 +290,13 @@ suite("EventTracker — enableAdvancedAnalysis toggle", () => {
     const worker = makeMockWorker();
     const tracker = new EventTracker(makeContext(storagePath), worker);
 
-    await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+    await tracker.recordSessionSignal({
+      signalType: "chat-request",
+      actor: "human",
+      phase: "human",
+      intent: "vscodePrompt",
+      rawText: "test",
+    });
 
     const today = new Date().toISOString().substring(0, 10);
     const events = tracker.storage.readByDate(today);
@@ -267,7 +314,13 @@ suite("EventTracker — enableAdvancedAnalysis toggle", () => {
     const tracker = new EventTracker(makeContext(storagePath), worker);
 
     for (let i = 0; i < 10; i++) {
-      await tracker.recordSessionSignal({ signalType: "chat-request", actor: "human", phase: "human", intent: "vscodePrompt", rawText: "test" });
+      await tracker.recordSessionSignal({
+        signalType: "chat-request",
+        actor: "human",
+        phase: "human",
+        intent: "vscodePrompt",
+        rawText: "test",
+      });
     }
 
     assert.strictEqual(worker.calls.length, 1, "worker must be called when analysis is enabled");

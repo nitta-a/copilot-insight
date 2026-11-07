@@ -1,9 +1,6 @@
 import * as assert from "assert";
 import { generateMarkdownReport } from "../../src/export/reportGenerator";
-import type {
-  ModelPerformanceResult,
-  VelocityAnalysisResult,
-} from "../../src/metrics/metricsEngine";
+import type { ModelPerformanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats } from "../../src/types";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
@@ -222,8 +219,6 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("3 windows"));
   });
 
-
-
   test("omits acceptance analysis when not provided", () => {
     const md = generateMarkdownReport({
       period: "test",
@@ -240,9 +235,11 @@ suite("reportGenerator", () => {
     assert.ok(!md.includes("## Model Performance"));
   });
 
-
   test("labels legacy agent counts without inferred success or ROI", () => {
-    const md = generateMarkdownReport({ period: "test", stats: makeStats({ subagentRequests: 2, autonomousDurationMs: 120000 }) });
+    const md = generateMarkdownReport({
+      period: "test",
+      stats: makeStats({ subagentRequests: 2, autonomousDurationMs: 120000 }),
+    });
     assert.ok(md.includes("## Legacy Agent Log Activity"));
     assert.ok(md.includes("Recorded subagent requests"));
     assert.ok(md.includes("Recorded elapsed duration"));
@@ -267,9 +264,6 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("### Agent Debug"));
   });
 
-
-
-
   test("includes qualitative insights section when insights provided", () => {
     const md = generateMarkdownReport({
       period: "test",
@@ -288,10 +282,4 @@ suite("reportGenerator", () => {
     });
     assert.ok(!md.includes("## 💡 Qualitative Insights"));
   });
-
-
-
-
-
-
 });

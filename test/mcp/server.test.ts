@@ -86,7 +86,6 @@ suite("MCP server – get_usage_summary logic", () => {
 
     // 4 events × 200 chars each = 800 total
     assert.strictEqual(totalCharsAccepted, 800);
-
   });
 
   test("topLanguages breakdown groups by languageId", async () => {

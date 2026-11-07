@@ -8,11 +8,7 @@
  * cross-context issue.
  */
 
-import type {
-  AgentStep as AgentStepData,
-  SessionDetailPayload as SessionDetailData,
-  SessionSummary,
-} from "../types";
+import type { AgentStep as AgentStepData, SessionDetailPayload as SessionDetailData, SessionSummary } from "../types";
 
 export type AgentStep = AgentStepData;
 

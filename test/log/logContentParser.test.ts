@@ -766,8 +766,6 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.autonomousDurationMs, 0);
     });
 
-
-
     test("subagentByModel tracks per-model subagent calls", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
@@ -798,7 +796,6 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs >= 0);
     });
-
   });
 });
 
@@ -1250,9 +1247,6 @@ suite("real log format: elapsed agent time", () => {
 });
 
 suite("planning tracking from ccreq intents", () => {
-
-
-
   test("sessionSignals capture plan, execution, and memory boundaries", () => {
     const ctx = makeEmptyStats();
     ctx.currentSessionId = "session-1";
@@ -1322,8 +1316,6 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.sessionSignals[0]?.intent, "browser/navigate");
     assert.strictEqual(ctx.sessionSignals[0]?.phase, "research");
   });
-
-
 });
 
 suite("detectCommandUsage", () => {

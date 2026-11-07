@@ -173,5 +173,4 @@ suite("weeklyTrend", () => {
       assert.strictEqual(result.thisWeek.shown, 10);
     });
   });
-
 });

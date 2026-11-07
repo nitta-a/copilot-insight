@@ -7,10 +7,7 @@ import { generateMarkdownReport } from "./export/reportGenerator";
 import { parseCopilotLogs } from "./log/copilotLogParser";
 import { getSortedSessionDirs } from "./log/logFileReader";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
-import {
-  computeModelPerformance,
-  computeVelocityAnalysis,
-} from "./metrics/metricsEngine";
+import { computeModelPerformance, computeVelocityAnalysis } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
 import { CopilotUsageTreeProvider } from "./ui/copilotUsageTreeProvider";

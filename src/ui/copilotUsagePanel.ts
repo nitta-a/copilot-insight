@@ -479,10 +479,7 @@ export class CopilotUsagePanel {
 
     let phaseMs = performance.now();
     channel.appendLine(`[TIMING] _update.buildPayload: start`);
-    const payload = buildDashboardPayload(
-      this._stats,
-      this._advanced.hasMoreData ?? false,
-    );
+    const payload = buildDashboardPayload(this._stats, this._advanced.hasMoreData ?? false);
     channel.appendLine(`[TIMING] _update.buildPayload: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
 
     phaseMs = performance.now();

@@ -65,7 +65,6 @@ suite("DbWorkerClient – interface contract", () => {
     assert.strictEqual(result.loaded, 42);
   });
 
-
   test("mock DbWorkerClient setChatSessionTitles returns loaded count", async () => {
     const mock = createMockClient({
       async setChatSessionTitles(titles: ChatSessionTitleRecord[]) {

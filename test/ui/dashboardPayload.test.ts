@@ -97,14 +97,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.summary.acceptanceRate, 60.0);
     });
 
-
-
-
-
-
-
-
-
     test("topChatModel uses the most requested non-inline model from byChatModel", () => {
       const payload = buildDashboardPayload(makeStats());
       assert.strictEqual(payload.summary.topChatModel, "gpt-4o");
@@ -216,7 +208,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.sessionSummaries.length, 1);
       assert.strictEqual(payload.sessionSummaries[0]?.title, "session-without-date");
     });
-
   });
 
   suite("timeline", () => {
@@ -255,7 +246,6 @@ suite("buildDashboardPayload", () => {
         [null, 0],
       );
     });
-
 
     test("days field in payload equals timeline length", () => {
       const payload = buildDashboardPayload(makeStats());
@@ -448,7 +438,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.agenticStats.cliToolExecutions[0]?.successRate, 75);
     });
 
-
     test("cliAgentTypes is sorted by count descending and computes share", () => {
       const stats = makeStats({
         cliAgentTypes: new Map([
@@ -465,22 +454,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(sorted[1].name, "researcher");
       assert.strictEqual(sorted[2].name, "general-purpose");
     });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     test("featureSignals exposes sorted browser tool breakdown", () => {
       const stats = makeStats({
@@ -519,18 +492,10 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.agenticStats.featureSignals.memoryManagement.total, 1);
       assert.strictEqual(payload.agenticStats.featureSignals.agentDebug.total, 4);
     });
-
-
-
-
   });
 });
 
 suite("buildDashboardPayload — CLI integration", () => {
-
-
-
-
   test("timeline includes CLI-only and chat-only days without inventing acceptance rates", () => {
     const cliByDate = new Map([["2026-03-01", { prompts: 3, outputTokens: 600 }]]);
     const chatByDate = new Map([["2026-03-02", 2]]);
