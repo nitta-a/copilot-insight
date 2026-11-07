@@ -32,8 +32,6 @@ pub struct NativeStats {
     pub total_chat: u32,
     /// Number of subagent-initiated requests detected.
     pub subagent_requests: u32,
-    /// Number of agent plan-proposal events detected.
-    pub plan_count: u32,
     /// Per-model count of shown inline completions (model name → count).
     pub by_model_shown: HashMap<String, u32>,
     /// Per-model count of accepted inline completions (model name → count).
@@ -51,10 +49,6 @@ pub struct NativeStats {
     /// Cumulative autonomous-action duration in milliseconds.
     /// Uses f64 (rather than u64) for seamless JavaScript number interop.
     pub autonomous_duration_ms: f64,
-    /// Number of completed agentic (ToolCallingLoop) episodes.
-    pub subagent_loops: u32,
-    /// Number of agent plans that were followed by an edit / patch action.
-    pub executed_plan_count: u32,
     /// Browser-tool events grouped by detected action / subtype.
     pub browser_tools_by_type: HashMap<String, u32>,
     /// Error events grouped by detected error type.
@@ -83,22 +77,8 @@ pub struct NativeStats {
     pub chat_by_date: HashMap<String, u32>,
     /// Completion finish-reason distribution ("[streamChoices] finish reason: XXX").
     pub finish_reason_counts: HashMap<String, u32>,
-    /// Number of agentic (ToolCallingLoop) episodes that were started.
-    pub subagent_loops_started: u32,
     /// Number of inline completions rejected by the user (AbortError in logs).
     pub total_rejected: u32,
-    /// Per-model count of agentic (ToolCallingLoop) episodes that completed.
-    pub loops_completed_by_model: HashMap<String, u32>,
-    /// Per-model total number of agentic actions executed across all completed loops.
-    pub total_loop_actions_by_model: HashMap<String, u32>,
-    /// Per-model count of agentic (ToolCallingLoop) episodes that were started.
-    pub loops_started_by_model: HashMap<String, u32>,
-    /// Per-date count of agentic (ToolCallingLoop) episodes that were started ("YYYY-MM-DD" → count).
-    pub loops_started_by_date: HashMap<String, u32>,
-    /// Per-date count of agentic (ToolCallingLoop) episodes that completed ("YYYY-MM-DD" → count).
-    pub loops_completed_by_date: HashMap<String, u32>,
-    /// Per-date total number of agentic actions executed across all completed loops.
-    pub total_loop_actions_by_date: HashMap<String, u32>,
     /// Per-date cumulative autonomous-action duration in milliseconds.
     /// Uses f64 (rather than u64) for seamless JavaScript number interop.
     pub autonomous_duration_by_date: HashMap<String, f64>,
@@ -122,14 +102,6 @@ pub struct ReportInput {
     // ── Agentic / subagent counters ──────────────────────────────────────────
     pub subagent_requests: u32,
     pub autonomous_duration_ms: f64,
-    pub agentic_ratio: f64,
-    pub subagent_loops: u32,
-    pub subagent_loops_started: u32,
-    pub completion_rate: f64,
-    // ── Planning counters ────────────────────────────────────────────────────
-    pub plan_count: u32,
-    pub executed_plan_count: u32,
-    pub user_choices_in_plan: u32,
     // ── VS Code 1.110 feature-signal breakdowns ──────────────────────────────
     pub browser_tools_by_type: HashMap<String, u32>,
     pub plugin_or_skill_by_name: HashMap<String, u32>,
@@ -138,19 +110,9 @@ pub struct ReportInput {
     pub memory_management_by_type: HashMap<String, u32>,
     pub agent_debug_events: u32,
     pub agent_debug_by_type: HashMap<String, u32>,
-    // ── Model-efficiency breakdown ───────────────────────────────────────────
-    pub subagent_by_model: HashMap<String, u32>,
-    /// Per-model autonomous duration in milliseconds (f64 for JS number compat).
-    pub autonomous_duration_by_model: HashMap<String, f64>,
-    pub by_chat_model: HashMap<String, u32>,
     // ── Date-range metadata (used for the report header) ────────────────────
     pub min_date: String,
     pub max_date: String,
-    // ── Pre-computed ROI values ──────────────────────────────────────────────
-    /// Pre-computed typing minutes saved (0 → derived from total_accepted in Rust).
-    pub typing_minutes_saved: f64,
-    /// Pre-computed agentic minutes saved (0 → derived from autonomous_duration_ms in Rust).
-    pub agentic_minutes_saved: f64,
     // ── Report metadata ──────────────────────────────────────────────────────
     pub project_name: String,
     pub errors_by_type: HashMap<String, u32>,

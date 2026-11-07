@@ -640,8 +640,6 @@ export function trackPlanningStats(
   modelName = "",
 ): void {
   if (isPlanProposalLine(lower)) {
-    ctx.planCount++;
-    ctx.activePlanPending = true;
     pushSessionSignal(ctx, {
       timestamp,
       signalType: "plan-proposal",
@@ -655,10 +653,6 @@ export function trackPlanningStats(
     });
   }
   if (isPlanExecutionLine(lower)) {
-    if (ctx.activePlanPending) {
-      ctx.executedPlanCount++;
-      ctx.activePlanPending = false;
-    }
     pushSessionSignal(ctx, {
       timestamp,
       signalType: "chat-request",
@@ -672,7 +666,6 @@ export function trackPlanningStats(
     });
   }
   if (isChoiceSelectedLine(lower)) {
-    ctx.userChoicesInPlan++;
     pushSessionSignal(ctx, {
       timestamp,
       signalType: "user-choice",

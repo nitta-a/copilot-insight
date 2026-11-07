@@ -9,10 +9,7 @@ import { getSortedSessionDirs } from "./log/logFileReader";
 import { StatsSnapshotStorage } from "./log/statsSnapshotStorage";
 import {
   computeModelPerformance,
-  computeRefreshAnalysis,
-  computeTrueAcceptanceRate,
   computeVelocityAnalysis,
-  hasTrueAcceptanceData,
 } from "./metrics/metricsEngine";
 import type { CopilotUsageStats } from "./types";
 import { CopilotUsagePanel } from "./ui/copilotUsagePanel";
@@ -125,18 +122,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     const logBaseDir = resolveLogSearchPaths(context.logUri.fsPath).logBaseDir;
     channel.appendLine(`[TIMING] getAdvancedMetrics: start`);
-    const dates = eventTracker.storage.listDates();
-    const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
-    const hasAcceptanceData = hasTrueAcceptanceData(allEvents, stats.totalShown);
-    channel.appendLine(`[TIMING] getAdvancedMetrics: events loaded | count=${allEvents.length}, dates=${dates.length}`);
-    if (allEvents.length === 0) {
-      if (timingEnabled) {
-        channel.appendLine(
-          `[TIMING] getAdvancedMetrics: skipped (no tracked events) | ${(performance.now() - advancedStartMs).toFixed(1)}ms`,
-        );
-      }
-      return { logBaseDir };
-    }
     if (dbWorker) {
       channel.appendLine(`[TIMING] getAdvancedMetrics: dbWorker present, starting db path`);
       try {
@@ -155,65 +140,25 @@ export function activate(context: vscode.ExtensionContext) {
         // NOTE: setChatSessionTitles / setChatSessions / getSessionList are
         // intentionally omitted here — chat session data is loaded lazily when
         // the Sessions tab is first opened (see CopilotUsagePanel._buildSessionsPayloadAsync).
-        phaseMs = performance.now();
-        channel.appendLine(`[TIMING] db.computeMetrics: start (trueRate+velocity+modelPerf+refreshAnalysis parallel)`);
-        const [trueAcceptance, velocity, modelPerformance, refreshAnalysis] = await Promise.all([
-          dbWorker.trueRate(stats.totalShown),
-          dbWorker.velocity(),
-          dbWorker.modelPerformance(),
-          dbWorker.getRefreshAnalysis({ memoryEvents: stats.memoryManagementEvents }),
-        ]);
-        channel.appendLine(
-          `[TIMING] db.computeMetrics: done | ${(performance.now() - phaseMs).toFixed(1)}ms (trueRate+velocity+modelPerf+refreshAnalysis parallel)`,
-        );
         if (timingEnabled) {
           channel.appendLine(
             `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [db path]`,
           );
         }
         return {
-          trueAcceptance: hasAcceptanceData ? trueAcceptance : undefined,
-          velocity,
-          modelPerformance,
-          refreshAnalysis,
           logBaseDir,
         };
       } catch (err) {
-        // Fall back to in-process computation when the worker is unavailable.
+        // The dashboard remains available if the session database is unavailable.
         channel.appendLine(
-          `[TIMING] getAdvancedMetrics: dbWorker error, falling back to in-process | ${err instanceof Error ? err.message : String(err)}`,
+          `[TIMING] getAdvancedMetrics: dbWorker error | ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     } else {
-      channel.appendLine(`[TIMING] getAdvancedMetrics: no dbWorker, using in-process fallback`);
+      channel.appendLine(`[TIMING] getAdvancedMetrics: no dbWorker`);
     }
 
-    let phaseMs = performance.now();
-    channel.appendLine(`[TIMING] fallback.trueRate: start`);
-    const trueAcceptance = computeTrueAcceptanceRate(allEvents, stats.totalShown);
-    channel.appendLine(`[TIMING] fallback.trueRate: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    phaseMs = performance.now();
-    channel.appendLine(`[TIMING] fallback.velocity: start`);
-    const velocity = computeVelocityAnalysis(allEvents);
-    channel.appendLine(`[TIMING] fallback.velocity: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    phaseMs = performance.now();
-    channel.appendLine(`[TIMING] fallback.modelPerformance: start`);
-    const modelPerformance = computeModelPerformance(allEvents);
-    channel.appendLine(`[TIMING] fallback.modelPerformance: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    phaseMs = performance.now();
-    channel.appendLine(`[TIMING] fallback.refreshAnalysis: start`);
-    const refreshAnalysis = computeRefreshAnalysis(allEvents, stats.memoryManagementEvents);
-    channel.appendLine(`[TIMING] fallback.refreshAnalysis: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);
-    channel.appendLine(
-      `[TIMING] getAdvancedMetrics total: ${(performance.now() - advancedStartMs).toFixed(1)}ms [fallback path]`,
-    );
-    return {
-      trueAcceptance: hasAcceptanceData ? trueAcceptance : undefined,
-      velocity,
-      modelPerformance,
-      refreshAnalysis,
-      logBaseDir,
-    };
+    return { logBaseDir };
   }
 
   const showCopilotUsageDisposable = vscode.commands.registerCommand("copilot-insight.showCopilotUsage", async () => {
@@ -337,7 +282,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Phase 3: Export Markdown report with ROI estimation.
+  // Export Markdown report.
   const exportReportDisposable = vscode.commands.registerCommand("copilot-insight.exportReport", async () => {
     const stats = await ensureStatsLoaded();
 
@@ -345,29 +290,23 @@ export function activate(context: vscode.ExtensionContext) {
     const dates = eventTracker.storage.listDates();
     const allEvents = dates.flatMap((d) => eventTracker.storage.readByDate(d));
 
-    const trueAcceptance = allEvents.length > 0 ? computeTrueAcceptanceRate(allEvents, stats.totalShown) : undefined;
     const velocity = allEvents.length > 0 ? computeVelocityAnalysis(allEvents) : undefined;
     const modelPerformance = allEvents.length > 0 ? computeModelPerformance(allEvents) : undefined;
 
     const period = dates.length > 0 ? `${dates[0]} — ${dates[dates.length - 1]}` : "All available data";
     const projectName = vscode.workspace.name;
 
-    // Build the dashboard payload to obtain consistent pre-computed ROI values and
-    // auto-generated insights — this ensures the report numbers match the dashboard.
-    const dashboardPayload = buildDashboardPayload(stats, trueAcceptance, velocity, modelPerformance);
-    const { typingMinutesSaved, agenticMinutesSaved } = dashboardPayload.summary;
+    // Reuse the dashboard insights in the report.
+    const dashboardPayload = buildDashboardPayload(stats);
     const insights = dashboardPayload.insights;
 
     const content = generateMarkdownReport({
       period,
       projectName,
       stats,
-      trueAcceptance,
       velocity,
       modelPerformance,
       insights,
-      typingMinutesSaved,
-      agenticMinutesSaved,
     });
 
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;

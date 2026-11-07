@@ -2,7 +2,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { SessionSignalEvent } from "../events/eventSchema";
 import type {
-  AgenticDepthStat,
   ChatSessionState,
   ChatSessionTitleRecord,
   CliDateStat,
@@ -47,19 +46,10 @@ interface SerializedCopilotUsageStats {
   chatLatencyP95: number;
   bySession: Array<[string, SessionStat]>;
   subagentRequests: number;
-  agenticRatio: number;
   autonomousDurationMs: number;
   toolUsageStats: Array<[string, number]>;
-  subagentLoops: number;
-  subagentLoopsStarted: number;
-  completionRate: number;
   subagentByModel: Array<[string, number]>;
   autonomousDurationByModel: Array<[string, number]>;
-  agenticDepthByModel: Array<[string, AgenticDepthStat]>;
-  byDateAgenticDepth: Array<[string, AgenticDepthStat]>;
-  planCount: number;
-  executedPlanCount: number;
-  userChoicesInPlan: number;
   browserToolInvocations: number;
   browserToolsByType: Array<[string, number]>;
   pluginOrSkillInvocations: number;
@@ -77,7 +67,6 @@ interface SerializedCopilotUsageStats {
   cliUsageByModel?: Array<[string, CliUsageStat]>;
   cliThreads?: CliThreadUsage[];
   cliToolExecutions?: Array<[string, { total: number; success: number; fail: number }]>;
-  cliReasoningTokens?: number;
   cliAgentTypes?: Array<[string, number]>;
   commandUsage: Array<[string, number]>;
   promptEffectiveness?: Record<string, { shown: number; accepted: number }>;
@@ -124,19 +113,10 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     chatLatencyP95: stats.chatLatencyP95,
     bySession: mapEntries(stats.bySession),
     subagentRequests: stats.subagentRequests,
-    agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats: mapEntries(stats.toolUsageStats),
-    subagentLoops: stats.subagentLoops,
-    subagentLoopsStarted: stats.subagentLoopsStarted,
-    completionRate: stats.completionRate,
     subagentByModel: mapEntries(stats.subagentByModel),
     autonomousDurationByModel: mapEntries(stats.autonomousDurationByModel),
-    agenticDepthByModel: mapEntries(stats.agenticDepthByModel),
-    byDateAgenticDepth: mapEntries(stats.byDateAgenticDepth),
-    planCount: stats.planCount,
-    executedPlanCount: stats.executedPlanCount,
-    userChoicesInPlan: stats.userChoicesInPlan,
     browserToolInvocations: stats.browserToolInvocations,
     browserToolsByType: mapEntries(stats.browserToolsByType),
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
@@ -154,7 +134,6 @@ function serializeStats(stats: CopilotUsageStats): SerializedCopilotUsageStats {
     cliUsageByModel: mapEntries(stats.cliUsageByModel ?? new Map()),
     cliThreads: stats.cliThreads,
     cliToolExecutions: mapEntries(stats.cliToolExecutions ?? new Map()),
-    cliReasoningTokens: stats.cliReasoningTokens ?? 0,
     cliAgentTypes: mapEntries(stats.cliAgentTypes ?? new Map()),
     commandUsage: mapEntries(stats.commandUsage),
     promptEffectiveness: { ...stats.promptEffectiveness },
@@ -194,19 +173,10 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     chatLatencyP95: stats.chatLatencyP95,
     bySession: toMap(stats.bySession),
     subagentRequests: stats.subagentRequests,
-    agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats: toMap(stats.toolUsageStats),
-    subagentLoops: stats.subagentLoops,
-    subagentLoopsStarted: stats.subagentLoopsStarted,
-    completionRate: stats.completionRate,
     subagentByModel: toMap(stats.subagentByModel),
     autonomousDurationByModel: toMap(stats.autonomousDurationByModel),
-    agenticDepthByModel: toMap(stats.agenticDepthByModel),
-    byDateAgenticDepth: toMap(stats.byDateAgenticDepth),
-    planCount: stats.planCount,
-    executedPlanCount: stats.executedPlanCount,
-    userChoicesInPlan: stats.userChoicesInPlan,
     browserToolInvocations: stats.browserToolInvocations,
     browserToolsByType: toMap(stats.browserToolsByType),
     pluginOrSkillInvocations: stats.pluginOrSkillInvocations,
@@ -227,7 +197,6 @@ function deserializeStats(stats: SerializedCopilotUsageStats): CopilotUsageStats
     cliUsageByModel: toMap(stats.cliUsageByModel),
     cliThreads: stats.cliThreads,
     cliToolExecutions: toMap(stats.cliToolExecutions),
-    cliReasoningTokens: stats.cliReasoningTokens ?? 0,
     cliAgentTypes: toMap(stats.cliAgentTypes),
     commandUsage: toMap(stats.commandUsage),
     promptEffectiveness: stats.promptEffectiveness ?? {},

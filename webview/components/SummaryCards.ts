@@ -34,46 +34,11 @@ export class SummaryCards extends LitElement {
       return nothing;
     }
 
-    const trueRateStr = s.trueAcceptanceRate !== null ? `${s.trueAcceptanceRate.toFixed(1)}%` : "—";
-    const totalHours = (s.totalMinutesSaved.total / 60).toFixed(1);
-    const typingHours = (s.typingMinutesSaved / 60).toFixed(1);
-    const agenticHours = (s.agenticMinutesSaved / 60).toFixed(1);
-    const editorHours = (s.totalMinutesSaved.editor / 60).toFixed(1);
-    const cliHours = (s.totalMinutesSaved.cli / 60).toFixed(1);
-    const roiDetail =
-      s.agenticMinutesSaved > 0 ? `Typing: ${typingHours}h + AI: ${agenticHours}h` : `Typing: ${typingHours}h`;
-    const sourceDetail = `Editor: ${editorHours}h / CLI: ${cliHours}h`;
-
     const topChatModelStr = s.topChatModel ?? "—";
     const topChatModelDetail =
       s.topChatModel && s.topChatModelCount > 0 ? `${s.topChatModelCount} requests` : "no chat model data";
 
-    const topAskModelStr = s.topAskModel ?? "—";
-    const topAskModelDetail =
-      s.topAskModel && s.topAskModelCount > 0 ? `${s.topAskModelCount} requests` : "no ask model data";
-
-    const topPlanModelStr = s.topPlanModel ?? "—";
-    const topPlanModelDetail =
-      s.topPlanModel && s.topPlanModelCount > 0 ? `${s.topPlanModelCount} plan & agent calls` : "no plan or agent data";
-
     return html`
-      <copilot-stat-card
-        show-download
-        .value=${trueRateStr}
-        icon="🎯"
-        label="True Acceptance Rate"
-        highlight="blue"
-        .subtext=${s.totalShown > 0 ? "vs " + s.acceptanceRate.toFixed(1) + "% raw" : "No recorded suggestions"}
-      ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${totalHours + " hours"}
-        icon="⏱️"
-        label="Estimated Time Saved"
-        highlight="blue"
-        .subtext=${roiDetail}
-        .title=${sourceDetail}
-      ></copilot-stat-card>
       <copilot-stat-card
         show-download
         .value=${trunc(topChatModelStr, 18)}
@@ -83,42 +48,15 @@ export class SummaryCards extends LitElement {
         .subtext=${topChatModelDetail}
         .title=${topChatModelStr}
       ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${trunc(topAskModelStr, 18)}
-        icon="❓"
-        label="Top Ask Model"
-        highlight="blue"
-        .subtext=${topAskModelDetail}
-        .title=${topAskModelStr}
-      ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${trunc(topPlanModelStr, 18)}
-        icon="📋"
-        label="Top Plan Model"
-        highlight="blue"
-        .subtext=${topPlanModelDetail}
-        .title=${topPlanModelStr}
-      ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${String(s.totalShown)}
-        icon="👀"
-        label="Suggestions Shown"
-      ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${String(s.totalAccepted)}
-        icon="✅"
-        label="Suggestions Accepted"
-      ></copilot-stat-card>
-      <copilot-stat-card
-        show-download
-        .value=${s.totalShown > 0 ? s.acceptanceRate.toFixed(1) + "%" : "—"}
-        icon="📊"
-        label="Raw Acceptance Rate"
-      ></copilot-stat-card>
+      ${s.totalShown > 0 ? html`
+        <copilot-stat-card show-download .value=${String(s.totalShown)} icon="👀" label="Suggestions Shown" subtext="Legacy VS Code logs"></copilot-stat-card>
+      ` : nothing}
+      ${s.totalShown > 0 || s.totalAccepted > 0 ? html`
+        <copilot-stat-card show-download .value=${String(s.totalAccepted)} icon="✅" label="Suggestions Accepted" subtext="Legacy VS Code logs"></copilot-stat-card>
+      ` : nothing}
+      ${s.totalShown > 0 ? html`
+        <copilot-stat-card show-download .value=${s.acceptanceRate.toFixed(1) + "%"} icon="📊" label="Raw Acceptance Rate" subtext="Legacy VS Code logs"></copilot-stat-card>
+      ` : nothing}
       ${this._renderTokenCards(s.tokenStats)}
       ${this._renderCliUsageCards(s.cliUsageStats)}
     `;

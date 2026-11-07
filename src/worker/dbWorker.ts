@@ -16,9 +16,6 @@
  * | `loadFromJsonl`  | `{ storagePath: string }`      | `{ loaded: number }`             |
  * | `ingest`         | `TrackedEvent[]`               | `{ ingested: number, total: number }` |
  * | `query`          | SQL name string                | row array                        |
- * | `trueRate`       | `{ totalShown?, windowMs? }`   | {@link TrueAcceptanceResult}     |
- * | `velocity`       | `{ windowMs? }`                | {@link VelocityAnalysisResult}   |
- * | `modelPerf`      | —                              | serialisable model-perf result   |
  * | `close`          | —                              | `true`                           |
  */
 
@@ -28,19 +25,12 @@ import { parentPort } from "node:worker_threads";
 import { InMemoryAnalyticsDb } from "../db/duckdbClient";
 import type { SessionSignalEvent, TrackedEvent } from "../events/eventSchema";
 import { isSubagentIntent } from "../log/parsers/parserHelpers";
-import {
-  computeModelPerformance,
-  computeRefreshAnalysis,
-  computeTrueAcceptanceRate,
-  computeVelocityAnalysis,
-} from "../metrics/metricsEngine";
 import type {
   AgentStep,
   ChatSessionRecord,
   ChatSessionRequest,
   ChatSessionTitleRecord,
   ContextFatigueMarker,
-  MemoryManagementEvent,
   SessionDetailPayload,
   SessionEpisode,
   SessionSummary,
@@ -55,24 +45,13 @@ let cachedEvents: TrackedEvent[] = [];
 let cachedChatSessionTitles: ChatSessionTitleRecord[] = [];
 let cachedChatSessions: ChatSessionRecord[] = [];
 
-/**
- * Maximum lookback window for metrics computation.
- * Events older than this are ignored by the four analytics handlers
- * (trueRate, velocity, modelPerf, getRefreshAnalysis) to prevent
- * O(W×E) blow-up on long-running installations.
- */
-const METRICS_LOOKBACK_DAYS = 90;
-
 const SESSION_ACTION_GAP_MS = 5 * 60_000;
 const EPISODE_ATTACHMENT_MS = 2 * 60_000;
 const THREAD_ACTION_GAP_MS = 10 * 60_000;
 const FATIGUE_THRESHOLD = 3;
-const TYPING_SPEED_CPM = 200;
-const AGENTIC_COGNITIVE_WEIGHT = 0.5;
 
 interface EpisodeAccumulator extends SessionEpisode {
   shownCount: number;
-  confirmationCount: number;
   loopCompleted: boolean;
 }
 
@@ -402,12 +381,6 @@ function groupEventsBySession(events: TrackedEvent[]): Map<string, TrackedEvent[
   return grouped;
 }
 
-function computeSessionShown(events: TrackedEvent[]): number {
-  return events.filter(
-    (event) => event.eventType === "sessionSignal" && event.signalType === "completion-shown" && event.success,
-  ).length;
-}
-
 function computeSessionAutonomousDuration(events: TrackedEvent[]): number {
   let activeStartMs: number | null = null;
   let duration = 0;
@@ -436,27 +409,15 @@ function computeSessionAutonomousDuration(events: TrackedEvent[]): number {
   return duration;
 }
 
-function computeEfficiencyScore(events: TrackedEvent[], trueRate: number): number {
-  const actionableCount = events.filter(isActionableEvent).length;
-  const acceptedCount = events.filter((event) => event.eventType === "completionAccept").length;
-  const retainedRatio = actionableCount > 0 ? (acceptedCount / actionableCount) * 100 : 0;
-  return Math.max(0, Math.min(100, trueRate * 0.7 + retainedRatio * 0.3));
-}
-
 function buildSessionSummary(sessionId: string, events: TrackedEvent[], title: string | null = null): SessionSummary {
   const sortedEvents = sortEvents(events);
-  const totalShown = computeSessionShown(sortedEvents);
-  const fallbackShown = sortedEvents.filter((event) => event.eventType === "completionAccept").length;
-  const trueAcceptance = computeTrueAcceptanceRate(sortedEvents, totalShown > 0 ? totalShown : fallbackShown);
   const autonomousDuration = computeSessionAutonomousDuration(sortedEvents);
   return {
     sessionId,
     title,
     date: sortedEvents[0]?.timestamp.slice(0, 10) ?? "",
     totalActions: sortedEvents.filter(isActionableEvent).length,
-    trueRate: trueAcceptance.trueRate,
     autonomousDuration,
-    efficiencyScore: computeEfficiencyScore(sortedEvents, trueAcceptance.trueRate),
   };
 }
 
@@ -724,41 +685,6 @@ function toPublicEpisode(episode: EpisodeAccumulator): SessionEpisode {
   };
 }
 
-function computeEpisodeTrueRate(episodes: EpisodeAccumulator[], endIndex: number): number {
-  const recent = episodes.slice(Math.max(0, endIndex - 2), endIndex + 1);
-  const shownTotal = recent.reduce((sum, episode) => sum + episode.shownCount, 0);
-  if (shownTotal > 0) {
-    const confirmed = recent.reduce((sum, episode) => sum + episode.confirmationCount, 0);
-    return (confirmed / shownTotal) * 100;
-  }
-  const acceptedEpisodes = recent.filter((episode) => episode.accepted).length;
-  return (acceptedEpisodes / Math.max(1, recent.length)) * 100;
-}
-
-function computeEpisodeTrendPenalty(
-  episodes: EpisodeAccumulator[],
-  index: number,
-  baselineTrueRate: number,
-): {
-  score: number;
-  reasons: string[];
-} {
-  const reasons: string[] = [];
-  let score = 0;
-  const recentTrueRate = computeEpisodeTrueRate(episodes, index);
-  const previousTrueRate = index > 0 ? computeEpisodeTrueRate(episodes, index - 1) : recentTrueRate;
-  const floor = baselineTrueRate > 0 ? Math.max(20, baselineTrueRate * 0.75) : 35;
-  if (recentTrueRate < floor) {
-    score++;
-    reasons.push("episode true-rate weakened");
-  }
-  if (index > 0 && previousTrueRate - recentTrueRate >= 15) {
-    score++;
-    reasons.push("episode true-rate dropped sharply");
-  }
-  return { score, reasons };
-}
-
 function isThreadBoundaryPrompt(event: TrackedEvent): boolean {
   return event.eventType === "sessionSignal" && event.intent === "vscodePrompt";
 }
@@ -924,7 +850,6 @@ function finalizeThread(thread: ThreadAccumulator): SessionThreadSummary {
     threadId: thread.threadId,
     title: thread.title,
     startedAt: thread.startedAt,
-    estimatedMinutesSaved: thread.estimatedMinutesSaved,
     autonomousDurationMs: thread.autonomousDurationMs,
     acceptedChars: thread.acceptedChars,
     hasAutonomousRun: thread.hasAutonomousRun,
@@ -1229,7 +1154,6 @@ function buildThreadDrilldown(
     threadId: `thread-${++threadCounter}`,
     title: `Thread ${threadCounter}`,
     startedAt: timestamp,
-    estimatedMinutesSaved: 0,
     autonomousDurationMs: 0,
     acceptedChars: 0,
     hasAutonomousRun: false,
@@ -1400,8 +1324,6 @@ function buildThreadDrilldown(
     const [title, hasSelectableTitle] = buildThreadTitle(thread);
     thread.title = title;
     thread.hasSelectableTitle = hasSelectableTitle;
-    thread.estimatedMinutesSaved =
-      thread.acceptedChars / TYPING_SPEED_CPM + (thread.autonomousDurationMs / 60_000) * AGENTIC_COGNITIVE_WEIGHT;
     return finalizeThread(thread);
   });
 
@@ -1462,7 +1384,6 @@ export function buildSessionDetail(
         summary: "",
         fatigueScore: 0,
         shownCount: 0,
-        confirmationCount: 0,
         loopCompleted: false,
       };
     }
@@ -1503,12 +1424,10 @@ export function buildSessionDetail(
     if (event.eventType === "completionAccept") {
       episode.humanActionCount++;
       episode.accepted = true;
-      episode.confirmationCount++;
     } else if (event.eventType === "textChange") {
       episode.humanActionCount++;
       if (episode.aiActionCount > 0 && event.charsAdded > 0) {
         episode.accepted = true;
-        episode.confirmationCount++;
       }
     } else if (event.eventType === "sessionSignal") {
       if (event.actor === "ai") {
@@ -1593,9 +1512,6 @@ export function buildSessionDetail(
         reasons.push("session confirmation ratio weakened");
       }
     }
-    const trendPenalty = computeEpisodeTrendPenalty(episodes, index, summary.trueRate);
-    score += trendPenalty.score;
-    reasons.push(...trendPenalty.reasons);
     episode.fatigueScore = score;
     if (!fatigueMarker && score >= FATIGUE_THRESHOLD) {
       fatigueMarker = {
@@ -1753,55 +1669,6 @@ parentPort?.on("message", async (msg: { type: string; id?: string; payload?: unk
         const sql = msg.payload as string;
         const rows = await db.query(sql);
         parentPort?.postMessage({ type: "query", id: msg.id, result: rows });
-        break;
-      }
-
-      case "trueRate": {
-        const opts = (msg.payload ?? {}) as { totalShown?: number; windowMs?: number };
-        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
-        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
-        const result = computeTrueAcceptanceRate(recentEvents, opts.totalShown ?? 0, opts.windowMs);
-        parentPort?.postMessage({ type: "trueRate", id: msg.id, result });
-        break;
-      }
-
-      case "velocity": {
-        const opts = (msg.payload ?? {}) as { windowMs?: number };
-        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
-        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
-        const result = computeVelocityAnalysis(recentEvents, opts.windowMs);
-        parentPort?.postMessage({ type: "velocity", id: msg.id, result });
-        break;
-      }
-
-      case "modelPerf": {
-        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
-        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
-        const result = computeModelPerformance(recentEvents);
-        // Convert Map → Object for structured-clone compatibility
-        const serialisable = {
-          crossTab: result.crossTab,
-          bestModelByLanguage: Object.fromEntries(result.bestModelByLanguage),
-        };
-        parentPort?.postMessage({ type: "modelPerf", id: msg.id, result: serialisable });
-        break;
-      }
-
-      case "getRefreshAnalysis": {
-        const opts = (msg.payload ?? {}) as {
-          memoryEvents?: MemoryManagementEvent[];
-          windowMs?: number;
-          turnWindowSize?: number;
-          revertWindowMs?: number;
-        };
-        const cutoff = Date.now() - METRICS_LOOKBACK_DAYS * 86_400_000;
-        const recentEvents = cachedEvents.filter((e) => new Date(e.timestamp).getTime() > cutoff);
-        const result = computeRefreshAnalysis(recentEvents, opts.memoryEvents ?? [], {
-          windowMs: opts.windowMs,
-          turnWindowSize: opts.turnWindowSize,
-          revertWindowMs: opts.revertWindowMs,
-        });
-        parentPort?.postMessage({ type: "getRefreshAnalysis", id: msg.id, result });
         break;
       }
 

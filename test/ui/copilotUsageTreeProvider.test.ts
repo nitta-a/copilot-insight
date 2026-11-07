@@ -38,19 +38,10 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP95: 250,
     bySession: new Map([["session-1", { sessionId: "session-1", shown: 60, accepted: 40, chat: 10, errors: 0 }]]),
     subagentRequests: 0,
-    agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
-    subagentLoops: 0,
-    subagentLoopsStarted: 0,
-    completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
-    agenticDepthByModel: new Map(),
-    byDateAgenticDepth: new Map(),
-    planCount: 0,
-    executedPlanCount: 0,
-    userChoicesInPlan: 0,
     browserToolInvocations: 0,
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
@@ -167,13 +158,23 @@ suite("CopilotUsageTreeProvider", () => {
       assert.strictEqual(rateItem.description, "75.3%");
     });
 
-    test("shows an unavailable acceptance rate when no suggestions were observed", () => {
+    test("hides acceptance rate when no suggestions were observed", () => {
       const provider = new CopilotUsageTreeProvider();
       provider.updateStats(makeStats({ totalShown: 0, acceptanceRate: 0 }));
       const section = provider.getChildren().find((item) => item.label === "Key Performance Indicators");
       assert.ok(section);
       const rate = provider.getChildren(section).find((item) => item.label === "Acceptance Rate");
-      assert.strictEqual(rate?.description, "—");
+      assert.strictEqual(rate, undefined);
+    });
+
+    test("omits legacy completion counts when only agent activity is present", () => {
+      const provider = new CopilotUsageTreeProvider();
+      provider.updateStats(makeStats({ totalShown: 0, totalAccepted: 0, cliTotalInteractions: 2 }));
+      const section = provider.getChildren().find((item) => item.label === "Key Performance Indicators");
+      assert.ok(section);
+      const labels = provider.getChildren(section).map((item) => item.label);
+      assert.ok(!labels.includes("Accepted (legacy logs)"));
+      assert.ok(!labels.includes("Acceptance Rate"));
     });
 
     test("includes avg latency when > 0", () => {
@@ -203,56 +204,8 @@ suite("CopilotUsageTreeProvider", () => {
       assert.strictEqual(latencyItem, undefined, "Should not include latency when 0");
     });
 
-    test("ROI rank badge: no badge below 60 minutes", () => {
-      const provider = new CopilotUsageTreeProvider();
-      // totalAccepted=10, formula: 10*40/200=2 minutes, autonomousDurationMs=0
-      provider.updateStats(makeStats({ totalAccepted: 10, autonomousDurationMs: 0 }));
-      const roots = provider.getChildren();
-      const kpiSection = roots.find(
-        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
-      );
-      assert.ok(kpiSection);
-      const children = provider.getChildren(kpiSection);
-      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
-      assert.ok(roiItem);
-      const desc = roiItem.description as string;
-      assert.ok(
-        !desc.includes("✨") && !desc.includes("⭐") && !desc.includes("🏆"),
-        `Expected no badge but got: ${desc}`,
-      );
-    });
 
-    test("ROI rank badge: ✨ at 60 minutes", () => {
-      const provider = new CopilotUsageTreeProvider();
-      // totalAccepted=750: 750*40/200 = 150 minutes → ≥60 but <180 → ✨ tier
-      provider.updateStats(makeStats({ totalAccepted: 750, autonomousDurationMs: 0 }));
-      const roots = provider.getChildren();
-      const kpiSection = roots.find(
-        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
-      );
-      assert.ok(kpiSection);
-      const children = provider.getChildren(kpiSection);
-      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
-      assert.ok(roiItem);
-      const desc = roiItem.description as string;
-      assert.ok(desc.includes("✨"), `Expected ✨ badge but got: ${desc}`);
-    });
 
-    test("ROI rank badge: 🏆 at 600+ minutes", () => {
-      const provider = new CopilotUsageTreeProvider();
-      // autonomousDurationMs = 600 min * 60000ms / 0.5 = 72_000_000ms
-      provider.updateStats(makeStats({ totalAccepted: 0, autonomousDurationMs: 72_000_000 }));
-      const roots = provider.getChildren();
-      const kpiSection = roots.find(
-        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
-      );
-      assert.ok(kpiSection);
-      const children = provider.getChildren(kpiSection);
-      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
-      assert.ok(roiItem);
-      const desc = roiItem.description as string;
-      assert.ok(desc.includes("🏆"), `Expected 🏆 badge but got: ${desc}`);
-    });
 
     test("shows Active Sessions count", () => {
       const provider = new CopilotUsageTreeProvider();
@@ -268,23 +221,6 @@ suite("CopilotUsageTreeProvider", () => {
       assert.strictEqual(sessItem.description, "1"); // makeStats has 1 session
     });
 
-    test("CLI interactions are included in Time Saved (ROI)", () => {
-      const provider = new CopilotUsageTreeProvider();
-      // editor=0, cli=2 interactions × 30min = 60min → should show ✨1h
-      provider.updateStats(makeStats({ totalAccepted: 0, autonomousDurationMs: 0, cliTotalInteractions: 2 }));
-      const roots = provider.getChildren();
-      const kpiSection = roots.find(
-        (r) => (typeof r.label === "string" ? r.label : "") === "Key Performance Indicators",
-      );
-      assert.ok(kpiSection);
-      const children = provider.getChildren(kpiSection);
-      const roiItem = children.find((c) => (typeof c.label === "string" ? c.label : "") === "Time Saved (ROI)");
-      assert.ok(roiItem, "Should have Time Saved (ROI) item");
-      const desc = roiItem.description as string;
-      // 2 interactions × 30min default = 60min = 1h → ✨ tier badge
-      assert.ok(desc.includes("1h"), `Expected '1h' in description but got: ${desc}`);
-      assert.ok(desc.includes("✨"), `Expected ✨ badge (CLI brings total to 60 min) but got: ${desc}`);
-    });
   });
 
   suite("getChildren (daily category)", () => {

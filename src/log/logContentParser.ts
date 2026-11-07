@@ -55,12 +55,12 @@ export { parseTextLogLine } from "./parsers/textLogParser";
  *
  * The following fields are merged:
  * - Core counters: `totalShown`, `totalAccepted`, `totalChat`,
- *   `subagentRequests`, `planCount`.
+ *   `subagentRequests`.
  * - Per-model maps: `byModel` (shown + accepted counts).
  * - Per-date map: `byDate` (shown + accepted counts per date key).
  * - Per-hour map: `byHour` (event counts per hour key).
  * - Latency array: `latencies` (raw millisecond values appended).
- * - New fields: `autonomousDurationMs`, `subagentLoops`, `executedPlanCount`,
+ * - New fields: `autonomousDurationMs`,
  *   `browserToolsByType`, `errorsByType`.
  */
 function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): void {
@@ -68,7 +68,6 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   ctx.totalAccepted += native.totalAccepted;
   ctx.totalChat += native.totalChat;
   ctx.subagentRequests += native.subagentRequests;
-  ctx.planCount += native.planCount;
 
   for (const [model, count] of Object.entries(native.byModelShown)) {
     const existing = ctx.byModel.get(model) ?? { shown: 0, accepted: 0 };
@@ -106,12 +105,6 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   if (native.autonomousDurationMs) {
     ctx.autonomousDurationMs += native.autonomousDurationMs;
   }
-  if (native.subagentLoops) {
-    ctx.subagentLoops += native.subagentLoops;
-  }
-  if (native.executedPlanCount) {
-    ctx.executedPlanCount += native.executedPlanCount;
-  }
   for (const [type_, count] of Object.entries(native.browserToolsByType ?? {})) {
     ctx.browserToolsByType.set(type_, (ctx.browserToolsByType.get(type_) ?? 0) + count);
     ctx.browserToolInvocations += count;
@@ -136,7 +129,7 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
     ctx.tokensByModel.set(model, existing);
   }
 
-  // Merge new model-breakdown maps needed by the ROI / Agent Intelligence tabs.
+  // Merge new model-breakdown maps used by model and usage views.
   for (const [model, count] of Object.entries(native.byChatModel ?? {})) {
     ctx.byChatModel.set(model, (ctx.byChatModel.get(model) ?? 0) + count);
   }
@@ -152,29 +145,8 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
   for (const [reason, count] of Object.entries(native.finishReasonCounts ?? {})) {
     ctx.finishReasonCounts.set(reason, (ctx.finishReasonCounts.get(reason) ?? 0) + count);
   }
-  if (native.subagentLoopsStarted) {
-    ctx.subagentLoopsStarted += native.subagentLoopsStarted;
-  }
   if (native.totalRejected) {
     ctx.totalRejected += native.totalRejected;
-  }
-  for (const [model, count] of Object.entries(native.loopsCompletedByModel ?? {})) {
-    ctx.loopsCompletedByModel.set(model, (ctx.loopsCompletedByModel.get(model) ?? 0) + count);
-  }
-  for (const [model, count] of Object.entries(native.totalLoopActionsByModel ?? {})) {
-    ctx.totalLoopActionsByModel.set(model, (ctx.totalLoopActionsByModel.get(model) ?? 0) + count);
-  }
-  for (const [model, count] of Object.entries(native.loopsStartedByModel ?? {})) {
-    ctx.loopsStartedByModel.set(model, (ctx.loopsStartedByModel.get(model) ?? 0) + count);
-  }
-  for (const [date, count] of Object.entries(native.loopsStartedByDate ?? {})) {
-    ctx.loopsStartedByDate.set(date, (ctx.loopsStartedByDate.get(date) ?? 0) + count);
-  }
-  for (const [date, count] of Object.entries(native.loopsCompletedByDate ?? {})) {
-    ctx.loopsCompletedByDate.set(date, (ctx.loopsCompletedByDate.get(date) ?? 0) + count);
-  }
-  for (const [date, count] of Object.entries(native.totalLoopActionsByDate ?? {})) {
-    ctx.totalLoopActionsByDate.set(date, (ctx.totalLoopActionsByDate.get(date) ?? 0) + count);
   }
   for (const [date, ms] of Object.entries(native.autonomousDurationByDate ?? {})) {
     ctx.autonomousDurationByDate.set(date, (ctx.autonomousDurationByDate.get(date) ?? 0) + ms);
@@ -185,7 +157,7 @@ function mergeNativeResults(native: NativeParseResult, ctx: ParsingContext): voi
  * Parse log content from an in-memory string.
  *
  * Attempts native bulk parsing first for both the core counters (`totalShown`,
- * `totalAccepted`, `totalChat`, `subagentRequests`, `planCount`, `byModel`)
+ * `totalAccepted`, `totalChat`, `subagentRequests`, `byModel`)
  * and the detailed metrics (`byDate`, `byHour`, `latencies`).
  * When the native addon is unavailable or parsing fails, falls back to the
  * existing JS line-by-line parsers which populate all of the above fields

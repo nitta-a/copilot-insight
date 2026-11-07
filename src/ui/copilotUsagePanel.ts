@@ -1,11 +1,9 @@
 import * as vscode from "vscode";
 import * as crypto from "node:crypto";
 import { performance } from "node:perf_hooks";
-import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
 import type {
   AgentStep,
   CopilotUsageStats,
-  RefreshAnalysis,
   SessionDetailPayload,
   SessionSummary,
   SessionThreadSummary,
@@ -30,10 +28,6 @@ function getNonce(): string {
 
 /** Optional advanced-metrics bundle passed alongside the basic log stats. */
 export interface AdvancedMetrics {
-  trueAcceptance?: TrueAcceptanceResult;
-  velocity?: VelocityAnalysisResult;
-  modelPerformance?: ModelPerformanceResult;
-  refreshAnalysis?: RefreshAnalysis[];
   sessionSummaries?: SessionSummary[];
   /**
    * VS Code log base directory (parent of session directories), used to
@@ -192,7 +186,6 @@ export class CopilotUsagePanel {
             threadId: session.chatSessionId,
             title: session.title ?? session.firstRequestText?.slice(0, 80) ?? session.chatSessionId,
             startedAt: session.createdAt,
-            estimatedMinutesSaved: 0,
             autonomousDurationMs: 0,
             acceptedChars: 0,
             hasAutonomousRun: false,
@@ -204,9 +197,7 @@ export class CopilotUsagePanel {
             sessionId: session.chatSessionId,
             date: session.createdAt.slice(0, 10),
             totalActions: steps.length,
-            trueRate: 0,
             autonomousDuration: 0,
-            efficiencyScore: 0,
             timeline: [],
             episodes: [],
             fatigueMarker: null,
@@ -397,9 +388,7 @@ export class CopilotUsagePanel {
           title: s.title ?? s.firstRequestText?.slice(0, 80) ?? null,
           date: s.createdAt?.slice(0, 10) ?? s.lastMessageAt?.slice(0, 10) ?? "",
           totalActions: s.requests.length,
-          trueRate: 0,
           autonomousDuration: 0,
-          efficiencyScore: 0,
         }))
         .sort((a, b) => b.date.localeCompare(a.date));
       return buildSessionsPayload(this._stats, summaries);
@@ -492,12 +481,6 @@ export class CopilotUsagePanel {
     channel.appendLine(`[TIMING] _update.buildPayload: start`);
     const payload = buildDashboardPayload(
       this._stats,
-      this._advanced.trueAcceptance,
-      this._advanced.velocity,
-      this._advanced.modelPerformance,
-      this._advanced.refreshAnalysis,
-      this._advanced.sessionSummaries,
-      vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30,
       this._advanced.hasMoreData ?? false,
     );
     channel.appendLine(`[TIMING] _update.buildPayload: done | ${(performance.now() - phaseMs).toFixed(1)}ms`);

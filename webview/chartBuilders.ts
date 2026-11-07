@@ -295,36 +295,11 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
   const editorChat = timeline.map((e) => e.chatCount);
   const cliPrompts = timeline.map((e) => e.cliPrompts);
   const rates = timeline.map((e) => e.rate);
-  const trueRates = timeline.map((e) =>
-    e.trueAccepted !== null && e.shown > 0 ? (e.trueAccepted / e.shown) * 100 : null,
-  );
-  const hasTrueRates = trueRates.some((r) => r !== null);
-
   // Per-point styling for anomaly detection.
   const pointColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
   const pointBorderColors = timeline.map((e) => (e.isAnomaly ? ANOMALY_POINT_COLOR : c.orange));
   const pointBorderWidths = timeline.map((e) => (e.isAnomaly ? 2 : 1));
   const pointRadii = timeline.map((e) => (e.isAnomaly ? 8 : 3));
-
-  const extraDatasets = hasTrueRates
-    ? [
-        {
-          type: "line" as const,
-          label: "True Acceptance Rate (%)",
-          data: trueRates as (number | null)[],
-          borderColor: c.purple,
-          backgroundColor: "transparent",
-          // biome-ignore lint/style/useNamingConvention: Chart.js API property
-          yAxisID: "yRate",
-          borderWidth: 2,
-          pointRadius: 3,
-          tension: 0.3,
-          borderDash: [5, 5],
-          order: 1,
-          stack: "rate",
-        },
-      ]
-    : [];
 
   return new Chart(canvas, {
     type: "bar",
@@ -378,7 +353,6 @@ export function createTimelineChart(canvas: HTMLCanvasElement, timeline: Timelin
           order: 1,
           stack: "rate",
         },
-        ...extraDatasets,
       ],
     },
     options: {

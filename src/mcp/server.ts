@@ -4,7 +4,7 @@
  * Exposes three read-only tools that let external AI agents (Claude Desktop,
  * VS Code Copilot Chat, etc.) query locally accumulated usage statistics:
  *
- *  - `get_usage_summary`   — acceptance counts and estimated time saved
+ *  - `get_usage_summary`   — recorded acceptance counts
  *  - `get_model_efficiency` — best model per language cross-tabulation
  *  - `get_anomaly_report`  — z-score based anomaly detection on daily counts
  *
@@ -22,12 +22,6 @@ import type { CompletionAcceptEvent, TrackedEvent } from "../events/eventSchema"
 export { resolveStoragePath } from "./storageResolver";
 
 // ── Constants (mirrored from dashboardPayload.ts) ────────────────────────────
-
-/** Average characters per accepted completion (used for ROI estimation). */
-const AVG_CHARS_PER_COMPLETION = 40;
-
-/** Estimated developer typing speed in chars/min (used for ROI estimation). */
-const TYPING_SPEED_CPM = 200;
 
 /** z-score magnitude above which a data point is considered an anomaly. */
 const ANOMALY_Z_THRESHOLD = 2;
@@ -73,7 +67,7 @@ export async function startMcpServer(globalStoragePath: string): Promise<void> {
       {
         name: "get_usage_summary",
         description:
-          "Returns Copilot completion statistics for the given number of recent days: total accepted completions, estimated minutes saved, and a per-language breakdown.",
+          "Returns Copilot completion statistics for the given number of recent days: total accepted completions, accepted characters, and a per-language breakdown.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -126,11 +120,7 @@ export async function startMcpServer(globalStoragePath: string): Promise<void> {
       const acceptEvents = recentEvents.filter((e): e is CompletionAcceptEvent => e.eventType === "completionAccept");
 
       const totalAccepted = acceptEvents.length;
-      const totalCharsAccepted = acceptEvents.reduce(
-        (sum, e) => sum + (e.acceptedCharacters > 0 ? e.acceptedCharacters : AVG_CHARS_PER_COMPLETION),
-        0,
-      );
-      const estimatedMinutesSaved = Math.round((totalCharsAccepted / TYPING_SPEED_CPM) * 10) / 10;
+      const totalCharsAccepted = acceptEvents.reduce((sum, e) => sum + e.acceptedCharacters, 0);
 
       const byLanguage: Record<string, number> = {};
       for (const e of acceptEvents) {
@@ -147,7 +137,6 @@ export async function startMcpServer(globalStoragePath: string): Promise<void> {
         days,
         totalAccepted,
         totalCharsAccepted,
-        estimatedMinutesSaved,
         topLanguages,
       };
 

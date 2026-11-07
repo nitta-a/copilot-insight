@@ -1,28 +1,8 @@
 import * as vscode from "vscode";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, DateStat } from "../types";
-import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 
 type TreeElement = CategoryItem | StatItem | ActionItem;
-
-/** Maps a ROI tier to a VS Code ThemeColor id. */
-const ROI_TIER_COLORS: Record<string, string> = {
-  gold: "charts.orange",
-  green: "charts.green",
-  blue: "charts.blue",
-};
-
-/** Returns the ROI rank badge and ThemeColor based on total minutes saved. */
-function getRoiRankStyle(totalMinutesSaved: number): { badge: string; color: vscode.ThemeColor } | null {
-  const tier = getRoiTier(totalMinutesSaved);
-  if (!tier) {
-    return null;
-  }
-  return {
-    badge: getRoiBadge(tier),
-    color: new vscode.ThemeColor(ROI_TIER_COLORS[tier]),
-  };
-}
 
 export class CopilotUsageTreeProvider implements vscode.TreeDataProvider<TreeElement> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeElement | undefined | void>();
@@ -118,20 +98,15 @@ class CategoryItem extends vscode.TreeItem {
   }
 
   private _buildSummary(stats: CopilotUsageStats): StatItem[] {
-    const editorMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
-    const cliRoiPerInteraction =
-      vscode.workspace.getConfiguration("copilot-insight").get<number>("cliRoiMinutesPerInteraction") ?? 30;
-    const cliMinutesSaved = (stats.cliTotalInteractions ?? 0) * cliRoiPerInteraction;
-    const totalMinutesSaved = editorMinutesSaved + cliMinutesSaved;
-    const roiRank = getRoiRankStyle(totalMinutesSaved);
-    const timeSavedLabel = `${roiRank?.badge ?? ""}${formatMinutesSaved(totalMinutesSaved)}`;
     const totalSessions = stats.bySession.size;
 
-    const items: StatItem[] = [
-      new StatItem("Accepted", String(stats.totalAccepted), "check"),
-      new StatItem("Acceptance Rate", stats.totalShown > 0 ? `${stats.acceptanceRate.toFixed(1)}%` : "—", "percentage"),
-      new StatItem("Time Saved (ROI)", timeSavedLabel, "clock", roiRank?.color),
-    ];
+    const items: StatItem[] = [];
+    if (stats.totalShown > 0 || stats.totalAccepted > 0) {
+      items.push(new StatItem("Accepted (legacy logs)", String(stats.totalAccepted), "check"));
+    }
+    if (stats.totalShown > 0) {
+      items.push(new StatItem("Acceptance Rate", `${stats.acceptanceRate.toFixed(1)}%`, "percentage"));
+    }
 
     if (stats.avgLatencyMs > 0) {
       items.push(new StatItem("Avg Latency", `${stats.avgLatencyMs.toFixed(0)}ms`, "pulse"));

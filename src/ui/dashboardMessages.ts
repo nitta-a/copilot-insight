@@ -10,7 +10,6 @@
 
 import type {
   AgentStep as AgentStepData,
-  RefreshAnalysis,
   SessionDetailPayload as SessionDetailData,
   SessionSummary,
 } from "../types";
@@ -21,44 +20,14 @@ export type AgentStep = AgentStepData;
 // Payload data shapes (sent from host → webview)
 // ---------------------------------------------------------------------------
 
-/** Breakdown of a numeric ROI metric by source category (editor vs CLI). */
-export interface RoiBreakdown {
-  /** Combined total across all sources. */
-  total: number;
-  /** Contribution from VS Code editor (inline + chat). */
-  editor: number;
-  /** Contribution from Copilot CLI. */
-  cli: number;
-}
-
 export interface SummaryData {
   totalShown: number;
   totalAccepted: number;
   acceptanceRate: number;
-  /** True acceptance rate (null when no event-tracking data is available). */
-  trueAcceptanceRate: number | null;
-  /** Estimated minutes saved by Copilot completions (ROI). */
-  estimatedMinutesSaved: number;
-  /** Minutes saved from inline completions (typing speed × accepted chars). */
-  typingMinutesSaved: number;
-  /** Minutes saved from AI autonomous actions (50% of autonomous duration). */
-  agenticMinutesSaved: number;
   /** Most frequently used non-inline model name (null when unavailable). */
   topChatModel: string | null;
   /** Number of chat requests attributed to `topChatModel`. */
   topChatModelCount: number;
-  /** Most frequently used Ask model, combining Ask and old Ask intents. */
-  topAskModel: string | null;
-  /** Number of Ask requests attributed to `topAskModel`. */
-  topAskModelCount: number;
-  /** Most frequent model among model-tagged plan proposals. */
-  topPlanModel: string | null;
-  /** Number of model-tagged plan proposals attributed to `topPlanModel`. */
-  topPlanModelCount: number;
-  /** Total estimated minutes saved with editor/CLI breakdown (for ROI display). */
-  totalMinutesSaved: RoiBreakdown;
-  /** Estimated time saved formatted for display (e.g. "1h 23m"). */
-  estimatedTimeSaved: string;
   /** Total number of active sessions observed. */
   totalSessions: number;
   /**
@@ -118,8 +87,6 @@ export interface TimelineEntry {
   date: string;
   shown: number;
   accepted: number;
-  /** True accepted count (null when no event data). */
-  trueAccepted: number | null;
   /** Acceptance rate as percentage 0–100, or null when no suggestions were shown. */
   rate: number | null;
   /** True when this day's acceptance rate is a statistical anomaly (|z| > threshold). */
@@ -138,17 +105,6 @@ export interface TimelineEntry {
   cliPrompts: number;
 }
 
-export interface VelocityPoint {
-  /** Keystrokes per minute in this window. */
-  kpm: number;
-  /** Number of completions accepted in this window. */
-  completionsAccepted: number;
-  /** Whether flow was disrupted in this window. */
-  flowDisrupted: boolean;
-  /** ISO-8601 timestamp of the window start (for tooltip). */
-  windowStart: string;
-}
-
 export interface WeekStat {
   shown: number;
   accepted: number;
@@ -164,35 +120,19 @@ export interface WeeklyTrendData {
   rateDiff: number;
 }
 
-export interface EvolutionPoint {
-  date: string;
-  /** Thinking depth: average actions per completed loop. */
-  avgDepth: number;
-  /** Total autonomous volume for the day in minutes. */
-  totalDurationMin: number;
-  /** Daily episode completion rate (0-100). */
-  completionRate: number;
-}
-
 /** Agentic (subagent) activity statistics. */
 export interface AgenticStats {
   /** Number of requests identified as subagent-initiated. */
   subagentRequests: number;
-  /** Ratio of subagent requests to total requests (0–100). */
-  agenticRatio: number;
   /** Total time (ms) during which a subagent ToolCallingLoop was active. */
   autonomousDurationMs: number;
   /** Per-intent execution counts sorted by count descending (e.g. [{intent:"runSubagent",count:5}]). */
   toolUsageStats: Array<{ intent: string; count: number }>;
   /** CLI tool execution stats sorted by total count descending. */
   cliToolExecutions: Array<{ name: string; total: number; success: number; fail: number; successRate: number }>;
-  /** Total CLI reasoning text length observed across assistant turns. */
-  cliReasoningTokens: number;
   /** CLI subagent type counts sorted by count descending. */
   cliAgentTypes: Array<{ name: string; count: number; share: number }>;
-  /** High-level "Agent Intelligence Overview" summary. */
-  agentIntelligenceOverview: AgentIntelligenceOverview;
-  /** Emerging 1.110 feature signals grouped by category. */
+  /** Observed events grouped by category. */
   featureSignals: AgenticFeatureSignals;
 }
 
@@ -211,59 +151,6 @@ export interface AgenticFeatureSignals {
   pluginOrSkills: FeatureSignalCategory;
   memoryManagement: FeatureSignalCategory;
   agentDebug: FeatureSignalCategory;
-}
-
-/**
- * High-level summary of agentic (subagent) activity suitable for the
- * "Agent Intelligence Overview" dashboard section.
- *
- * - All fine-grained intents (runSubagent, editAgent, searchSubagentTool, …)
- *   are collapsed into a single "Autonomous Action" count.
- * - Per-model autonomous ratios allow identifying which AI models are driving
- *   the most agentic behaviour.
- */
-export interface AgentIntelligenceOverview {
-  /** Total "Autonomous Action" count — all subagent intents merged. */
-  autonomousActionCount: number;
-  /** Number of completed ToolCallingLoop instances (distinct agentic episodes). */
-  agenticLoopCount: number;
-  /** Average subagent calls per completed loop. 0 when no loops have finished. */
-  avgCallsPerLoop: number;
-  /** Episode completion rate: completed loops / started loops * 100. 0 when no loops started. */
-  completionRate: number;
-  /** Total number of plans proposed by the agent (agent/plan or strategy/propose). */
-  planCount: number;
-  /** Number of plans that were followed by a file edit or patch application. */
-  executedPlanCount: number;
-  /** Planning success rate: (executedPlanCount / planCount) * 100. 0 when no plans proposed. */
-  planSuccessRate: number;
-  /** Number of in-plan user choice interactions (choice_selected). */
-  userChoicesInPlan: number;
-  /**
-   * Per-model breakdown of autonomous vs total chat requests.
-   * Sorted by `ratio` descending (highest autonomous ratio first).
-   */
-  autonomousRatioByModel: Array<{
-    model: string;
-    subagentCount: number;
-    totalCount: number;
-    /** Percentage 0–100. */
-    ratio: number;
-    /** Average autonomous duration per action in seconds. 0 when no duration data. */
-    velocitySecondsPerAction: number;
-    /** Average actions per completed agentic loop ("thinking depth"). 0 when no loops. */
-    avgLoopActions: number;
-    /** Task completion rate 0–100. 0 when no loops started. */
-    completionRate: number;
-    /** Total autonomous duration in milliseconds for this model. */
-    autonomousDurationMs: number;
-    /** Inline completion acceptance rate for this model (0–100). 0 when no inline data. */
-    acceptanceRate: number;
-    /** Total minutes saved for this model (typing + agentic). */
-    totalTimeSaved: number;
-    /** Total inline completions accepted for this model. */
-    totalAccepted: number;
-  }>;
 }
 
 /** A single bucket in the chat-session turn-count distribution. */
@@ -320,17 +207,12 @@ export interface DashboardPayload {
   availableRange: { minDate: string; maxDate: string };
   summary: SummaryData;
   timeline: TimelineEntry[];
-  velocityPoints: VelocityPoint[];
-  /** Daily agentic autonomy evolution series for the overview chart. */
-  evolutionData: EvolutionPoint[];
   /** Auto-generated insight strings (plain text, safe to render as text content). */
   insights: string[];
   /** Weekly trend comparison data (null when insufficient data). */
   weeklyTrend: WeeklyTrendData | null;
   /** Agentic (subagent) activity statistics. */
   agenticStats: AgenticStats;
-  /** Refresh ROI analysis around /compact or truncation boundaries. */
-  refreshAnalysis: RefreshAnalysis[];
   /**
    * True when only a limited number of recent sessions were parsed during the
    * initial load.  The WebView should show a "Load Historical Data" button that

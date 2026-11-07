@@ -41,16 +41,10 @@ function makeEmptyStats(): ParsingContext {
     chatLatencyP95: 0,
     bySession: new Map(),
     subagentRequests: 0,
-    agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
-    subagentLoops: 0,
-    subagentLoopsStarted: 0,
-    completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
-    agenticDepthByModel: new Map(),
-    byDateAgenticDepth: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -58,19 +52,7 @@ function makeEmptyStats(): ParsingContext {
     currentSessionId: "",
     activeSubagentLoop: null,
     activeSubagentLoopModel: null,
-    activeSubagentLoopActionCount: 0,
-    loopsStartedByModel: new Map(),
-    loopsCompletedByModel: new Map(),
-    totalLoopActionsByModel: new Map(),
-    loopDistributionByModel: new Map(),
-    loopsStartedByDate: new Map(),
-    loopsCompletedByDate: new Map(),
-    totalLoopActionsByDate: new Map(),
-    loopDistributionByDate: new Map(),
     autonomousDurationByDate: new Map(),
-    planCount: 0,
-    executedPlanCount: 0,
-    userChoicesInPlan: 0,
     browserToolInvocations: 0,
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
@@ -84,7 +66,6 @@ function makeEmptyStats(): ParsingContext {
     cliTotalInteractions: 0,
     commandUsage: new Map(),
     promptEffectiveness: {},
-    activePlanPending: false,
     chatSessionStates: new Map(),
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
@@ -762,7 +743,7 @@ suite("logContentParser", () => {
       assert.ok(stats.autonomousDurationMs > 0, "autonomousDurationMs should be > 0 after loop ends");
     });
 
-    test("agentic loop tracking also updates per-date counters and durations", () => {
+    test("agent activity records elapsed duration by date", () => {
       const stats = makeEmptyStats();
       parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
       parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [panel/editAgent]", stats);
@@ -771,13 +752,7 @@ suite("logContentParser", () => {
         stats,
       );
 
-      assert.strictEqual(stats.loopsStartedByDate.get("2024-06-01"), 1);
-      assert.strictEqual(stats.loopsCompletedByDate.get("2024-06-01"), 1);
-      assert.strictEqual(stats.totalLoopActionsByDate.get("2024-06-01"), 2);
       assert.ok((stats.autonomousDurationByDate.get("2024-06-01") ?? 0) > 0);
-      const dist = stats.loopDistributionByDate.get("2024-06-01");
-      assert.ok(dist);
-      assert.strictEqual(dist?.bucket2, 1);
     });
 
     test("ToolCallingLoop stop line without active loop does not throw", () => {
@@ -791,32 +766,7 @@ suite("logContentParser", () => {
       assert.strictEqual(stats.autonomousDurationMs, 0);
     });
 
-    test("ToolCallingLoop stop increments subagentLoops", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      assert.strictEqual(stats.subagentLoops, 1);
-    });
 
-    test("subagentLoops counts distinct completed loop episodes", () => {
-      const stats = makeEmptyStats();
-      // First loop
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      // Second loop
-      parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:01:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      assert.strictEqual(stats.subagentLoops, 2);
-    });
 
     test("subagentByModel tracks per-model subagent calls", () => {
       const stats = makeEmptyStats();
@@ -844,142 +794,11 @@ suite("logContentParser", () => {
       ].join("\n");
       await parseLogContent(content, stats);
       assert.strictEqual(stats.subagentRequests, 1);
-      assert.strictEqual(stats.subagentLoops, 1);
       assert.strictEqual(stats.subagentByModel.get("gpt-4o"), 1);
       assert.strictEqual(stats.activeSubagentLoop, null);
       assert.ok(stats.autonomousDurationMs >= 0);
     });
 
-    test("loopsStartedByModel is incremented when a new loop starts", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      assert.strictEqual(stats.loopsStartedByModel.get("gpt-4o"), 1);
-    });
-
-    test("activeSubagentLoopActionCount increments for each action in a loop", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      assert.strictEqual(stats.activeSubagentLoopActionCount, 1);
-      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [panel/editAgent]", stats);
-      assert.strictEqual(stats.activeSubagentLoopActionCount, 2);
-      parseTextLogLine("2024-06-01 10:00:02.000 ccreq:c | success | gpt-4o | 800ms | [tool/runSubagent]", stats);
-      assert.strictEqual(stats.activeSubagentLoopActionCount, 3);
-    });
-
-    test("loop stop records action count in loopDistributionByModel (bucket1)", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      const dist = stats.loopDistributionByModel.get("gpt-4o");
-      assert.ok(dist, "distribution should exist for gpt-4o");
-      assert.strictEqual(dist.bucket1, 1);
-      assert.strictEqual(dist.bucket2, 0);
-      assert.strictEqual(dist.bucket3to5, 0);
-    });
-
-    test("loop stop records action count in loopDistributionByModel (bucket3to5)", () => {
-      const stats = makeEmptyStats();
-      // 4 actions in the loop
-      for (let i = 0; i < 4; i++) {
-        parseTextLogLine(
-          `2024-06-01 10:00:0${i}.000 ccreq:${i} | success | claude-3.5 | 1000ms | [tool/runSubagent]`,
-          stats,
-        );
-      }
-      parseTextLogLine(
-        "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      const dist = stats.loopDistributionByModel.get("claude-3.5");
-      assert.ok(dist, "distribution should exist for claude-3.5");
-      assert.strictEqual(dist.bucket3to5, 1);
-      assert.strictEqual(dist.bucket1, 0);
-    });
-
-    test("loop stop records action count in loopDistributionByModel (bucket6to10)", () => {
-      const stats = makeEmptyStats();
-      for (let i = 0; i < 7; i++) {
-        parseTextLogLine(
-          `2024-06-01 10:00:0${i}.000 ccreq:${i} | success | gpt-4o | 1000ms | [tool/runSubagent]`,
-          stats,
-        );
-      }
-      parseTextLogLine(
-        "2024-06-01 10:00:20.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      const dist = stats.loopDistributionByModel.get("gpt-4o");
-      assert.ok(dist);
-      assert.strictEqual(dist.bucket6to10, 1);
-    });
-
-    test("loop stop records action count in loopDistributionByModel (bucket11plus)", () => {
-      const stats = makeEmptyStats();
-      for (let i = 0; i < 12; i++) {
-        parseTextLogLine(
-          `2024-06-01 10:00:${String(i).padStart(2, "0")}.000 ccreq:${i} | success | gpt-4o | 1000ms | [tool/runSubagent]`,
-          stats,
-        );
-      }
-      parseTextLogLine(
-        "2024-06-01 10:01:00.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      const dist = stats.loopDistributionByModel.get("gpt-4o");
-      assert.ok(dist);
-      assert.strictEqual(dist.bucket11plus, 1);
-    });
-
-    test("loopsCompletedByModel and totalLoopActionsByModel are updated on loop stop", () => {
-      const stats = makeEmptyStats();
-      // Loop with 3 actions
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
-      parseTextLogLine("2024-06-01 10:00:02.000 ccreq:c | success | gpt-4o | 800ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      assert.strictEqual(stats.loopsCompletedByModel.get("gpt-4o"), 1);
-      assert.strictEqual(stats.totalLoopActionsByModel.get("gpt-4o"), 3);
-      assert.strictEqual(stats.activeSubagentLoopActionCount, 0);
-    });
-
-    test("activeSubagentLoopActionCount resets to 0 after loop stop", () => {
-      const stats = makeEmptyStats();
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      assert.strictEqual(stats.activeSubagentLoopActionCount, 0);
-    });
-
-    test("two sequential loops accumulate histogram across loops", () => {
-      const stats = makeEmptyStats();
-      // First loop: 1 action → bucket1
-      parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:00:05.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      // Second loop: 2 actions → bucket2
-      parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-      parseTextLogLine("2024-06-01 10:01:01.000 ccreq:c | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
-      parseTextLogLine(
-        "2024-06-01 10:01:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-        stats,
-      );
-      const dist = stats.loopDistributionByModel.get("gpt-4o");
-      assert.ok(dist);
-      assert.strictEqual(dist.bucket1, 1);
-      assert.strictEqual(dist.bucket2, 1);
-      assert.strictEqual(stats.loopsCompletedByModel.get("gpt-4o"), 2);
-      assert.strictEqual(stats.totalLoopActionsByModel.get("gpt-4o"), 3);
-    });
   });
 });
 
@@ -1075,144 +894,6 @@ suite("model name normalization in ccreq parsing", () => {
   });
 });
 
-suite("subagentLoopsStarted and completionRate tracking", () => {
-  test("subagentLoopsStarted increments when first subagent request seen", () => {
-    const stats = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-    assert.strictEqual(stats.subagentLoopsStarted, 1);
-  });
-
-  test("subsequent subagent requests in same loop do not increment subagentLoopsStarted", () => {
-    const stats = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-    parseTextLogLine("2024-06-01 10:00:01.000 ccreq:b | success | gpt-4o | 900ms | [tool/runSubagent]", stats);
-    assert.strictEqual(stats.subagentLoopsStarted, 1);
-  });
-
-  test("subagentLoopsStarted increments for each new loop start", () => {
-    const stats = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-    parseTextLogLine(
-      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-      stats,
-    );
-    parseTextLogLine("2024-06-01 10:01:00.000 ccreq:b | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-    assert.strictEqual(stats.subagentLoopsStarted, 2);
-  });
-});
-
-suite("autonomousDurationByModel tracking", () => {
-  test("accumulates per-model autonomous duration on loop completion", () => {
-    const stats = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00.000 ccreq:a | success | gpt-4o | 1000ms | [tool/runSubagent]", stats);
-    parseTextLogLine(
-      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-      stats,
-    );
-    assert.ok((stats.autonomousDurationByModel.get("gpt-4o") ?? 0) > 0, "should have gpt-4o duration");
-  });
-
-  test("does not accumulate duration when no model is associated with the loop", () => {
-    const stats = makeEmptyStats();
-    // shouldContinue=false without a prior subagent request
-    parseTextLogLine(
-      "2024-06-01 10:00:10.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-      stats,
-    );
-    assert.strictEqual(stats.autonomousDurationByModel.size, 0);
-  });
-
-  test("accumulated duration matches the loop interval", () => {
-    const stats = makeEmptyStats();
-    parseTextLogLine(
-      "2024-06-01 10:00:00.000 ccreq:a | success | claude-3.5-sonnet | 1000ms | [tool/runSubagent]",
-      stats,
-    );
-    parseTextLogLine(
-      "2024-06-01 10:00:30.000 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false",
-      stats,
-    );
-    assert.strictEqual(stats.autonomousDurationByModel.get("claude-3.5-sonnet"), 30000);
-  });
-});
-
-suite("mergeStatsByNormalizedModel", () => {
-  test("returns an empty map for empty input", () => {
-    const result = mergeStatsByNormalizedModel(new Map());
-    assert.strictEqual(result.size, 0);
-  });
-
-  test("preserves a single entry with a clean key", () => {
-    const source = new Map([["gpt-4o", { shown: 10, accepted: 7 }]]);
-    const result = mergeStatsByNormalizedModel(source);
-    assert.deepStrictEqual(result.get("gpt-4o"), { shown: 10, accepted: 7 });
-  });
-
-  test("merges two entries that normalize to the same key", () => {
-    const source = new Map([
-      ["gpt-4o -> deployment-a", { shown: 10, accepted: 6 }],
-      ["gpt-4o -> deployment-b", { shown: 5, accepted: 3 }],
-    ]);
-    const result = mergeStatsByNormalizedModel(source);
-    assert.strictEqual(result.size, 1);
-    assert.deepStrictEqual(result.get("gpt-4o"), { shown: 15, accepted: 9 });
-  });
-
-  test("strips colon suffix and merges", () => {
-    const source = new Map([
-      ["claude-3.5-sonnet:20241022", { shown: 8, accepted: 5 }],
-      ["claude-3.5-sonnet:20241101", { shown: 4, accepted: 2 }],
-    ]);
-    const result = mergeStatsByNormalizedModel(source);
-    assert.strictEqual(result.size, 1);
-    assert.deepStrictEqual(result.get("claude-3.5-sonnet"), { shown: 12, accepted: 7 });
-  });
-
-  test("keeps distinct entries that normalize to different keys", () => {
-    const source = new Map([
-      ["gpt-4o -> dep", { shown: 10, accepted: 6 }],
-      ["claude-3.5-sonnet -> dep", { shown: 5, accepted: 3 }],
-    ]);
-    const result = mergeStatsByNormalizedModel(source);
-    assert.strictEqual(result.size, 2);
-    assert.ok(result.has("gpt-4o"));
-    assert.ok(result.has("claude-3.5-sonnet"));
-  });
-});
-
-suite("mergeCountByNormalizedModel", () => {
-  test("returns an empty map for empty input", () => {
-    const result = mergeCountByNormalizedModel(new Map());
-    assert.strictEqual(result.size, 0);
-  });
-
-  test("preserves a single entry with a clean key", () => {
-    const source = new Map([["gpt-4o", 20]]);
-    const result = mergeCountByNormalizedModel(source);
-    assert.strictEqual(result.get("gpt-4o"), 20);
-  });
-
-  test("merges counts for entries that normalize to the same key", () => {
-    const source = new Map([
-      ["gpt-4o -> deployment-a", 8],
-      ["gpt-4o -> deployment-b", 5],
-    ]);
-    const result = mergeCountByNormalizedModel(source);
-    assert.strictEqual(result.size, 1);
-    assert.strictEqual(result.get("gpt-4o"), 13);
-  });
-
-  test("strips hash suffix and merges", () => {
-    const source = new Map([
-      ["claude-3#hash1", 3],
-      ["claude-3#hash2", 2],
-    ]);
-    const result = mergeCountByNormalizedModel(source);
-    assert.strictEqual(result.size, 1);
-    assert.strictEqual(result.get("claude-3"), 5);
-  });
-});
-
 suite("processJsonEntry model extraction", () => {
   test("records model in byModel.shown for a 'shown' event", () => {
     const stats = makeEmptyStats();
@@ -1272,78 +953,6 @@ suite("processJsonEntry model extraction", () => {
   });
 });
 
-suite("planning stats", () => {
-  test("planCount increments on agent/plan text line", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 [Agent] agent/plan proposed for task X", ctx);
-    assert.strictEqual(ctx.planCount, 1);
-  });
-
-  test("planCount increments on strategy/propose text line", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 [Strategy] strategy/propose applied", ctx);
-    assert.strictEqual(ctx.planCount, 1);
-  });
-
-  test("executedPlanCount increments when workspace/editFile follows a plan", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
-    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
-    assert.strictEqual(ctx.planCount, 1);
-    assert.strictEqual(ctx.executedPlanCount, 1);
-  });
-
-  test("executedPlanCount increments when apply_patch follows a plan", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
-    parseTextLogLine("2024-06-01 10:00:01 apply_patch to file", ctx);
-    assert.strictEqual(ctx.executedPlanCount, 1);
-  });
-
-  test("executedPlanCount does not increment when editFile appears with no preceding plan", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
-    assert.strictEqual(ctx.executedPlanCount, 0);
-  });
-
-  test("activePlanPending is cleared after editFile follows plan", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 agent/plan", ctx);
-    assert.strictEqual(ctx.activePlanPending, true);
-    parseTextLogLine("2024-06-01 10:00:01 workspace/editFile src/main.ts", ctx);
-    assert.strictEqual(ctx.activePlanPending, false);
-  });
-
-  test("userChoicesInPlan increments on choice_selected text line", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("2024-06-01 10:00:00 user choice_selected option A", ctx);
-    assert.strictEqual(ctx.userChoicesInPlan, 1);
-  });
-
-  test("plan from JSON event increments planCount", () => {
-    const ctx = makeEmptyStats();
-    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
-    assert.strictEqual(ctx.planCount, 1);
-  });
-
-  test("apply_patch from JSON event triggers executedPlanCount after plan", () => {
-    const ctx = makeEmptyStats();
-    processJsonEntry({ event: "agent/plan", timestamp: "2024-06-01T10:00:00Z" }, ctx);
-    processJsonEntry({ event: "apply_patch", timestamp: "2024-06-01T10:00:01Z" }, ctx);
-    assert.strictEqual(ctx.executedPlanCount, 1);
-  });
-
-  test("multiple plans each independently tracked for execution", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine("agent/plan 1", ctx);
-    parseTextLogLine("workspace/editFile a", ctx);
-    parseTextLogLine("agent/plan 2", ctx);
-    // second plan not yet executed
-    assert.strictEqual(ctx.planCount, 2);
-    assert.strictEqual(ctx.executedPlanCount, 1);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Evidence-driven tests: real log lines sampled from WSL environment
 // (session 20260228T180728, file exthost82/GitHub.copilot-chat/GitHub Copilot
@@ -1371,7 +980,6 @@ suite("real log format: ccreq with .copilotmd suffix", () => {
       ctx,
     );
     assert.strictEqual(ctx.subagentRequests, 1);
-    assert.strictEqual(ctx.subagentLoopsStarted, 1);
     assert.strictEqual(ctx.activeSubagentLoop, "2026-02-28 19:25:27.878");
   });
 
@@ -1583,7 +1191,6 @@ suite("real log format: [ToolCallingLoop] shouldContinue=false", () => {
       "2026-03-04 19:29:37.128 [info] ccreq:520a97e5.copilotmd | success | oswe-vscode-prime -> capi-noe-ptuc-h200-oswe-vscode-prime | 6892ms | [panel/editAgent]",
       ctx,
     );
-    assert.strictEqual(ctx.subagentLoopsStarted, 1);
     assert.ok(ctx.activeSubagentLoop !== null, "loop should be active after first editAgent request");
 
     // Stop: [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined at 19:32:23.244
@@ -1591,7 +1198,6 @@ suite("real log format: [ToolCallingLoop] shouldContinue=false", () => {
       "2026-03-04 19:32:23.244 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
       ctx,
     );
-    assert.strictEqual(ctx.subagentLoops, 1, "loop should be completed");
     assert.strictEqual(ctx.activeSubagentLoop, null, "active loop should be cleared");
     // Duration: 19:32:23.244 - 19:29:37.128 = 166,116ms
     assert.ok(ctx.autonomousDurationMs > 160_000, "duration should be ~166s");
@@ -1603,27 +1209,21 @@ suite("real log format: [ToolCallingLoop] shouldContinue=false", () => {
     const ctx = makeEmptyStats();
     ctx.activeSubagentLoop = "2026-03-04 19:00:00.000";
     ctx.activeSubagentLoopModel = "test-model";
-    ctx.activeSubagentLoopActionCount = 1;
-    ctx.subagentLoopsStarted = 1;
     parseTextLogLine(
       "2026-03-04 19:01:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
       ctx,
     );
-    assert.strictEqual(ctx.subagentLoops, 1);
   });
 
   test("shouldContinue=false with spaces around equals is also detected (defensive)", () => {
     const ctx = makeEmptyStats();
     ctx.activeSubagentLoop = "2026-03-04 19:00:00.000";
     ctx.activeSubagentLoopModel = "test-model";
-    ctx.activeSubagentLoopActionCount = 1;
-    ctx.subagentLoopsStarted = 1;
     parseTextLogLine("2026-03-04 19:01:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue = false", ctx);
-    assert.strictEqual(ctx.subagentLoops, 1);
   });
 });
 
-suite("real log format: agenticMinutesSaved end-to-end data flow", () => {
+suite("real log format: elapsed agent time", () => {
   test("autonomousDurationMs accumulates across multiple completed loops", () => {
     const ctx = makeEmptyStats();
     // Loop 1: 1 minute duration
@@ -1644,49 +1244,14 @@ suite("real log format: agenticMinutesSaved end-to-end data flow", () => {
       "2026-03-04 19:04:00.000 [info] [ToolCallingLoop] Stop hook result: shouldContinue=false, reasons=undefined",
       ctx,
     );
-    assert.strictEqual(ctx.subagentLoops, 2);
     // 60s + 120s = 180s = 180,000ms
     assert.ok(Math.abs(ctx.autonomousDurationMs - 180_000) < 100, "total duration should be ~180s");
   });
 });
 
 suite("planning tracking from ccreq intents", () => {
-  test("panel/unknown ccreq increments planCount and sets activePlanPending", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine(
-      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
-      ctx,
-    );
-    assert.strictEqual(ctx.planCount, 1);
-    assert.strictEqual(ctx.activePlanPending, true);
-    assert.strictEqual(ctx.executedPlanCount, 0);
-  });
 
-  test("panel/editAgent after panel/unknown increments executedPlanCount and clears activePlanPending", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine(
-      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
-      ctx,
-    );
-    parseTextLogLine(
-      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
-      ctx,
-    );
-    assert.strictEqual(ctx.planCount, 1);
-    assert.strictEqual(ctx.executedPlanCount, 1);
-    assert.strictEqual(ctx.activePlanPending, false);
-  });
 
-  test("panel/editAgent without prior panel/unknown does not increment executedPlanCount", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine(
-      "2026-03-06 09:00:00.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
-      ctx,
-    );
-    assert.strictEqual(ctx.planCount, 0);
-    assert.strictEqual(ctx.executedPlanCount, 0);
-    assert.strictEqual(ctx.activePlanPending, false);
-  });
 
   test("sessionSignals capture plan, execution, and memory boundaries", () => {
     const ctx = makeEmptyStats();
@@ -1758,46 +1323,7 @@ suite("planning tracking from ccreq intents", () => {
     assert.strictEqual(ctx.sessionSignals[0]?.phase, "research");
   });
 
-  test("panel/unknown followed by non-agentic ccreq leaves executedPlanCount at 0", () => {
-    const ctx = makeEmptyStats();
-    parseTextLogLine(
-      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
-      ctx,
-    );
-    // A regular chat request — not an agentic execution
-    parseTextLogLine(
-      "2026-03-06 09:00:03.000 [info] ccreq:chat01.copilotmd | success | gpt-5-mini | 800ms | [copilotLanguageModelWrapper]",
-      ctx,
-    );
-    assert.strictEqual(ctx.planCount, 1);
-    assert.strictEqual(ctx.executedPlanCount, 0);
-    assert.strictEqual(ctx.activePlanPending, true);
-  });
 
-  test("multiple plan/execute cycles accumulate correctly", () => {
-    const ctx = makeEmptyStats();
-    // Cycle 1
-    parseTextLogLine(
-      "2026-03-06 09:00:00.000 [info] ccreq:plan01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
-      ctx,
-    );
-    parseTextLogLine(
-      "2026-03-06 09:00:05.000 [info] ccreq:edit01.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
-      ctx,
-    );
-    // Cycle 2
-    parseTextLogLine(
-      "2026-03-06 09:01:00.000 [info] ccreq:plan02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 3000ms | [panel/unknown]",
-      ctx,
-    );
-    parseTextLogLine(
-      "2026-03-06 09:01:05.000 [info] ccreq:edit02.copilotmd | success | claude-sonnet-4.6 -> claude-sonnet-4-6 | 5000ms | [panel/editAgent]",
-      ctx,
-    );
-    assert.strictEqual(ctx.planCount, 2);
-    assert.strictEqual(ctx.executedPlanCount, 2);
-    assert.strictEqual(ctx.activePlanPending, false);
-  });
 });
 
 suite("detectCommandUsage", () => {

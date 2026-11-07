@@ -33,53 +33,10 @@ function makeStats(): CopilotUsageStats {
     chatLatencyP95: 250,
     bySession: new Map([["session-1", { sessionId: "session-1", shown: 12, accepted: 7, chat: 3, errors: 1 }]]),
     subagentRequests: 2,
-    agenticRatio: 13.3,
     autonomousDurationMs: 999,
     toolUsageStats: new Map([["runSubagent", 2]]),
-    subagentLoops: 1,
-    subagentLoopsStarted: 2,
-    completionRate: 50,
     subagentByModel: new Map([["gpt-4.1", 2]]),
     autonomousDurationByModel: new Map([["gpt-4.1", 999]]),
-    agenticDepthByModel: new Map([
-      [
-        "gpt-4.1",
-        {
-          loopDistribution: {
-            bucket1: 0,
-            bucket2: 1,
-            bucket3to5: 0,
-            bucket6to10: 0,
-            bucket11plus: 0,
-          },
-          avgLoopActions: 2,
-          completionRate: 50,
-          velocityMsPerAction: 499.5,
-          totalDurationMs: 999,
-        },
-      ],
-    ]),
-    byDateAgenticDepth: new Map([
-      [
-        "2026-03-01",
-        {
-          loopDistribution: {
-            bucket1: 0,
-            bucket2: 1,
-            bucket3to5: 0,
-            bucket6to10: 0,
-            bucket11plus: 0,
-          },
-          avgLoopActions: 2,
-          completionRate: 50,
-          velocityMsPerAction: 499.5,
-          totalDurationMs: 999,
-        },
-      ],
-    ]),
-    planCount: 1,
-    executedPlanCount: 1,
-    userChoicesInPlan: 0,
     browserToolInvocations: 2,
     browserToolsByType: new Map([["screenshot", 2]]),
     pluginOrSkillInvocations: 3,
@@ -146,7 +103,6 @@ function makeStats(): CopilotUsageStats {
       ],
     ]),
     cliToolExecutions: new Map([["read_file", { total: 3, success: 2, fail: 1 }]]),
-    cliReasoningTokens: 128,
     cliAgentTypes: new Map([
       ["planner", 2],
       ["researcher", 1],
@@ -194,14 +150,6 @@ suite("StatsSnapshotStorage", () => {
         [...(expected.cliUsageByModel?.entries() ?? [])],
       );
       assert.deepStrictEqual(
-        [...(restored?.agenticDepthByModel.entries() ?? [])],
-        [...expected.agenticDepthByModel.entries()],
-      );
-      assert.deepStrictEqual(
-        [...(restored?.byDateAgenticDepth.entries() ?? [])],
-        [...expected.byDateAgenticDepth.entries()],
-      );
-      assert.deepStrictEqual(
         [...(restored?.browserToolsByType.entries() ?? [])],
         [...expected.browserToolsByType.entries()],
       );
@@ -223,11 +171,30 @@ suite("StatsSnapshotStorage", () => {
         [...(restored?.cliToolExecutions?.entries() ?? [])],
         [...(expected.cliToolExecutions?.entries() ?? [])],
       );
-      assert.strictEqual(restored?.cliReasoningTokens, expected.cliReasoningTokens);
       assert.deepStrictEqual(
         [...(restored?.cliAgentTypes?.entries() ?? [])],
         [...(expected.cliAgentTypes?.entries() ?? [])],
       );
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("reads snapshots that still contain removed derived metrics", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-insight-stats-old-metrics-"));
+    try {
+      const storage = new StatsSnapshotStorage(tempRoot);
+      const expected = makeStats();
+      await storage.write(expected);
+      const snapshotPath = path.join(tempRoot, "usage-stats.json");
+      const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf-8"));
+      Object.assign(snapshot.stats, { agenticRatio: 42, completionRate: 50, agenticDepthByModel: [["old", {}]], byDateAgenticDepth: [["2026-01-01", {}]] });
+      await fs.writeFile(snapshotPath, JSON.stringify(snapshot));
+      const restored = await storage.read();
+      assert.ok(restored);
+      assert.equal(restored.totalShown, expected.totalShown);
+      assert.deepStrictEqual(restored.cliUsage, expected.cliUsage);
+      assert.deepStrictEqual(restored.cliThreads, expected.cliThreads);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

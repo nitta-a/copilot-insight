@@ -146,38 +146,6 @@ export function actorIcon(actor: AgentStep["actor"]): string {
   }
 }
 
-/** Format a signed ratio as a percentage string with sign prefix. */
-export function formatSignedPercent(value: number | null): string {
-  if (value === null) {
-    return "N/A";
-  }
-  const signed = value >= 0 ? "+" : "";
-  return `${signed}${(value * 100).toFixed(1)}%`;
-}
-
-/** Format a signed point value as a string with sign prefix. */
-export function formatSignedPoints(value: number | null): string {
-  if (value === null) {
-    return "N/A";
-  }
-  const signed = value >= 0 ? "+" : "";
-  return `${signed}${value.toFixed(1)} pt`;
-}
-
-/** Return the CSS class for a positive/negative/neutral delta value. */
-export function getDeltaClass(value: number | null): string {
-  if (value === null) {
-    return "db-refresh-roi-neutral";
-  }
-  if (value > 0) {
-    return "db-refresh-roi-positive";
-  }
-  if (value < 0) {
-    return "db-refresh-roi-negative";
-  }
-  return "db-refresh-roi-neutral";
-}
-
 /** Return the CSS modifier class for an insight card based on its text content. */
 export function getInsightClass(text: string): string {
   if (/📈/.test(text)) {

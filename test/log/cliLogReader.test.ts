@@ -331,19 +331,6 @@ suite("parseEventsJsonl", () => {
     assert.strictEqual(modelMap.get("claude-opus-4.6"), 1);
   });
 
-  test("accumulates reasoningText length from assistant.message events", () => {
-    const content = [
-      '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
-      '{"type":"assistant.message","data":{"outputTokens":100,"reasoningText":"hello"}}',
-      '{"type":"assistant.message","data":{"outputTokens":200,"reasoningText":"world!"}}',
-      '{"type":"assistant.message","data":{"outputTokens":50}}',
-    ].join("\n");
-
-    const result = parseEventsJsonl(content);
-    // "hello" (5) + "world!" (6) = 11
-    assert.strictEqual(result.reasoningTokens, 11);
-  });
-
   test("accumulates agentTypes from subagent.started events", () => {
     const content = [
       '{"type":"session.start","data":{"startTime":"2026-03-14T04:00:00.000Z"}}',
@@ -387,7 +374,6 @@ suite("parseEventsJsonl", () => {
     const result = parseEventsJsonl("");
     assert.strictEqual(result.toolExecutions.size, 0);
     assert.strictEqual(result.toolModelUsage.size, 0);
-    assert.strictEqual(result.reasoningTokens, 0);
     assert.strictEqual(result.agentTypes.size, 0);
     assert.strictEqual(result.turnCount, 0);
     assert.strictEqual(result.modelChanges, 0);
