@@ -1,10 +1,6 @@
 import * as assert from "assert";
 import { generateMarkdownReport } from "../../src/export/reportGenerator";
-import type {
-  ModelPerformanceResult,
-  TrueAcceptanceResult,
-  VelocityAnalysisResult,
-} from "../../src/metrics/metricsEngine";
+import type { ModelPerformanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
 import type { CopilotUsageStats } from "../../src/types";
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
@@ -35,19 +31,10 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP95: 250,
     bySession: new Map(),
     subagentRequests: 0,
-    agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
-    subagentLoops: 0,
-    subagentLoopsStarted: 0,
-    completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
-    agenticDepthByModel: new Map(),
-    byDateAgenticDepth: new Map(),
-    planCount: 0,
-    executedPlanCount: 0,
-    userChoicesInPlan: 0,
     browserToolInvocations: 0,
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
@@ -107,8 +94,8 @@ suite("reportGenerator", () => {
       stats: makeStats(),
     });
     assert.ok(md.includes("## Executive Summary"));
-    assert.ok(md.includes("| Suggestions Shown | 100 |"));
-    assert.ok(md.includes("| Suggestions Accepted | 70 |"));
+    assert.ok(md.includes("| Suggestions Shown (legacy logs) | 100 |"));
+    assert.ok(md.includes("| Suggestions Accepted (legacy logs) | 70 |"));
     assert.ok(md.includes("| Acceptance Rate | 70.0% |"));
     assert.ok(md.includes("| Chat Requests | 15 |"));
   });
@@ -116,6 +103,12 @@ suite("reportGenerator", () => {
   test("marks the acceptance rate unavailable when no suggestions were shown", () => {
     const md = generateMarkdownReport({ period: "test", stats: makeStats({ totalShown: 0, acceptanceRate: 0 }) });
     assert.ok(md.includes("| Acceptance Rate | Unavailable |"));
+  });
+
+  test("omits legacy completion counts without recorded completions", () => {
+    const md = generateMarkdownReport({ period: "test", stats: makeStats({ totalShown: 0, totalAccepted: 0 }) });
+    assert.ok(!md.includes("Suggestions Shown"));
+    assert.ok(!md.includes("Suggestions Accepted"));
   });
 
   test("includes Copilot CLI token and AI credit usage", () => {
@@ -171,6 +164,12 @@ suite("reportGenerator", () => {
     assert.ok(!md.includes("Fix | <example>"));
   });
 
+  test("does not estimate developer time saved", () => {
+    const md = generateMarkdownReport({ period: "test", stats: makeStats({ autonomousDurationMs: 120000 }) });
+    assert.ok(!md.includes("Time Saved"));
+    assert.ok(!md.includes("Productivity Metrics"));
+  });
+
   test("includes project name when provided", () => {
     const md = generateMarkdownReport({
       period: "test",
@@ -178,24 +177,6 @@ suite("reportGenerator", () => {
       stats: makeStats(),
     });
     assert.ok(md.includes("**Project:** my-project"));
-  });
-
-  test("includes acceptance analysis when trueAcceptance provided", () => {
-    const trueAcceptance: TrueAcceptanceResult = {
-      rawAccepted: 70,
-      trueAccepted: 60,
-      rawRate: 70,
-      trueRate: 60,
-      revertedCount: 10,
-    };
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats(),
-      trueAcceptance,
-    });
-    assert.ok(md.includes("## Acceptance Analysis"));
-    assert.ok(md.includes("| True Accepted (retained) | 60 |"));
-    assert.ok(md.includes("| Reverted Completions | 10 |"));
   });
 
   test("includes model performance when provided", () => {
@@ -238,28 +219,6 @@ suite("reportGenerator", () => {
     assert.ok(md.includes("3 windows"));
   });
 
-  test("includes ROI estimation", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats(),
-    });
-    assert.ok(md.includes("## 📊 Productivity Metrics"));
-    assert.ok(md.includes("Total Developer Time Saved"));
-    assert.ok(md.includes("Coding Assistance"));
-  });
-
-  test("includes agentic autonomy breakdown when agenticMinutesSaved provided", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats(),
-      typingMinutesSaved: 10,
-      agenticMinutesSaved: 20,
-    });
-    assert.ok(md.includes("Agentic Autonomy"));
-    // total = 30 minutes = 0.5 hours → toFixed(1) = "0.5"
-    assert.ok(md.includes("0.5 hours"));
-  });
-
   test("omits acceptance analysis when not provided", () => {
     const md = generateMarkdownReport({
       period: "test",
@@ -276,25 +235,17 @@ suite("reportGenerator", () => {
     assert.ok(!md.includes("## Model Performance"));
   });
 
-  test("includes agentic ROI section when subagent activity present", () => {
+  test("labels legacy agent counts without inferred success or ROI", () => {
     const md = generateMarkdownReport({
       period: "test",
-      stats: makeStats({
-        subagentRequests: 50,
-        agenticRatio: 25.0,
-        autonomousDurationMs: 12540000, // ~209m 17s
-        subagentLoops: 10,
-        subagentLoopsStarted: 12,
-        completionRate: 83.3,
-        subagentByModel: new Map([["gpt-4o", 30]]),
-        autonomousDurationByModel: new Map([["gpt-4o", 9000000]]),
-        agenticDepthByModel: new Map(),
-      }),
+      stats: makeStats({ subagentRequests: 2, autonomousDurationMs: 120000 }),
     });
-    assert.ok(md.includes("## Agentic ROI Summary"));
-    assert.ok(md.includes("Autonomous Duration"));
-    assert.ok(md.includes("Episode Completion Rate"));
-    assert.ok(md.includes("AI Autonomous Time"));
+    assert.ok(md.includes("## Legacy Agent Log Activity"));
+    assert.ok(md.includes("Recorded subagent requests"));
+    assert.ok(md.includes("Recorded elapsed duration"));
+    assert.ok(!md.includes("Agentic ROI"));
+    assert.ok(!md.includes("Planning Success Rate"));
+    assert.ok(!md.includes("Thinking Depth"));
   });
 
   test("includes 1.110 feature signal section when present", () => {
@@ -307,56 +258,10 @@ suite("reportGenerator", () => {
         agentDebugByType: new Map([["step-execution", 1]]),
       }),
     });
-    assert.ok(md.includes("## VS Code 1.110 Feature Signals"));
+    assert.ok(md.includes("## Observed Events"));
     assert.ok(md.includes("### Browser Tools"));
     assert.ok(md.includes("**screenshot**: 2"));
     assert.ok(md.includes("### Agent Debug"));
-  });
-
-  test("omits agentic ROI section when no subagent activity", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ subagentRequests: 0 }),
-    });
-    assert.ok(!md.includes("## Agentic ROI Summary"));
-  });
-
-  test("includes intelligence overview section when subagent activity present", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({
-        subagentRequests: 50,
-        subagentLoops: 10,
-        completionRate: 83.3,
-        subagentByModel: new Map(),
-        autonomousDurationByModel: new Map(),
-        agenticDepthByModel: new Map(),
-      }),
-    });
-    assert.ok(md.includes("## Agent Intelligence Details"));
-    assert.ok(md.includes("Avg Calls / Loop"));
-  });
-
-  test("includes model performance comparison section when subagentByModel has entries", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({
-        subagentRequests: 30,
-        agenticRatio: 20.0,
-        autonomousDurationMs: 5000000,
-        subagentLoops: 5,
-        subagentLoopsStarted: 6,
-        completionRate: 83.3,
-        subagentByModel: new Map([
-          ["gpt-4o", 20],
-          ["gpt-4-turbo", 10],
-        ]),
-        autonomousDurationByModel: new Map([["gpt-4o", 3000000]]),
-        agenticDepthByModel: new Map(),
-      }),
-    });
-    assert.ok(md.includes("## Model Efficiency"));
-    assert.ok(md.includes("gpt-4o"));
   });
 
   test("includes qualitative insights section when insights provided", () => {
@@ -376,66 +281,5 @@ suite("reportGenerator", () => {
       stats: makeStats(),
     });
     assert.ok(!md.includes("## 💡 Qualitative Insights"));
-  });
-
-  test("agenticMinutesSaved fallback computes from stats.autonomousDurationMs when not provided", () => {
-    // 120000ms autonomous = 2min / 60000 * 0.5 = 1 agentic minute saved
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ autonomousDurationMs: 120000 }),
-      // intentionally NOT passing agenticMinutesSaved
-    });
-    assert.ok(md.includes("Agentic Autonomy"), "Agentic Autonomy line should appear when autonomousDurationMs > 0");
-  });
-
-  test("agenticMinutesSaved fallback is 0 when autonomousDurationMs is 0", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ autonomousDurationMs: 0 }),
-    });
-    assert.ok(
-      !md.includes("Agentic Autonomy"),
-      "Agentic Autonomy line should be absent when autonomousDurationMs is 0",
-    );
-  });
-
-  test("explicit agenticMinutesSaved overrides fallback computation", () => {
-    // stats.autonomousDurationMs = 0, but explicit agenticMinutesSaved = 30 → Agentic line shown
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ autonomousDurationMs: 0 }),
-      agenticMinutesSaved: 30,
-    });
-    assert.ok(md.includes("Agentic Autonomy"), "Explicit agenticMinutesSaved should take precedence");
-    // 30 minutes = 0.5 hours → toFixed(1) = "0.5"
-    assert.ok(md.includes("0.5 hours"), `Expected "0.5 hours" in report`);
-  });
-
-  test("includes planning section when planCount > 0", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ planCount: 10, executedPlanCount: 8, userChoicesInPlan: 3 }),
-    });
-    assert.ok(md.includes("## 🧠 Planning & Strategic Autonomy"));
-    assert.ok(md.includes("**Strategic Plans Proposed**: 10"));
-    assert.ok(md.includes("**Plans Executed (Implemented)**: 8"));
-    assert.ok(md.includes("**Planning Success Rate**: 80.0%"));
-    assert.ok(md.includes("**In-Plan User Interactions**: 3"));
-  });
-
-  test("omits planning section when planCount is 0", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ planCount: 0 }),
-    });
-    assert.ok(!md.includes("## 🧠 Planning & Strategic Autonomy"));
-  });
-
-  test("planning success rate is 0.0% when executedPlanCount is 0", () => {
-    const md = generateMarkdownReport({
-      period: "test",
-      stats: makeStats({ planCount: 5, executedPlanCount: 0, userChoicesInPlan: 0 }),
-    });
-    assert.ok(md.includes("**Planning Success Rate**: 0.0%"));
   });
 });

@@ -4,8 +4,6 @@
  * Responsibilities:
  * - Render two Chart.js visualisations:
  *   1. Activity and Acceptance Rate Timeline (bar + line combo)
- * - Render React-based charts:
- *   2. Model Autonomy Leverage Map (Recharts ScatterChart)
  * - Handle export button interactions.
  * - Persist UI state (selected tab) across tab switches via
  *   `vscode.getState()` / `vscode.setState()`.
@@ -16,8 +14,6 @@
  */
 
 import type { Chart } from "chart.js";
-import { createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import type { SessionDetailPayload, SessionThreadSummary } from "../src/types";
 import type {
   DashboardPayload,
@@ -28,8 +24,6 @@ import type {
   WebviewToHostMessage,
   WeeklyTrendData,
 } from "../src/ui/dashboardMessages";
-import { AgenticEfficiencyScatterPlot } from "./charts/AgenticEfficiencyScatterPlot";
-import { AutonomyEvolutionChart } from "./charts/AutonomyEvolutionChart";
 import {
   buildDonutChart,
   createPromptLengthScatterChart,
@@ -37,13 +31,10 @@ import {
   createTurnChurnChart,
   getColors,
 } from "./chartBuilders";
-import { ModelAutonomyLeverageMap } from "./charts/ModelAutonomyLeverageMap";
-import { ModelDepthVelocityChart } from "./charts/ModelDepthVelocityChart";
 import type {
   AgentIntelligenceOverview,
   DailyUsageChart,
   InsightsList,
-  RefreshAnalysis,
   SummaryCards,
   TagCloud,
   ThreadDetail,
@@ -90,21 +81,11 @@ let selectedThreadSessionId = "";
 const allSessionDetails = new Map<string, SessionDetailPayload>();
 const sessionLoadQueue: string[] = [];
 let isBackgroundLoading = false;
-let depthVelocityChartRoot: Root | null = null;
-let scatterPlotRoot: Root | null = null;
-let modelAutonomyMapRoot: Root | null = null;
-let autonomyEvolutionRoot: Root | null = null;
 let promptInsightsLoaded = false;
 let sessionsLoaded = false;
 let historicalDataPending = false;
 /** Set of tab names for which a `requestTabData` is currently in-flight. */
 const pendingTabRequests = new Set<string>();
-
-/** Unmount a React root and return null, for concise cleanup. */
-function unmountRoot(root: Root | null): null {
-  root?.unmount();
-  return null;
-}
 
 // ---------------------------------------------------------------------------
 // Summary cards
@@ -379,26 +360,6 @@ function renderTurnChurnChart(turnStats: PromptInsightsData["turnStats"]): void 
 }
 
 // ---------------------------------------------------------------------------
-// Model Autonomy Leverage Map
-// ---------------------------------------------------------------------------
-
-function renderModelAutonomyLeverageMap(agenticStats: DashboardPayload["agenticStats"]): void {
-  const el = document.getElementById("model-autonomy-leverage-map");
-  if (!el) {
-    return;
-  }
-  const modelData = agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-  if (modelData.length === 0) {
-    modelAutonomyMapRoot = unmountRoot(modelAutonomyMapRoot);
-    el.innerHTML = "";
-    return;
-  }
-  modelAutonomyMapRoot = unmountRoot(modelAutonomyMapRoot);
-  modelAutonomyMapRoot = createRoot(el);
-  modelAutonomyMapRoot.render(createElement(ModelAutonomyLeverageMap, { data: modelData }));
-}
-
-// ---------------------------------------------------------------------------
 // Insights
 // ---------------------------------------------------------------------------
 
@@ -428,20 +389,6 @@ function renderTagCloud(topKeywords: PromptInsightsData["topKeywords"]): void {
     el.appendChild(comp);
   }
   comp.tags = topKeywords;
-}
-
-function renderRefreshAnalysis(refreshAnalysis: DashboardPayload["refreshAnalysis"]): void {
-  const el = document.getElementById("db-refresh-analysis-container");
-  if (!el) {
-    return;
-  }
-  let comp = el.querySelector<RefreshAnalysis>("copilot-refresh-analysis");
-  if (!comp) {
-    comp = document.createElement("copilot-refresh-analysis") as RefreshAnalysis;
-    el.innerHTML = "";
-    el.appendChild(comp);
-  }
-  comp.refreshAnalysis = refreshAnalysis;
 }
 
 // ---------------------------------------------------------------------------
@@ -634,56 +581,6 @@ async function renderAgentIntelligenceOverview(agenticStats: DashboardPayload["a
     el.appendChild(comp);
   }
   comp.agenticStats = agenticStats;
-  await comp.updateComplete;
-
-  // The component only renders the chart container divs when there is
-  // sufficient agentic data.  Mount React charts into them if present.
-  const modelData = agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-
-  const depthEl = document.getElementById("db-model-depth-chart");
-  if (depthEl && modelData.length > 0) {
-    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
-    depthVelocityChartRoot = createRoot(depthEl);
-    depthVelocityChartRoot.render(createElement(ModelDepthVelocityChart, { data: modelData }));
-  } else {
-    depthVelocityChartRoot = unmountRoot(depthVelocityChartRoot);
-  }
-
-  const scatterEl = document.getElementById("db-agentic-scatter");
-  if (scatterEl && modelData.length > 0) {
-    scatterPlotRoot = unmountRoot(scatterPlotRoot);
-    scatterPlotRoot = createRoot(scatterEl);
-    scatterPlotRoot.render(createElement(AgenticEfficiencyScatterPlot, { data: modelData }));
-  } else {
-    scatterPlotRoot = unmountRoot(scatterPlotRoot);
-  }
-}
-
-function renderAutonomyEvolution(evolutionData: DashboardPayload["evolutionData"]): void {
-  const el = document.getElementById("db-autonomy-evolution-container");
-  if (!el) {
-    return;
-  }
-
-  if (evolutionData.length === 0) {
-    autonomyEvolutionRoot = unmountRoot(autonomyEvolutionRoot);
-    el.innerHTML = '<p class="no-data">No autonomy evolution data available for this period.</p>';
-    return;
-  }
-
-  el.innerHTML = `
-    <hr class="db-section-sep">
-    <h2>🧭 Autonomy Evolution</h2>
-    <div id="db-autonomy-evolution-chart" style="margin-top:16px"></div>`;
-
-  const chartEl = document.getElementById("db-autonomy-evolution-chart");
-  if (!chartEl) {
-    return;
-  }
-
-  autonomyEvolutionRoot = unmountRoot(autonomyEvolutionRoot);
-  autonomyEvolutionRoot = createRoot(chartEl);
-  autonomyEvolutionRoot.render(createElement(AutonomyEvolutionChart, { data: evolutionData }));
 }
 
 function requestSessionDetail(sessionId: string): void {
@@ -851,13 +748,10 @@ function render(payload: DashboardPayload): void {
   renderAnomalyBanner(payload.timeline);
   renderSummaryCards(payload.summary);
   renderDailyUsage(payload.summary.cliUsageStats);
-  renderRefreshAnalysis(payload.refreshAnalysis);
   renderInsights(payload.insights);
   renderWeeklyTrend(payload.weeklyTrend);
   renderAgentIntelligenceOverview(payload.agenticStats);
-  renderAutonomyEvolution(payload.evolutionData);
   renderTimelineChart(payload.timeline);
-  renderModelAutonomyLeverageMap(payload.agenticStats);
 
   // Show or hide the "Load Historical Data" section.
   const loadHistoricalContainer = document.getElementById("db-load-historical-container");

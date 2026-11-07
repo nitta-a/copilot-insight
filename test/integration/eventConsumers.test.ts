@@ -61,15 +61,18 @@ suite("Stored event consumers", () => {
       await config.update("enableAdvancedAnalysis", true, vscode.ConfigurationTarget.Global);
       tracker = new EventTracker(context, worker);
       for (let i = 0; i < 10; i++) {
-        await tracker.recordCompletionAccept({ languageId: "typescript", modelName: "model-a", acceptedText: "hello" });
+        await tracker.recordSessionSignal({
+          signalType: "chat-request",
+          actor: "human",
+          phase: "human",
+          intent: "vscodePrompt",
+          rawText: "hello",
+        });
       }
       assert.strictEqual(tracker.bufferSize, 0);
-      assert.strictEqual((await worker.trueRate(20)).trueAccepted, 10);
-      assert.strictEqual((await worker.modelPerformance()).crossTab[0]?.totalCharsAccepted, 50);
       assert.strictEqual(tracker.storage.listDates().flatMap((date) => tracker!.storage.readByDate(date)).length, 10);
 
       assert.strictEqual((await worker.loadFromJsonl(dir)).loaded, 10);
-      assert.strictEqual((await worker.trueRate(20)).trueAccepted, 10);
       assert.strictEqual((await worker.query("events")).length, 10);
     } finally {
       tracker?.dispose();
@@ -98,12 +101,9 @@ suite("Stored event consumers", () => {
       await storage.append(event);
       await fs.appendFile(path.join(dir, "events", `${event.timestamp.slice(0, 10)}.jsonl`), "{broken json\n");
       assert.strictEqual((await worker.loadFromJsonl(dir)).loaded, 1);
-      assert.strictEqual((await worker.trueRate(2)).trueAccepted, 1);
-      assert.strictEqual((await worker.modelPerformance()).bestModelByLanguage.get("typescript"), "model-a");
 
       await storage.append({ ...event, acceptedCharacters: 100 });
       assert.strictEqual((await worker.loadFromJsonl(dir)).loaded, 2);
-      assert.strictEqual((await worker.trueRate(2)).trueAccepted, 2);
       assert.strictEqual((await worker.query("events")).length, 2);
     } finally {
       storage.dispose();
@@ -141,7 +141,7 @@ suite("Stored event consumers", () => {
       const result = JSON.parse(content[0].text);
       assert.strictEqual(result.totalAccepted, 1);
       assert.strictEqual(result.totalCharsAccepted, 200);
-      assert.strictEqual(result.estimatedMinutesSaved, 1);
+      assert.strictEqual(result.estimatedMinutesSaved, undefined);
       assert.deepStrictEqual(result.topLanguages, [{ language: "typescript", count: 1 }]);
       const modelResponse = await client.callTool({ name: "get_model_efficiency", arguments: {} });
       assert.strictEqual(modelResponse.isError, undefined);

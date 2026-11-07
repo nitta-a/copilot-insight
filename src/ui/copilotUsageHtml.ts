@@ -1,7 +1,6 @@
 import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
 import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type { CopilotUsageStats, UsageStatCount } from "../types";
-import { calculateTimeSavedMinutes, formatMinutesSaved, getRoiBadge, getRoiTier } from "../utils";
 import type { DashboardPayload } from "./dashboardMessages";
 
 const HOUR_CELL_INACTIVE_OPACITY = 0.08;
@@ -44,7 +43,7 @@ export function getHtmlContent(
   const errorSection = stats.totalErrors > 0 ? buildSimpleBarChart(stats.errorsByType, "⚠️ Errors by Type", "red") : "";
   const latencyDistSection = buildLatencyDistSection(stats);
   const sessionSection = buildSessionSection(stats.bySession);
-  const coreKpiPanel = buildCoreKpiPanel(stats, dashboardPayload);
+  const coreKpiPanel = buildCoreKpiPanel(stats);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -67,7 +66,7 @@ export function getHtmlContent(
     /* ── Core KPI grid ─────────────────────────────────────────────────── */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 10px;
       margin-bottom: 20px;
     }
@@ -267,9 +266,6 @@ export function getHtmlContent(
     .db-freshness-meta-value { font-size: 1.05em; font-weight: 700; margin-top: 4px; }
     .db-refresh-history { margin: 0 0 22px; }
     .db-refresh-note { font-size: 0.8em; opacity: 0.7; margin: 6px 0 12px; }
-    .db-refresh-roi-positive { color: var(--vscode-charts-green); }
-    .db-refresh-roi-negative { color: var(--vscode-charts-red, #f14c4c); }
-    .db-refresh-roi-neutral { color: var(--vscode-foreground); opacity: 0.8; }
     .db-session-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 18px; min-height: 520px; }
     .db-session-detail {
       background: color-mix(in srgb, var(--vscode-editor-inactiveSelectionBackground) 82%, transparent);
@@ -408,9 +404,9 @@ export function getHtmlContent(
         <button id="db-btn-export-full-dashboard" class="db-export-btn">📸 Export Full Dashboard</button>
       </div>
       <nav class="db-tab-nav">
-        <button class="db-panel-tab active" data-tab="overview">📊 Overview (ROI)</button>
+        <button class="db-panel-tab active" data-tab="overview">📊 Overview</button>
         <button class="db-panel-tab" data-tab="health">🔍 Health (Diagnostics)</button>
-        <button class="db-panel-tab" data-tab="flow">🌊 Flow (Velocity)</button>
+        <button class="db-panel-tab" data-tab="flow">🌊 Activity by Hour</button>
         <button class="db-panel-tab" data-tab="prompt-insights">💬 Prompt Insights</button>
         <button class="db-panel-tab" data-tab="sessions">📂 Sessions</button>
       </nav>
@@ -424,11 +420,9 @@ export function getHtmlContent(
           ${coreKpiPanel}
           <div id="db-summary-cards" class="stats-grid"></div>
           <div id="db-daily-usage"></div>
-          <div id="db-refresh-analysis-container"></div>
           <div id="db-insights-container"></div>
           <div id="db-weekly-trend-container"></div>
           <div id="db-agent-intelligence-container"></div>
-          <div id="db-autonomy-evolution-container"></div>
         </div>
       </div>
 
@@ -455,7 +449,6 @@ export function getHtmlContent(
 
       <div class="db-panel-view" id="db-tab-flow">
         <div style="width:100%">
-          <div id="model-autonomy-leverage-map"></div>
           ${hourSection}
           ${chatHourSection}
         </div>
@@ -506,21 +499,7 @@ export function getHtmlContent(
 }
 
 /** Builds the server-rendered core KPI grid for the Overview tab. */
-function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: DashboardPayload): string {
-  const editorMinutesSaved = calculateTimeSavedMinutes(stats.totalAccepted, stats.autonomousDurationMs);
-  const cliMinutesSaved = dashboardPayload ? dashboardPayload.summary.totalMinutesSaved.cli : 0;
-  const totalMinutesSaved = editorMinutesSaved + cliMinutesSaved;
-  const tier = getRoiTier(totalMinutesSaved);
-  const roiBadge = getRoiBadge(tier);
-  // Map ROI tier names to <copilot-stat-card> highlight values ('gold' → 'orange')
-  const roiHighlight = tier === "gold" ? "orange" : (tier ?? "");
-
-  const timeSavedDisplay = escapeHtml(`${roiBadge}${formatMinutesSaved(totalMinutesSaved)}`);
-  const editorHours = dashboardPayload
-    ? (dashboardPayload.summary.totalMinutesSaved.editor / 60).toFixed(1)
-    : (editorMinutesSaved / 60).toFixed(1);
-  const cliHours = dashboardPayload ? (dashboardPayload.summary.totalMinutesSaved.cli / 60).toFixed(1) : "0.0";
-  const roiSubText = escapeHtml(`Editor: ${editorHours}h / CLI: ${cliHours}h`);
+function buildCoreKpiPanel(stats: CopilotUsageStats): string {
   const latencyDisplay = stats.avgLatencyMs > 0 ? escapeHtml(`${stats.avgLatencyMs.toFixed(0)}ms`) : "—";
   const latencyHighlight = stats.avgLatencyMs > LATENCY_WARN_MS ? "warn" : "";
   const latencyLabel = escapeHtml(`Avg Latency${stats.avgLatencyMs > LATENCY_WARN_MS ? " ⚠️" : ""}`);
@@ -532,9 +511,8 @@ function buildCoreKpiPanel(stats: CopilotUsageStats, dashboardPayload?: Dashboar
   const totalSessions = stats.bySession.size;
 
   return `<div class="kpi-grid" aria-label="Key Performance Indicators">
-  <copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" icon="✅" label="Accepted Completions"></copilot-stat-card>
+  ${stats.totalShown > 0 || stats.totalAccepted > 0 ? `<copilot-stat-card show-download value="${escapeHtml(String(stats.totalAccepted))}" icon="✅" label="Accepted Completions" subtext="Legacy VS Code logs"></copilot-stat-card>` : ""}
   <copilot-stat-card show-download value="${stats.totalShown > 0 ? escapeHtml(`${stats.acceptanceRate.toFixed(1)}%`) : "—"}" icon="📊" label="Acceptance Rate"></copilot-stat-card>
-  <copilot-stat-card show-download value="${timeSavedDisplay}" icon="⏱️" label="Time Saved (ROI)"${roiHighlight ? ` highlight="${escapeHtml(roiHighlight)}"` : ""} subtext="${roiSubText}"></copilot-stat-card>
   <copilot-stat-card show-download value="${latencyDisplay}" icon="⚡" label="${latencyLabel}"${latencyHighlight ? ` highlight="${escapeHtml(latencyHighlight)}"` : ""}${latencyTitle}></copilot-stat-card>
   <copilot-stat-card show-download value="${escapeHtml(String(totalSessions))}" icon="📂" label="Active Sessions"></copilot-stat-card>
 </div>`;
@@ -844,21 +822,6 @@ function buildInsightsSection(stats: CopilotUsageStats): string {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(
       `<copilot-insight-card show-download icon="💬">Chat usage ratio: <strong>${ratio}%</strong> of all Copilot interactions are chat requests.</copilot-insight-card>`,
-    );
-  }
-
-  // 4. Autonomous action count
-  if (stats.subagentRequests > 0) {
-    insights.push(
-      `<copilot-insight-card show-download icon="🤖">Agent performed <strong>${stats.subagentRequests}</strong> autonomous action${stats.subagentRequests === 1 ? "" : "s"} — letting you focus on higher-level work.</copilot-insight-card>`,
-    );
-  }
-
-  // 5. Agentic loop completion rate
-  if (stats.subagentLoopsStarted > 0) {
-    const rate = stats.completionRate.toFixed(1);
-    insights.push(
-      `<copilot-insight-card show-download icon="✅">Agentic loop completion rate: <strong>${rate}%</strong> (${stats.subagentLoops} of ${stats.subagentLoopsStarted} loop${stats.subagentLoopsStarted === 1 ? "" : "s"} completed successfully).</copilot-insight-card>`,
     );
   }
 

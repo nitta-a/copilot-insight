@@ -98,8 +98,7 @@ export class ThreadDetail extends LitElement {
               ? html`<span class="db-tag">Total: ${formatAiCredits(toAiCredits(selectedThread.usage.totalNanoAiu))} AI credits</span>
                 <span class="db-tag">${selectedThread.usage.inputTokens.toLocaleString()} input tokens</span>
                 <span class="db-tag">${selectedThread.usage.outputTokens.toLocaleString()} output tokens</span>`
-              : html`<span class="db-tag">${selectedThread.estimatedMinutesSaved.toFixed(1)} min saved</span>
-                <span class="db-tag">AI credits: unavailable</span>`
+              : html`<span class="db-tag">AI credits: unavailable</span>`
           }
           ${
             selectedThread.longestPauseMs > 0

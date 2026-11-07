@@ -64,7 +64,7 @@ suite("MCP server – get_usage_summary logic", () => {
     assert.ok(events.every((e) => e.eventType === "completionAccept"));
   });
 
-  test("accepts total and estimatedMinutesSaved are computed correctly", async () => {
+  test("accepts total and recorded accepted characters are computed correctly", async () => {
     // Write 4 events with known acceptedCharacters
     for (let i = 0; i < 4; i++) {
       const storage = new EventStorage(tmpDir);
@@ -86,10 +86,6 @@ suite("MCP server – get_usage_summary logic", () => {
 
     // 4 events × 200 chars each = 800 total
     assert.strictEqual(totalCharsAccepted, 800);
-
-    // 800 / 200 (TYPING_SPEED_CPM) = 4 minutes saved
-    const estimatedMinutesSaved = Math.round((totalCharsAccepted / 200) * 10) / 10;
-    assert.strictEqual(estimatedMinutesSaved, 4.0);
   });
 
   test("topLanguages breakdown groups by languageId", async () => {

@@ -66,8 +66,7 @@ export function processJsonEntry(data: Record<string, unknown>, ctx: ParsingCont
   }
 
   // Planning & Execution: check event name for plan/execution signals.
-  // Pass the extracted model name so that plan-proposal signals are tagged
-  // with the model that generated them (enables topPlanModel KPI).
+  // Preserve the originating model on plan-proposal signals.
   trackPlanningStats(eventLower, ctx, timestamp, event, jsonModel);
 
   // ── Chat Session Turn Tracking ────────────────────────────────────────────

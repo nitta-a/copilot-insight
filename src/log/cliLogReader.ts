@@ -78,8 +78,6 @@ export interface CliStats {
   toolExecutions: Map<string, { total: number; success: number; fail: number }>;
   /** Per-tool, per-model call counts (tool name → model name → count). */
   toolModelUsage: Map<string, Map<string, number>>;
-  /** Total length of reasoning text observed across all sessions (proxy for thinking depth). */
-  reasoningTokens: number;
   /** Subagent type counts keyed by agentName from subagent.started events. */
   agentTypes: Map<string, number>;
   /** Total number of assistant turns counted across all sessions. */
@@ -125,7 +123,6 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
   const promptEffectiveness: Record<string, { shown: number; accepted: number }> = {};
   const toolExecutions = new Map<string, { total: number; success: number; fail: number }>();
   const toolModelUsage = new Map<string, Map<string, number>>();
-  let reasoningTokens = 0;
   const agentTypes = new Map<string, number>();
   let turnCount = 0;
   let modelChanges = 0;
@@ -146,7 +143,6 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
       promptEffectiveness,
       toolExecutions,
       toolModelUsage,
-      reasoningTokens,
       agentTypes,
       turnCount,
       modelChanges,
@@ -229,7 +225,6 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
         }
         toolModelUsage.set(toolName, existingModelMap);
       }
-      reasoningTokens += result.reasoningTokens;
       for (const [agentName, count] of result.agentTypes) {
         agentTypes.set(agentName, (agentTypes.get(agentName) ?? 0) + count);
       }
@@ -271,7 +266,6 @@ export async function readCliStats(cliLogDir?: string, defaultModel = "Copilot C
     promptEffectiveness,
     toolExecutions,
     toolModelUsage,
-    reasoningTokens,
     agentTypes,
     turnCount,
     modelChanges,
@@ -305,7 +299,6 @@ interface ParseResult {
   promptEffectiveness: Record<string, { shown: number; accepted: number }>;
   toolExecutions: Map<string, { total: number; success: number; fail: number }>;
   toolModelUsage: Map<string, Map<string, number>>;
-  reasoningTokens: number;
   agentTypes: Map<string, number>;
   turnCount: number;
   modelChanges: number;
@@ -406,7 +399,6 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
   const toolModelUsage = new Map<string, Map<string, number>>();
   const toolNames = new Map<string, string>();
   const diagnostics: CliDiagnostics = { compactions: [], modelCalls: [], subagents: [] };
-  let reasoningTokens = 0;
   const agentTypes = new Map<string, number>();
   let turnCount = 0;
   let modelChanges = 0;
@@ -691,11 +683,6 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
       // Attribute this turn to a model (prefer per-message field over session model).
       const turnModel = (data?.model as string | undefined)?.trim() || sessionModel;
       interactionsByModel.set(turnModel, (interactionsByModel.get(turnModel) ?? 0) + 1);
-      // Accumulate reasoning text length as a proxy for thinking depth.
-      const reasoningText = data?.reasoningText as string | undefined;
-      if (reasoningText) {
-        reasoningTokens += reasoningText.length;
-      }
       continue;
     }
 
@@ -836,7 +823,6 @@ export function parseEventsJsonl(content: string, defaultModel = "Copilot CLI", 
     promptEffectiveness,
     toolExecutions,
     toolModelUsage,
-    reasoningTokens,
     agentTypes,
     turnCount,
     modelChanges,

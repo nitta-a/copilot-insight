@@ -14,18 +14,18 @@
 
 A 100% local, privacy-first VS Code extension that parses GitHub Copilot's local log files and visualizes your usage statistics in a blazingly fast, reactive dashboard. 
 
-Stop guessing if AI is making you faster. Measure your ROI, track your prompt effectiveness, and prove that providing better context leads to better code.
+Explore recorded Copilot activity, token usage, and session history from local logs.
 
 ### 🚀 Key Features
 
 - **100% Local & Privacy-First** — No telemetry, no cloud servers. It parses local VS Code extension host logs and Copilot CLI session records on your machine.
-- **ROI & True Acceptance Rate** — Tracks overall acceptance rate, declined suggestions, and estimated **minutes saved (ROI)** split into typing savings and agentic/autonomous savings.
-- **Inline data limits** — Suggestion counts depend on local logs and can be incomplete. VS Code does not expose another extension's live Copilot completion events. True acceptance is unavailable without recorded acceptance observations and shown counts.
+- **Completion counts** — Shows recorded inline suggestions and acceptances when available.
+- **Inline data limits** — Suggestion counts depend on local logs and can be incomplete. VS Code does not expose another extension's live Copilot completion events.
 - **Exported rates** — CSV leaves acceptance rates empty when no suggestions were shown. JSON retains its numeric `summary.acceptanceRate` for compatibility and includes `summary.acceptanceRateAvailable` to indicate whether that value can be used.
 - **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness. Includes **token consumption** (prompt + completion tokens per model), Copilot CLI AI credits from local session records, and a **finish-reason distribution** chart showing how often completions end normally versus hitting the context-window limit.
 - **Copilot CLI Usage** — Shows input/output and cached token totals, AI credits, and daily/model breakdowns from local CLI session records. VS Code Chat credits are not included in this CLI total.
 - **Daily Consumption & Thread Costs** — Overview charts show AI credits and input/output tokens by model-call date (UTC), with 7-day, 30-day, and full-history views. Sessions includes CLI/SDK conversation totals and per-prompt consumption alongside editor threads.
-- **Activity & Flow** — Activity heatmaps by hour of the day, weekly trend comparisons, and KPM (Keystrokes Per Minute) vs. completions scatter plots.
+- **Activity & Flow** — Activity heatmaps by hour of the day and weekly trend comparisons.
 - **MCP Server Built-in** — Exposes `get_usage_summary`, `get_model_efficiency`, and `get_anomaly_report` tools via the Model Context Protocol, allowing external AI agents (like Claude Desktop) to query your stats locally.
 
 ### 🛠️ Under the Hood (Architecture)
@@ -37,10 +37,10 @@ Copilot Insight is built for extreme performance without bloating your editor:
 
 ### 🗂️ Dashboard Tabs
 
-- 📊 **Overview (ROI)**: Summary cards, auto-generated Insights, and Weekly Trends.
-- 🔍 **Health (Diagnostics)**: Activity and acceptance-rate timelines, daily usage, and **Agent Intelligence Overview** (Planning & Execution stats, autonomous action counts). CLI / SDK prompt counts are shown separately from accepted inline suggestions.
-- 🌊 **Flow (Velocity)**: KPM scatter plots, activity heatmaps, and **Context Effectiveness** breakdown by source (Active File, Workspace, Symbol, Embeddings).
-- 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, prompt length versus observed response rate, saved chat sessions by request count, and **Context Leverage** chart (Context size vs. Acceptance rate). A recorded response is not a measure of acceptance, quality, or task completion.
+- 📊 **Overview**: Summary cards, recorded agent activity, auto-generated insights, and weekly trends.
+- 🔍 **Health (Diagnostics)**: Activity and acceptance-rate timelines, daily usage, and model breakdowns. CLI / SDK prompt counts are shown separately from accepted inline suggestions.
+- 🌊 **Activity by Hour**: Inline and chat activity heatmaps.
+- 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, prompt length versus observed response rate, and saved chat sessions by request count. A recorded response is not a measure of acceptance, quality, or task completion.
 - 📂 **Sessions**: Session Intelligence Explorer. Drill down into chat threads, user prompts, file edits, and memory refreshes.
 
 <details>
@@ -88,7 +88,6 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 | `copilot-insight.defaultDisplayDays` | `14` | Default number of days shown in the Daily Usage chart (7, 14, or 30) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | Enable the advanced analysis worker for deep metrics |
 | `copilot-insight.cliLogPath` | `""` | Path to the GitHub Copilot CLI session-state directory |
-| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | Estimated minutes saved per GitHub Copilot CLI interaction |
 | `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | Fallback model name label for CLI interactions |
 | `copilot-insight.enableTimingLogs` | `false` | Emit detailed `[TIMING]` entries to the Output panel during log parsing (intended for troubleshooting slow parses) |
 
@@ -123,22 +122,22 @@ Run `npm test` for the VS Code integration suite. To build and install a VSIX in
 
 ## 日本語
 
-インライン補完の件数はローカルログに記録された範囲に限られます。VS Code は他の拡張機能の Copilot 補完イベントをリアルタイムに公開していません。採用イベントまたは表示件数が記録されていない場合、True Acceptance Rate は算出できません。
+インライン補完の件数はローカルログに記録された範囲に限られます。VS Code は他の拡張機能の Copilot 補完イベントをリアルタイムに公開していません。
 
 表示件数がゼロの場合、CSV の採用率は空欄です。JSON は互換性のため数値を保持し、`summary.acceptanceRateAvailable` で率を算出できるかを示します。
 
 GitHub Copilot のローカルログファイルを解析し、使用統計を高速かつリアクティブなダッシュボードで可視化する、100%ローカル・プライバシーファーストな VS Code 拡張機能です。
 
-AIが本当に開発を高速化しているのかを推測するのはやめましょう。ROIを測定し、プロンプトの有効性を追跡し、「適切なコンテキスト（周辺情報）を与えるほど優れたコードが生成される」という事実をデータで証明します。
+ローカルログに記録された Copilot の利用状況、トークン使用量、セッション履歴を確認できます。
 
 ### 🚀 主な機能
 
   - **100% ローカル & プライバシーファースト** — 外部サーバーへのテレメトリ送信は一切ありません。マシン上の VS Code ログと Copilot CLI のセッション記録を解析します。
-  - **ROI と真の受け入れ率** — 全体の受け入れ率、拒否された提案数、および推定**節約時間 (ROI)** を「タイピングによる節約」と「自律エージェントによる節約」に分けて追跡します。
+  - **補完件数** — 記録がある場合にインライン補完の表示件数と採用件数を表示します。
   - **モデル効率の内訳** — 言語モデル間のパフォーマンスを比較し、特定のコードベースに最適なモデルを特定します（ChatとInline補完の有効性も分離して分析）。モデルごとの**トークン消費量**（プロンプトトークン＋補完トークン）に加え、Copilot CLI のローカルセッション記録から取得したAIクレジットを表示します。
   - **Copilot CLI 使用量** — ローカルセッション記録から入力・出力・キャッシュトークン、AIクレジット、日別・モデル別の内訳を表示します。このCLI集計にはVS Code Chatのクレジットは含まれません。
   - **日別消費グラフとスレッド別費用** — Overviewで呼び出し日時（UTC）に基づくAIクレジット・入力／出力トークンを7日・30日・全履歴で表示。SessionsではCLI/SDKスレッド全体の累計と、プロンプトごとの消費量を確認できます。
-  - **アクティビティとフロー** — 時間帯別のアクティビティヒートマップ、週次トレンド比較、KPM（1分あたりのキーストローク）と補完受け入れ数の散布図を表示します。
+  - **アクティビティ** — 時間帯別のヒートマップと週次トレンドを表示します。
   - **MCP サーバー内蔵** — Model Context Protocol サーバーを内蔵しており、Claude Desktop などの外部AIエージェントが、ローカルであなたの使用統計（`get_usage_summary` 等）を直接照会できます。
 
 ### 🛠️ アーキテクチャ (Under the Hood)
@@ -151,10 +150,10 @@ AIが本当に開発を高速化しているのかを推測するのはやめま
 
 ### 🗂️ ダッシュボードタブ構成
 
-  - 📊 **Overview (ROI)**: サマリーカード、自動生成Insights、週次トレンド。
-  - 🔍 **Health (Diagnostics)**: 真の受け入れ率タイムライン、日次使用状況、**Agent Intelligence Overview** (自律アクション数・Planning & Execution 統計)。
-  - 🌊 **Flow (Velocity)**: KPM散布図、ヒートマップ、**コンテキスト効果** (Active File / Workspace / Embeddings 等のソース別貢献度)。
-  - 💬 **Prompt Insights**: 頻出用語タグクラウド、プロンプト長散布図、**コンテキストレバレッジ**チャート (参照ファイル数バケット別の受け入れ率)。
+  - 📊 **Overview**: サマリーカード、自動生成Insights、週次トレンド。
+  - 🔍 **Health (Diagnostics)**: アクティビティタイムライン、日次使用状況、モデル別内訳。
+  - 🌊 **Activity by Hour**: 補完とチャットの時間帯別ヒートマップ。
+  - 💬 **Prompt Insights**: 頻出用語、プロンプト長と記録された応答率、チャットの依頼数分布。応答の記録は採用・品質・タスク完了を意味しません。
   - 📂 **Sessions**: Session Intelligence Explorer。チャットスレッド、ユーザープロンプト、ファイル編集のタイムラインをドリルダウン解析。
 
 <details>
@@ -201,7 +200,6 @@ AIが本当に開発を高速化しているのかを推測するのはやめま
 | `copilot-insight.defaultDisplayDays` | `14` | 日次使用チャートのデフォルト表示日数 (7・14・30) |
 | `copilot-insight.enableAdvancedAnalysis` | `true` | 高度な分析ワーカーを有効にする |
 | `copilot-insight.cliLogPath` | `""` | GitHub Copilot CLI セッション状態ディレクトリのパス |
-| `copilot-insight.cliRoiMinutesPerInteraction` | `30` | CLI インタラクション 1 回あたりの推定節約時間 (分) |
 | `copilot-insight.cliDefaultModel` | `"Copilot CLI"` | CLI ログからモデル名を検出できない場合のフォールバック |
 | `copilot-insight.enableTimingLogs` | `false` | ログ解析中に詳細な `[TIMING]` エントリを Output パネルへ出力する（低速な解析のトラブルシューティング用） |
 

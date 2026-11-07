@@ -2,7 +2,6 @@ export { AgentIntelligenceOverview } from "./AgentIntelligenceOverview";
 export { CopilotInsightCard } from "./CopilotInsightCard";
 export { CopilotStatCard } from "./CopilotStatCard";
 export { InsightsList } from "./InsightsList";
-export { RefreshAnalysis } from "./RefreshAnalysis";
 export { SummaryCards } from "./SummaryCards";
 export { DailyUsageChart } from "./DailyUsageChart";
 export { TagCloud } from "./TagCloud";

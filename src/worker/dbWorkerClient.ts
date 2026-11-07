@@ -4,30 +4,19 @@
  * Wraps `worker_threads.Worker` in a promise-based API so callers can `await`
  * each operation without dealing with the message-passing protocol directly.
  *
- * Compared with {@link MetricsWorkerClient}, this client also exposes
- * `loadFromJsonl()` which tells the worker to read JSONL event files from
- * disk — equivalent to DuckDB's `read_json_auto`.
+ * `loadFromJsonl()` tells the worker to read JSONL event files from disk.
  *
  * Usage:
  * ```ts
  * const client = new DbWorkerClientImpl(workerPath);
  * await client.loadFromJsonl(context.globalStorageUri.fsPath);
- * const rate = await client.trueRate(totalShown);
  * await client.close();
  * ```
  */
 
 import { Worker } from "node:worker_threads";
 import type { TrackedEvent } from "../events/eventSchema";
-import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import type {
-  ChatSessionRecord,
-  ChatSessionTitleRecord,
-  MemoryManagementEvent,
-  RefreshAnalysis,
-  SessionDetailPayload,
-  SessionSummary,
-} from "../types";
+import type { ChatSessionRecord, ChatSessionTitleRecord, SessionDetailPayload, SessionSummary } from "../types";
 
 /**
  * Async interface for the DB worker, modelled after {@link DuckDbClient}.
@@ -39,15 +28,6 @@ export interface DbWorkerClient {
   setChatSessionTitles(titles: ChatSessionTitleRecord[]): Promise<{ loaded: number }>;
   setChatSessions(sessions: ChatSessionRecord[]): Promise<{ loaded: number }>;
   query<T = unknown>(sql: string): Promise<T[]>;
-  trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult>;
-  velocity(windowMs?: number): Promise<VelocityAnalysisResult>;
-  modelPerformance(): Promise<ModelPerformanceResult>;
-  getRefreshAnalysis(options: {
-    memoryEvents: MemoryManagementEvent[];
-    windowMs?: number;
-    turnWindowSize?: number;
-    revertWindowMs?: number;
-  }): Promise<RefreshAnalysis[]>;
   getSessionList(): Promise<SessionSummary[]>;
   getSessionDetail(sessionId: string): Promise<SessionDetailPayload | null>;
   compact(ttlMs?: number): Promise<{ compacted: number }>;
@@ -145,38 +125,6 @@ export class DbWorkerClientImpl implements DbWorkerClient {
   /** Run a named query on the worker's analytics database. */
   async query<T = unknown>(sql: string): Promise<T[]> {
     return (await this._send("query", sql)) as T[];
-  }
-
-  /** Compute true acceptance rate (SQL-equivalent via worker). */
-  async trueRate(totalShown: number, windowMs?: number): Promise<TrueAcceptanceResult> {
-    return (await this._send("trueRate", { totalShown, windowMs })) as TrueAcceptanceResult;
-  }
-
-  /** Compute typing-velocity (KPM) analysis (SQL-equivalent via worker). */
-  async velocity(windowMs?: number): Promise<VelocityAnalysisResult> {
-    return (await this._send("velocity", { windowMs })) as VelocityAnalysisResult;
-  }
-
-  /** Compute model-performance cross-tabulation (SQL-equivalent via worker). */
-  async modelPerformance(): Promise<ModelPerformanceResult> {
-    const raw = (await this._send("modelPerf")) as {
-      crossTab: ModelPerformanceResult["crossTab"];
-      bestModelByLanguage: Record<string, string>;
-    };
-    return {
-      crossTab: raw.crossTab,
-      bestModelByLanguage: new Map(Object.entries(raw.bestModelByLanguage)),
-    };
-  }
-
-  /** Compute refresh-analysis around /compact or context-truncation boundaries. */
-  async getRefreshAnalysis(options: {
-    memoryEvents: MemoryManagementEvent[];
-    windowMs?: number;
-    turnWindowSize?: number;
-    revertWindowMs?: number;
-  }): Promise<RefreshAnalysis[]> {
-    return (await this._send("getRefreshAnalysis", options)) as RefreshAnalysis[];
   }
 
   /** Return per-session summaries for the Session Intelligence Explorer. */

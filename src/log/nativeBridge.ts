@@ -22,8 +22,6 @@ export interface NativeParseResult {
   totalChat: number;
   /** Number of subagent-initiated requests detected. */
   subagentRequests: number;
-  /** Number of agent plan-proposal events detected. */
-  planCount: number;
   /** Per-model count of shown inline completions (model name → count). */
   byModelShown: Record<string, number>;
   /** Per-model count of accepted inline completions (model name → count). */
@@ -36,10 +34,6 @@ export interface NativeParseResult {
   latencies: number[];
   /** Cumulative autonomous-action duration in milliseconds (f64 for JS number compat). */
   autonomousDurationMs: number;
-  /** Number of completed agentic (ToolCallingLoop) episodes. */
-  subagentLoops: number;
-  /** Number of agent plans that were followed by an edit / patch action. */
-  executedPlanCount: number;
   /** Browser-tool events grouped by detected action / subtype. */
   browserToolsByType: Record<string, number>;
   /** Error events grouped by detected error type. */
@@ -67,22 +61,8 @@ export interface NativeParseResult {
   chatByDate: Record<string, number>;
   /** Completion finish-reason distribution ("[streamChoices] finish reason: XXX"). */
   finishReasonCounts: Record<string, number>;
-  /** Number of agentic (ToolCallingLoop) episodes that were started. */
-  subagentLoopsStarted: number;
   /** Number of inline completions rejected by the user (AbortError in logs). */
   totalRejected: number;
-  /** Per-model count of agentic episodes that completed. */
-  loopsCompletedByModel: Record<string, number>;
-  /** Per-model total agentic actions across all completed loops. */
-  totalLoopActionsByModel: Record<string, number>;
-  /** Per-model count of agentic episodes that were started. */
-  loopsStartedByModel: Record<string, number>;
-  /** Per-date count of agentic episodes that were started ("YYYY-MM-DD" → count). */
-  loopsStartedByDate: Record<string, number>;
-  /** Per-date count of agentic episodes that completed ("YYYY-MM-DD" → count). */
-  loopsCompletedByDate: Record<string, number>;
-  /** Per-date total agentic actions across all completed loops. */
-  totalLoopActionsByDate: Record<string, number>;
   /** Per-date cumulative autonomous-action duration in milliseconds. */
   autonomousDurationByDate: Record<string, number>;
 }
@@ -100,26 +80,14 @@ export interface NativeReportInput {
   avgLatencyMs: number;
   subagentRequests: number;
   autonomousDurationMs: number;
-  agenticRatio: number;
-  subagentLoops: number;
-  subagentLoopsStarted: number;
-  completionRate: number;
-  planCount: number;
-  executedPlanCount: number;
-  userChoicesInPlan: number;
   browserToolsByType: Record<string, number>;
   pluginOrSkillByName: Record<string, number>;
   memoryManagementCount: number;
   memoryManagementByType: Record<string, number>;
   agentDebugEvents: number;
   agentDebugByType: Record<string, number>;
-  subagentByModel: Record<string, number>;
-  autonomousDurationByModel: Record<string, number>;
-  byChatModel: Record<string, number>;
   minDate: string;
   maxDate: string;
-  typingMinutesSaved: number;
-  agenticMinutesSaved: number;
   projectName: string;
   errorsByType: Record<string, number>;
 }

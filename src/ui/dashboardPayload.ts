@@ -8,51 +8,30 @@
 import * as path from "node:path";
 import { addUsage } from "../log/cliLogReader";
 import { extractTopKeywords } from "../log/keywordExtractor";
-import { mergeCountByNormalizedModel, mergeStatsByNormalizedModel } from "../log/logContentParser";
-import type { ModelPerformanceResult, TrueAcceptanceResult, VelocityAnalysisResult } from "../metrics/metricsEngine";
-import { calculateWeeklyAgenticDepthTrend, calculateWeeklyTrend } from "../metrics/weeklyTrend";
+import { mergeCountByNormalizedModel } from "../log/logContentParser";
+import { calculateWeeklyTrend } from "../metrics/weeklyTrend";
 import type {
-  AgenticDepthStat,
   CliUsageStat,
   CopilotUsageStats,
-  RefreshAnalysis,
   SessionDetailPayload,
   SessionStat,
   SessionSummary,
   UsageStatCount,
 } from "../types";
 import { PROMPT_LENGTH_BUCKETS } from "../types";
-import { formatMinutesSaved, toAiCredits } from "../utils";
+import { toAiCredits } from "../utils";
 import type {
-  AgentIntelligenceOverview,
   AgenticFeatureSignals,
   AgenticStats,
   CountBreakdownEntry,
   DashboardPayload,
-  EvolutionPoint,
   PromptInsightsData,
-  RoiBreakdown,
   SessionsData,
   SummaryData,
   TimelineEntry,
   TurnBucket,
-  VelocityPoint,
   WeeklyTrendData,
 } from "./dashboardMessages";
-
-/** Average characters per accepted completion (used for ROI estimation). */
-const AVG_CHARS_PER_COMPLETION = 40;
-
-/** Estimated developer typing speed in chars/min (used for ROI estimation). */
-const TYPING_SPEED_CPM = 200;
-
-/**
- * Cognitive weight applied to autonomous AI duration when calculating agentic ROI.
- * A value of 0.5 represents the 50% of autonomous time credited as developer time saved,
- * acknowledging that developers still need to monitor and review AI actions.
- * Intended to be made user-configurable in a future settings panel.
- */
-const AGENTIC_COGNITIVE_WEIGHT = 0.5;
 
 /** Number of history days used to compute the anomaly-detection baseline. */
 const ANOMALY_BASELINE_DAYS = 14;
@@ -199,7 +178,6 @@ function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary
   return Array.from(stats.bySession.values())
     .map((session) => {
       const { sessionId, accepted, shown, chat, errors } = session;
-      const trueRate = shown > 0 ? (accepted / shown) * 100 : 0;
       const totalActions = shown + accepted + chat + errors;
       const dateMatch = sessionId.match(/(\d{4})(\d{2})(\d{2})/);
       const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : sessionId;
@@ -208,9 +186,7 @@ function buildFallbackSessionSummaries(stats: CopilotUsageStats): SessionSummary
         title: date !== sessionId ? date : sessionId,
         date,
         totalActions,
-        trueRate,
         autonomousDuration: 0,
-        efficiencyScore: trueRate,
       };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || b.totalActions - a.totalActions);
@@ -233,123 +209,25 @@ function findTopCountModel(byModel: Map<string, number>): { model: string | null
   return { model: topModel, count: topCount };
 }
 
-function isAskIntent(intent: string): boolean {
-  return intent === "vscodePrompt" || intent === "copilotLanguageModelWrapper";
-}
-
-function buildModelCountFromSessionSignals(
-  stats: CopilotUsageStats,
-  predicate: (signal: CopilotUsageStats["sessionSignals"][number]) => boolean,
-): Map<string, number> {
-  const byModel = new Map<string, number>();
-
-  for (const signal of stats.sessionSignals) {
-    const modelName = signal.modelName.trim();
-    if (!modelName || !predicate(signal)) {
-      continue;
-    }
-    byModel.set(modelName, (byModel.get(modelName) ?? 0) + 1);
-  }
-
-  return mergeCountByNormalizedModel(byModel);
-}
-
 /**
  * Convert raw Copilot stats + optional advanced-metrics into the data shape
  * consumed by the dashboard WebView.
  *
- * Note: `sessionSummaries` is intentionally preserved in the signature for
- * backwards compatibility with existing call sites.  Session data has been
- * removed from `DashboardPayload` and is now lazy-loaded on demand via
- * `buildSessionsPayload` / the Sessions tab request flow.  This parameter
- * is ignored by this function.
  */
-export function buildDashboardPayload(
-  stats: CopilotUsageStats,
-  trueAcceptance?: TrueAcceptanceResult,
-  velocity?: VelocityAnalysisResult,
-  modelPerformance?: ModelPerformanceResult,
-  refreshAnalysis: RefreshAnalysis[] = [],
-  _sessionSummaries: SessionSummary[] = [], // ignored — sessions are lazy-loaded
-  cliRoiMinutesPerInteraction = 30,
-  hasMoreData = false,
-): DashboardPayload {
+export function buildDashboardPayload(stats: CopilotUsageStats, hasMoreData = false): DashboardPayload {
   // ── Summary ──────────────────────────────────────────────────────────────
-  const typingMinutesSaved = (stats.totalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
-  // Agentic contribution: AGENTIC_COGNITIVE_WEIGHT of autonomous duration represents developer time freed up.
-  const agenticMinutesSaved = (stats.autonomousDurationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
-  const estimatedMinutesSaved = typingMinutesSaved + agenticMinutesSaved;
-  const trueAcceptanceRate = trueAcceptance?.trueRate ?? null;
 
   // Normalize and merge model maps early so we can use them consistently across
   // summary KPIs and the per-model autonomous ratio table below.
-  const normalizedInlineByModel = mergeStatsByNormalizedModel(stats.byModel);
   const normalizedChatModelForSummary = mergeCountByNormalizedModel(stats.byChatModel);
-  let askModelCounts = buildModelCountFromSessionSignals(
-    stats,
-    (signal) => signal.signalType === "chat-request" && isAskIntent(signal.intent),
-  );
-  // Count both legacy plan-proposal signals (panel/unknown, agent/plan) and modern
-  // panel/editAgent requests, which represent the agentic phase in current Copilot logs.
-  let planModelCounts = buildModelCountFromSessionSignals(
-    stats,
-    (signal) =>
-      signal.signalType === "plan-proposal" ||
-      (signal.signalType === "chat-request" && signal.intent === "panel/editAgent"),
-  );
-
-  // Fallback for the native parser path where sessionSignals is always empty:
-  // derive ask/plan model counts from the byChatModel / subagentByModel maps
-  // that the native parser does populate.
-  if (stats.sessionSignals.length === 0 && normalizedChatModelForSummary.size > 0) {
-    const normalizedSubagentFallback = mergeCountByNormalizedModel(stats.subagentByModel);
-    askModelCounts = new Map<string, number>();
-    for (const [model, chatCount] of normalizedChatModelForSummary) {
-      const ask = chatCount - (normalizedSubagentFallback.get(model) ?? 0);
-      if (ask > 0) {
-        askModelCounts.set(model, ask);
-      }
-    }
-  }
-  if (planModelCounts.size === 0 && stats.sessionSignals.length === 0) {
-    const normalizedSubagentFallback = mergeCountByNormalizedModel(stats.subagentByModel);
-    if (normalizedSubagentFallback.size > 0) {
-      planModelCounts = new Map(normalizedSubagentFallback);
-    }
-  }
-
   const topChatModel = findTopCountModel(normalizedChatModelForSummary);
-  const topAskModel = findTopCountModel(askModelCounts);
-  const topPlanModel = findTopCountModel(planModelCounts);
-
-  // CLI ROI: each CLI interaction saves an estimated <cliRoiMinutesPerInteraction> minutes.
-  const cliInteractions = stats.cliTotalInteractions ?? 0;
-  const cliMinutesSaved = cliInteractions * cliRoiMinutesPerInteraction;
-
-  // All current VS Code editor data is attributed to "editor".
-  // CLI contribution is tracked separately via the CLI log pipeline.
-  const totalMinutesSaved: RoiBreakdown = {
-    total: estimatedMinutesSaved + cliMinutesSaved,
-    editor: estimatedMinutesSaved,
-    cli: cliMinutesSaved,
-  };
 
   const summary: SummaryData = {
     totalShown: stats.totalShown,
     totalAccepted: stats.totalAccepted,
     acceptanceRate: stats.acceptanceRate,
-    trueAcceptanceRate,
-    estimatedMinutesSaved,
-    typingMinutesSaved,
-    agenticMinutesSaved,
     topChatModel: topChatModel.model,
     topChatModelCount: topChatModel.count,
-    topAskModel: topAskModel.model,
-    topAskModelCount: topAskModel.count,
-    topPlanModel: topPlanModel.model,
-    topPlanModelCount: topPlanModel.count,
-    totalMinutesSaved,
-    estimatedTimeSaved: formatMinutesSaved(estimatedMinutesSaved),
     totalSessions: stats.bySession.size,
     tokenStats: buildTokenStats(stats),
     cliUsageStats: buildCliUsageStats(stats),
@@ -405,7 +283,6 @@ export function buildDashboardPayload(
       date,
       shown: stat.shown,
       accepted: stat.accepted,
-      trueAccepted: null, // Per-day true-accept breakdown not available from event data
       rate: stat.shown > 0 ? rate : null,
       isAnomaly,
       anomalyReason,
@@ -418,26 +295,8 @@ export function buildDashboardPayload(
     };
   });
 
-  // ── Velocity / Flow correlation ───────────────────────────────────────────
-  const velocityPoints: VelocityPoint[] = (velocity?.timeSeries ?? []).map((dp) => ({
-    kpm: dp.kpm,
-    completionsAccepted: dp.completionsAccepted,
-    flowDisrupted: dp.flowDisrupted,
-    windowStart: dp.windowStart,
-  }));
-
-  const evolutionData: EvolutionPoint[] = Array.from(stats.byDateAgenticDepth.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, dayStat]) => ({
-      date,
-      avgDepth: Number(dayStat.avgLoopActions.toFixed(2)),
-      totalDurationMin: Number((dayStat.totalDurationMs / 60000).toFixed(2)),
-      completionRate: Number(dayStat.completionRate.toFixed(2)),
-    }));
-
   // ── Weekly trend ─────────────────────────────────────────────────────────
   const trendResult = calculateWeeklyTrend(stats.byDate, stats.chatByDate);
-  const agenticTrendResult = calculateWeeklyAgenticDepthTrend(stats.byDateAgenticDepth);
   const weeklyTrend: WeeklyTrendData | null =
     trendResult.thisWeek.shown > 0 || trendResult.lastWeek.shown > 0 ? trendResult : null;
 
@@ -456,14 +315,6 @@ export function buildDashboardPayload(
     }
   }
 
-  if (
-    agenticTrendResult.thisWeek.completedLoops > 0 &&
-    agenticTrendResult.lastWeek.completedLoops > 0 &&
-    agenticTrendResult.depthGrowthRate >= 0.2
-  ) {
-    insights.push("🤖 AI is handling more complex tasks (+20% avg. depth vs last week)");
-  }
-
   // 2. Peak hour
   if (stats.byHour.size > 0) {
     const peakEntry = Array.from(stats.byHour.entries()).reduce((a, b) => (b[1] > a[1] ? b : a));
@@ -474,16 +325,6 @@ export function buildDashboardPayload(
   if (stats.totalChat > 0 && stats.totalShown > 0) {
     const ratio = ((stats.totalChat / (stats.totalChat + stats.totalShown)) * 100).toFixed(1);
     insights.push(`💬 Chat usage ratio: ${ratio}% of all Copilot interactions are chat requests.`);
-  }
-
-  if (refreshAnalysis.length > 0) {
-    const positiveRoi = refreshAnalysis.filter((entry) => (entry.refreshRoi ?? 0) > 0);
-    if (positiveRoi.length > 0) {
-      const averageRoi = positiveRoi.reduce((sum, entry) => sum + (entry.refreshRoi ?? 0), 0) / positiveRoi.length;
-      insights.push(
-        `🧼 Refresh ROI average: +${(averageRoi * 100).toFixed(1)}% true-rate recovery after context refreshes.`,
-      );
-    }
   }
 
   // ── Agentic stats ─────────────────────────────────────────────────────────
@@ -499,7 +340,6 @@ export function buildDashboardPayload(
       successRate: counts.total > 0 ? (counts.success / counts.total) * 100 : 0,
     }))
     .sort((a, b) => b.total - a.total || b.successRate - a.successRate || a.name.localeCompare(b.name));
-  const cliReasoningTokens = stats.cliReasoningTokens ?? 0;
   const totalCliAgentTypes = Array.from((stats.cliAgentTypes ?? new Map()).values()).reduce(
     (sum, count) => sum + count,
     0,
@@ -511,70 +351,6 @@ export function buildDashboardPayload(
       share: totalCliAgentTypes > 0 ? (count / totalCliAgentTypes) * 100 : 0,
     }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-
-  // ── Agent Intelligence Overview ───────────────────────────────────────────
-  // Semantic mapping: all fine-grained subagent intents → "Autonomous Action"
-  const autonomousActionCount = stats.subagentRequests;
-  const agenticLoopCount = stats.subagentLoops;
-  const avgCallsPerLoop = agenticLoopCount > 0 ? autonomousActionCount / agenticLoopCount : 0;
-
-  // Per-model autonomous ratio: only include models that have at least one subagent call.
-  // Normalize and merge map entries so that different deployment aliases of the same model
-  // are aggregated into a single row.
-  const normalizedChatModel = mergeCountByNormalizedModel(stats.byChatModel);
-  const normalizedSubagentByModel = mergeCountByNormalizedModel(stats.subagentByModel);
-  const normalizedDurationByModel = mergeCountByNormalizedModel(stats.autonomousDurationByModel);
-  // normalizedInlineByModel is already computed above for the summary KPI.
-
-  // Union of all models that appear in either chat or subagent maps so that models
-  // used only via CLI / agentic paths (absent from byChatModel) are still included.
-  const allModels = new Set([...normalizedChatModel.keys(), ...normalizedSubagentByModel.keys()]);
-
-  const autonomousRatioByModel: AgentIntelligenceOverview["autonomousRatioByModel"] = [];
-  for (const model of allModels) {
-    const subagentCount = normalizedSubagentByModel.get(model) ?? 0;
-    if (subagentCount === 0) {
-      continue;
-    }
-    const totalCount = normalizedChatModel.get(model) ?? 0;
-    const ratio = totalCount > 0 ? (subagentCount / totalCount) * 100 : 0;
-    const durationMs = normalizedDurationByModel.get(model) ?? 0;
-    const velocitySecondsPerAction = subagentCount > 0 && durationMs > 0 ? durationMs / 1000 / subagentCount : 0;
-    const depthStat = stats.agenticDepthByModel.get(model);
-    const avgLoopActions = depthStat?.avgLoopActions ?? 0;
-    const modelCompletionRate = depthStat?.completionRate ?? 0;
-    const inlineStat = normalizedInlineByModel.get(model) ?? { shown: 0, accepted: 0 };
-    const modelAcceptanceRate = inlineStat.shown > 0 ? (inlineStat.accepted / inlineStat.shown) * 100 : 0;
-    const modelTotalAccepted = inlineStat.accepted;
-    const modelTypingMinutesSaved = (modelTotalAccepted * AVG_CHARS_PER_COMPLETION) / TYPING_SPEED_CPM;
-    const modelAgenticMinutesSaved = (durationMs / 60000) * AGENTIC_COGNITIVE_WEIGHT;
-    autonomousRatioByModel.push({
-      model,
-      subagentCount,
-      totalCount,
-      ratio,
-      velocitySecondsPerAction,
-      avgLoopActions,
-      completionRate: modelCompletionRate,
-      autonomousDurationMs: durationMs,
-      acceptanceRate: modelAcceptanceRate,
-      totalTimeSaved: modelTypingMinutesSaved + modelAgenticMinutesSaved,
-      totalAccepted: modelTotalAccepted,
-    });
-  }
-  autonomousRatioByModel.sort((a, b) => b.ratio - a.ratio);
-
-  const agentIntelligenceOverview: AgentIntelligenceOverview = {
-    autonomousActionCount,
-    agenticLoopCount,
-    avgCallsPerLoop,
-    completionRate: stats.completionRate,
-    planCount: stats.planCount,
-    executedPlanCount: stats.executedPlanCount,
-    planSuccessRate: stats.planCount > 0 ? (stats.executedPlanCount / stats.planCount) * 100 : 0,
-    userChoicesInPlan: stats.userChoicesInPlan,
-    autonomousRatioByModel,
-  };
 
   const featureSignals: AgenticFeatureSignals = {
     browserTools: {
@@ -597,13 +373,10 @@ export function buildDashboardPayload(
 
   const agenticStats: AgenticStats = {
     subagentRequests: stats.subagentRequests,
-    agenticRatio: stats.agenticRatio,
     autonomousDurationMs: stats.autonomousDurationMs,
     toolUsageStats,
     cliToolExecutions,
-    cliReasoningTokens,
     cliAgentTypes,
-    agentIntelligenceOverview,
     featureSignals,
   };
 
@@ -612,12 +385,9 @@ export function buildDashboardPayload(
     availableRange,
     summary,
     timeline,
-    velocityPoints,
-    evolutionData,
     insights,
     weeklyTrend,
     agenticStats,
-    refreshAnalysis,
     hasMoreData,
   };
 }
@@ -740,9 +510,7 @@ export function buildSessionsPayload(stats: CopilotUsageStats, sessionSummaries:
     title: thread.title,
     date: (thread.startedAt ?? thread.lastActivityAt ?? "").slice(0, 10),
     totalActions: thread.prompts,
-    trueRate: 0,
     autonomousDuration: 0,
-    efficiencyScore: 0,
   }));
   return {
     sessionSummaries: [...effectiveSessionSummaries, ...cliSummaries].sort((a, b) => b.date.localeCompare(a.date)),
@@ -758,9 +526,7 @@ export function buildCliSessionDetail(stats: CopilotUsageStats, sessionId: strin
     sessionId,
     date: (thread.startedAt ?? "").slice(0, 10),
     totalActions: thread.prompts,
-    trueRate: 0,
     autonomousDuration: 0,
-    efficiencyScore: 0,
     timeline: [],
     episodes: [],
     fatigueMarker: null,
@@ -769,7 +535,6 @@ export function buildCliSessionDetail(stats: CopilotUsageStats, sessionId: strin
         threadId: sessionId,
         title: thread.title,
         startedAt: thread.startedAt ?? "",
-        estimatedMinutesSaved: 0,
         autonomousDurationMs: 0,
         acceptedChars: 0,
         hasAutonomousRun: false,

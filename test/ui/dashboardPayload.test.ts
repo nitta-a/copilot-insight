@@ -1,7 +1,6 @@
 import * as assert from "assert";
 import type { SessionSignalEvent } from "../../src/events/eventSchema";
-import type { TrueAcceptanceResult, VelocityAnalysisResult } from "../../src/metrics/metricsEngine";
-import type { CliUsageStat, CopilotUsageStats, RefreshAnalysis, SessionSummary } from "../../src/types";
+import type { CliUsageStat, CopilotUsageStats, SessionSummary } from "../../src/types";
 import {
   buildCliSessionDetail,
   buildDashboardPayload,
@@ -9,78 +8,6 @@ import {
   buildSessionsPayload,
 } from "../../src/ui/dashboardPayload";
 import { addUsage, parseEventsJsonl } from "../../src/log/cliLogReader";
-
-function fmt(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getMonday(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function makeRefreshAnalysis(overrides?: Partial<RefreshAnalysis>): RefreshAnalysis {
-  return {
-    event: {
-      timestamp: "2026-03-07T10:00:00Z",
-      type: "compact",
-      rawText: "/compact",
-      sessionId: "s1",
-    },
-    windowMinutes: 15,
-    turnWindowSize: 10,
-    preWindow: {
-      turnCount: 3,
-      rawAccepted: 3,
-      trueAccepted: 2,
-      rawRate: 100,
-      trueRate: 66.7,
-      revertedCount: 1,
-      windowStart: "2026-03-07T09:45:00Z",
-      windowEnd: "2026-03-07T09:59:00Z",
-    },
-    postWindow: {
-      turnCount: 3,
-      rawAccepted: 3,
-      trueAccepted: 3,
-      rawRate: 100,
-      trueRate: 100,
-      revertedCount: 0,
-      windowStart: "2026-03-07T10:01:00Z",
-      windowEnd: "2026-03-07T10:15:00Z",
-    },
-    preTurns: {
-      turnCount: 2,
-      rawAccepted: 2,
-      trueAccepted: 1,
-      rawRate: 100,
-      trueRate: 50,
-      revertedCount: 1,
-      windowStart: "2026-03-07T09:58:00Z",
-      windowEnd: "2026-03-07T09:59:00Z",
-    },
-    postTurns: {
-      turnCount: 2,
-      rawAccepted: 2,
-      trueAccepted: 2,
-      rawRate: 100,
-      trueRate: 100,
-      revertedCount: 0,
-      windowStart: "2026-03-07T10:01:00Z",
-      windowEnd: "2026-03-07T10:02:00Z",
-    },
-    recoveryDelta: 50,
-    refreshRoi: 1,
-    ...overrides,
-  };
-}
 
 function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
   return {
@@ -115,19 +42,10 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     chatLatencyP95: 300,
     bySession: new Map([["s1", { sessionId: "s1", shown: 100, accepted: 60, chat: 10, errors: 0 }]]),
     subagentRequests: 0,
-    agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
-    subagentLoops: 0,
-    subagentLoopsStarted: 0,
-    completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
-    agenticDepthByModel: new Map(),
-    byDateAgenticDepth: new Map(),
-    planCount: 0,
-    executedPlanCount: 0,
-    userChoicesInPlan: 0,
     browserToolInvocations: 0,
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
@@ -140,7 +58,6 @@ function makeStats(overrides?: Partial<CopilotUsageStats>): CopilotUsageStats {
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     cliToolExecutions: new Map(),
-    cliReasoningTokens: 0,
     cliAgentTypes: new Map(),
     commandUsage: new Map(),
     promptEffectiveness: {},
@@ -178,72 +95,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.summary.totalShown, 200);
       assert.strictEqual(payload.summary.totalAccepted, 120);
       assert.strictEqual(payload.summary.acceptanceRate, 60.0);
-    });
-
-    test("trueAcceptanceRate is null when no trueAcceptance passed", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.summary.trueAcceptanceRate, null);
-    });
-
-    test("trueAcceptanceRate comes from trueAcceptance.trueRate", () => {
-      const ta: TrueAcceptanceResult = {
-        rawAccepted: 120,
-        trueAccepted: 100,
-        rawRate: 60,
-        trueRate: 50,
-        revertedCount: 20,
-      };
-      const payload = buildDashboardPayload(makeStats(), ta);
-      assert.strictEqual(payload.summary.trueAcceptanceRate, 50);
-    });
-
-    test("estimatedMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
-      const payload = buildDashboardPayload(makeStats());
-      // 120 * 40 / 200 = 24 (no autonomous duration)
-      assert.strictEqual(payload.summary.estimatedMinutesSaved, 24);
-    });
-
-    test("typingMinutesSaved is acceptedCount * 40 chars / 200 CPM", () => {
-      const payload = buildDashboardPayload(makeStats());
-      // 120 * 40 / 200 = 24
-      assert.strictEqual(payload.summary.typingMinutesSaved, 24);
-    });
-
-    test("agenticMinutesSaved is autonomousDurationMs / 60000 * 0.5", () => {
-      const stats = makeStats({ autonomousDurationMs: 12000 }); // 12s = 0.2min
-      const payload = buildDashboardPayload(stats);
-      // (12000 / 60000) * 0.5 = 0.1
-      assert.ok(Math.abs(payload.summary.agenticMinutesSaved - 0.1) < 0.0001);
-    });
-
-    test("estimatedMinutesSaved equals typingMinutesSaved + agenticMinutesSaved", () => {
-      const stats = makeStats({ autonomousDurationMs: 60000 }); // 1min autonomous
-      const payload = buildDashboardPayload(stats);
-      assert.ok(
-        Math.abs(
-          payload.summary.estimatedMinutesSaved -
-            (payload.summary.typingMinutesSaved + payload.summary.agenticMinutesSaved),
-        ) < 0.0001,
-      );
-    });
-
-    test("totalMinutesSaved is a RoiBreakdown with total, editor, cli", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(typeof payload.summary.totalMinutesSaved, "object");
-      assert.strictEqual(payload.summary.totalMinutesSaved.total, payload.summary.estimatedMinutesSaved);
-      assert.strictEqual(payload.summary.totalMinutesSaved.editor, payload.summary.estimatedMinutesSaved);
-      assert.strictEqual(payload.summary.totalMinutesSaved.cli, 0);
-    });
-
-    test("totalMinutesSaved.total equals editor + cli", () => {
-      const stats = makeStats({ autonomousDurationMs: 120000 });
-      const payload = buildDashboardPayload(stats);
-      assert.ok(
-        Math.abs(
-          payload.summary.totalMinutesSaved.total -
-            (payload.summary.totalMinutesSaved.editor + payload.summary.totalMinutesSaved.cli),
-        ) < 0.0001,
-      );
     });
 
     test("topChatModel uses the most requested non-inline model from byChatModel", () => {
@@ -304,85 +155,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.summary.topChatModelCount, 10);
     });
 
-    test("topAskModel combines Ask and old Ask requests", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ intent: "vscodePrompt", modelName: "gpt-4o" }),
-          makeSessionSignal({ intent: "copilotLanguageModelWrapper", modelName: "gpt-4o" }),
-          makeSessionSignal({ intent: "vscodePrompt", modelName: "claude-3.5" }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topAskModel, "gpt-4o");
-      assert.strictEqual(payload.summary.topAskModelCount, 2);
-    });
-
-    test("topAskModel ignores non-Ask intents and blank model names", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ intent: "Agent", modelName: "claude-3.5" }),
-          makeSessionSignal({ intent: "vscodePrompt", modelName: "   " }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topAskModel, null);
-      assert.strictEqual(payload.summary.topAskModelCount, 0);
-    });
-
-    test("topPlanModel counts plan-proposal and panel/editAgent signals", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "", intent: "agent/plan" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-3.5", intent: "vscodePrompt" }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topPlanModel, "o3");
-      assert.strictEqual(payload.summary.topPlanModelCount, 2);
-    });
-
-    test("topPlanModel counts modern panel/editAgent chat-request signals", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "o3", intent: "panel/editAgent" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "o3", intent: "vscodePrompt" }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topPlanModel, "claude-sonnet-4.6");
-      assert.strictEqual(payload.summary.topPlanModelCount, 3);
-    });
-
-    test("topPlanModel mixes legacy plan-proposal and modern panel/editAgent", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
-          makeSessionSignal({ signalType: "chat-request", modelName: "claude-sonnet-4.6", intent: "panel/editAgent" }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topPlanModel, "claude-sonnet-4.6");
-      assert.strictEqual(payload.summary.topPlanModelCount, 2);
-    });
-
-    test("topPlanModel breaks equal-count ties alphabetically", () => {
-      const stats = makeStats({
-        sessionSignals: [
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "o3", intent: "panel/unknown" }),
-          makeSessionSignal({ signalType: "plan-proposal", modelName: "claude-3.5", intent: "panel/unknown" }),
-        ],
-      });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.summary.topPlanModel, "claude-3.5");
-      assert.strictEqual(payload.summary.topPlanModelCount, 1);
-    });
-
     test("sessionSummaries are forwarded into the payload", () => {
       const summaries: SessionSummary[] = [
         {
@@ -390,9 +162,7 @@ suite("buildDashboardPayload", () => {
           title: "Investigate session explorer",
           date: "2026-03-07",
           totalActions: 12,
-          trueRate: 58.5,
           autonomousDuration: 12_000,
-          efficiencyScore: 63.2,
         },
       ];
       const payload = buildSessionsPayload(makeStats(), summaries);
@@ -413,9 +183,7 @@ suite("buildDashboardPayload", () => {
           title: null,
           date: "2026-03-07",
           totalActions: 12,
-          trueRate: 58.5,
           autonomousDuration: 12_000,
-          efficiencyScore: 63.2,
         },
       ];
 
@@ -432,20 +200,13 @@ suite("buildDashboardPayload", () => {
           title: "   ",
           date: "",
           totalActions: 3,
-          trueRate: 0,
           autonomousDuration: 0,
-          efficiencyScore: 0,
         },
       ];
 
       const payload = buildSessionsPayload(makeStats(), summaries);
       assert.strictEqual(payload.sessionSummaries.length, 1);
       assert.strictEqual(payload.sessionSummaries[0]?.title, "session-without-date");
-    });
-
-    test("freshness is null when refresh analysis is unavailable", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.deepStrictEqual(payload.refreshAnalysis, []);
     });
   });
 
@@ -484,13 +245,6 @@ suite("buildDashboardPayload", () => {
         payload.timeline.map((entry) => entry.rate),
         [null, 0],
       );
-    });
-
-    test("timeline trueAccepted is null (not available per day)", () => {
-      const payload = buildDashboardPayload(makeStats());
-      for (const entry of payload.timeline) {
-        assert.strictEqual(entry.trueAccepted, null);
-      }
     });
 
     test("days field in payload equals timeline length", () => {
@@ -534,138 +288,6 @@ suite("buildDashboardPayload", () => {
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.availableRange.minDate, "");
       assert.strictEqual(payload.availableRange.maxDate, "");
-    });
-  });
-
-  suite("velocityPoints", () => {
-    test("velocityPoints is empty when no velocity passed", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.velocityPoints.length, 0);
-    });
-
-    test("velocityPoints maps timeSeries entries", () => {
-      const velocity: VelocityAnalysisResult = {
-        timeSeries: [
-          { windowStart: "2026-02-27T10:00:00Z", kpm: 120, completionsAccepted: 3, flowDisrupted: false },
-          { windowStart: "2026-02-27T10:01:00Z", kpm: 40, completionsAccepted: 2, flowDisrupted: true },
-        ],
-        averageKpm: 80,
-        disruptionCount: 1,
-      };
-      const payload = buildDashboardPayload(makeStats(), undefined, velocity);
-      assert.strictEqual(payload.velocityPoints.length, 2);
-      assert.strictEqual(payload.velocityPoints[0].kpm, 120);
-      assert.strictEqual(payload.velocityPoints[0].flowDisrupted, false);
-      assert.strictEqual(payload.velocityPoints[1].flowDisrupted, true);
-    });
-  });
-
-  suite("evolutionData", () => {
-    test("maps byDateAgenticDepth into sorted autonomy evolution points", () => {
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            "2026-02-27",
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 50,
-              velocityMsPerAction: 30000,
-              totalDurationMs: 60000,
-            },
-          ],
-          [
-            "2026-02-26",
-            {
-              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 3,
-              completionRate: 100,
-              velocityMsPerAction: 10000,
-              totalDurationMs: 60000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.deepStrictEqual(
-        payload.evolutionData.map((point) => point.date),
-        ["2026-02-26", "2026-02-27"],
-      );
-      assert.strictEqual(payload.evolutionData[0].avgDepth, 3);
-      assert.strictEqual(payload.evolutionData[0].totalDurationMin, 1);
-      assert.strictEqual(payload.evolutionData[0].completionRate, 100);
-      assert.strictEqual(payload.evolutionData[1].totalDurationMin, 1);
-    });
-
-    test("does not synthesize missing dates in evolutionData", () => {
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            "2026-02-24",
-            {
-              loopDistribution: { bucket1: 1, bucket2: 0, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 1,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-              totalDurationMs: 5000,
-            },
-          ],
-          [
-            "2026-02-27",
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 100,
-              velocityMsPerAction: 10000,
-              totalDurationMs: 20000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.evolutionData.length, 2);
-      assert.deepStrictEqual(
-        payload.evolutionData.map((point) => point.date),
-        ["2026-02-24", "2026-02-27"],
-      );
-    });
-
-    test("adds complex-task insight when avg depth grows more than 20% week over week", () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const thisMonday = getMonday(today);
-      const lastMonday = new Date(thisMonday);
-      lastMonday.setDate(thisMonday.getDate() - 7);
-
-      const stats = makeStats({
-        byDateAgenticDepth: new Map([
-          [
-            fmt(lastMonday),
-            {
-              loopDistribution: { bucket1: 0, bucket2: 1, bucket3to5: 0, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 2,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-              totalDurationMs: 10000,
-            },
-          ],
-          [
-            fmt(thisMonday),
-            {
-              loopDistribution: { bucket1: 0, bucket2: 0, bucket3to5: 1, bucket6to10: 0, bucket11plus: 0 },
-              avgLoopActions: 3,
-              completionRate: 100,
-              velocityMsPerAction: 5000,
-              totalDurationMs: 15000,
-            },
-          ],
-        ]),
-      });
-
-      const payload = buildDashboardPayload(stats);
-      assert.ok(payload.insights.includes("🤖 AI is handling more complex tasks (+20% avg. depth vs last week)"));
     });
   });
 
@@ -753,18 +375,15 @@ suite("buildDashboardPayload", () => {
     test("returns zero agenticStats when no subagent data", () => {
       const payload = buildDashboardPayload(makeStats());
       assert.strictEqual(payload.agenticStats.subagentRequests, 0);
-      assert.strictEqual(payload.agenticStats.agenticRatio, 0);
       assert.strictEqual(payload.agenticStats.autonomousDurationMs, 0);
       assert.deepStrictEqual(payload.agenticStats.toolUsageStats, []);
       assert.deepStrictEqual(payload.agenticStats.cliToolExecutions, []);
-      assert.strictEqual(payload.agenticStats.cliReasoningTokens, 0);
       assert.deepStrictEqual(payload.agenticStats.cliAgentTypes, []);
     });
 
-    test("includes subagentRequests, agenticRatio, autonomousDurationMs from stats", () => {
+    test("includes subagentRequests and autonomousDurationMs from stats", () => {
       const stats = makeStats({
         subagentRequests: 5,
-        agenticRatio: 2.5,
         autonomousDurationMs: 12000,
         toolUsageStats: new Map([
           ["runSubagent", 3],
@@ -773,7 +392,6 @@ suite("buildDashboardPayload", () => {
       });
       const payload = buildDashboardPayload(stats);
       assert.strictEqual(payload.agenticStats.subagentRequests, 5);
-      assert.strictEqual(payload.agenticStats.agenticRatio, 2.5);
       assert.strictEqual(payload.agenticStats.autonomousDurationMs, 12000);
     });
 
@@ -820,11 +438,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.agenticStats.cliToolExecutions[0]?.successRate, 75);
     });
 
-    test("agenticStats exposes cliReasoningTokens", () => {
-      const payload = buildDashboardPayload(makeStats({ cliReasoningTokens: 4321 }));
-      assert.strictEqual(payload.agenticStats.cliReasoningTokens, 4321);
-    });
-
     test("cliAgentTypes is sorted by count descending and computes share", () => {
       const stats = makeStats({
         cliAgentTypes: new Map([
@@ -840,185 +453,6 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(sorted[0].share, 50);
       assert.strictEqual(sorted[1].name, "researcher");
       assert.strictEqual(sorted[2].name, "general-purpose");
-    });
-
-    test("agentIntelligenceOverview is zero when no subagent data", () => {
-      const payload = buildDashboardPayload(makeStats());
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.autonomousActionCount, 0);
-      assert.strictEqual(ov.agenticLoopCount, 0);
-      assert.strictEqual(ov.avgCallsPerLoop, 0);
-      assert.deepStrictEqual(ov.autonomousRatioByModel, []);
-    });
-
-    test("agentIntelligenceOverview.autonomousActionCount equals subagentRequests", () => {
-      const stats = makeStats({ subagentRequests: 7, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.autonomousActionCount, 7);
-    });
-
-    test("agentIntelligenceOverview.avgCallsPerLoop is ratio of requests to loops", () => {
-      const stats = makeStats({ subagentRequests: 6, subagentLoops: 2 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 3);
-    });
-
-    test("agentIntelligenceOverview.avgCallsPerLoop is 0 when no loops", () => {
-      const stats = makeStats({ subagentRequests: 4, subagentLoops: 0 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.avgCallsPerLoop, 0);
-    });
-
-    test("agentIntelligenceOverview.autonomousRatioByModel excludes models with no subagent calls", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o", 10],
-          ["claude-3", 5],
-        ]),
-        subagentByModel: new Map([["gpt-4o", 3]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].model, "gpt-4o");
-      assert.strictEqual(byModel[0].subagentCount, 3);
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.ok(Math.abs(byModel[0].ratio - 30) < 0.01);
-    });
-
-    test("agentIntelligenceOverview.autonomousRatioByModel is sorted by ratio descending", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o", 10],
-          ["claude-3", 4],
-        ]),
-        subagentByModel: new Map([
-          ["gpt-4o", 2], // 20%
-          ["claude-3", 2], // 50%
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel[0].model, "claude-3");
-      assert.strictEqual(byModel[1].model, "gpt-4o");
-    });
-
-    test("agentIntelligenceOverview.completionRate is 0 when no loops started", () => {
-      const payload = buildDashboardPayload(makeStats());
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 0);
-    });
-
-    test("agentIntelligenceOverview.completionRate is ratio of completed to started loops * 100", () => {
-      const stats = makeStats({ subagentLoops: 3, subagentLoopsStarted: 4, completionRate: 75 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.completionRate, 75);
-    });
-
-    test("autonomousRatioByModel.velocitySecondsPerAction is 0 when no duration data", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        autonomousDurationByModel: new Map(),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].velocitySecondsPerAction, 0);
-    });
-
-    test("autonomousRatioByModel.velocitySecondsPerAction is durationMs / 1000 / subagentCount", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 4]]),
-        autonomousDurationByModel: new Map([["gpt-4o", 20000]]), // 20s / 4 actions = 5s/action
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].velocitySecondsPerAction, 5);
-    });
-
-    test("autonomousRatioByModel merges entries for same normalized model name", () => {
-      // Two byChatModel entries that normalize to the same key
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o -> deployment-a", 8],
-          ["gpt-4o -> deployment-b", 2],
-        ]),
-        subagentByModel: new Map([
-          ["gpt-4o -> deployment-a", 3],
-          ["gpt-4o -> deployment-b", 1],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1, "should merge two deployments into one row");
-      assert.strictEqual(byModel[0].model, "gpt-4o");
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.strictEqual(byModel[0].subagentCount, 4);
-      assert.ok(Math.abs(byModel[0].ratio - 40) < 0.01);
-    });
-
-    test("autonomousRatioByModel strips colon suffix when merging", () => {
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["claude-3.5-sonnet:20241022", 6],
-          ["claude-3.5-sonnet:20241101", 4],
-        ]),
-        subagentByModel: new Map([["claude-3.5-sonnet:20241022", 2]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].model, "claude-3.5-sonnet");
-      assert.strictEqual(byModel[0].totalCount, 10);
-      assert.strictEqual(byModel[0].subagentCount, 2);
-    });
-
-    test("autonomousRatioByModel includes model present only in subagentByModel (not in byChatModel)", () => {
-      // Simulate Claude Opus 4.6 used only via CLI/agentic path,
-      // so it appears in subagentByModel but not in byChatModel.
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([
-          ["gpt-4o", 5],
-          ["claude-opus-4.6", 3],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      const models = byModel.map((e) => e.model);
-      assert.ok(models.includes("claude-opus-4.6"), `Expected claude-opus-4.6 in ${models.join(", ")}`);
-      const claudeEntry = byModel.find((e) => e.model === "claude-opus-4.6");
-      assert.ok(claudeEntry);
-      assert.strictEqual(claudeEntry.subagentCount, 3);
-      assert.strictEqual(claudeEntry.totalCount, 0);
-      assert.strictEqual(claudeEntry.ratio, 0);
-    });
-
-    test("planCount, executedPlanCount, planSuccessRate, userChoicesInPlan are zero when no planning data", () => {
-      const payload = buildDashboardPayload(makeStats());
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.planCount, 0);
-      assert.strictEqual(ov.executedPlanCount, 0);
-      assert.strictEqual(ov.planSuccessRate, 0);
-      assert.strictEqual(ov.userChoicesInPlan, 0);
-    });
-
-    test("planSuccessRate is executedPlanCount / planCount * 100", () => {
-      const stats = makeStats({ planCount: 10, executedPlanCount: 8, userChoicesInPlan: 5 });
-      const payload = buildDashboardPayload(stats);
-      const ov = payload.agenticStats.agentIntelligenceOverview;
-      assert.strictEqual(ov.planCount, 10);
-      assert.strictEqual(ov.executedPlanCount, 8);
-      assert.ok(Math.abs(ov.planSuccessRate - 80) < 0.001);
-      assert.strictEqual(ov.userChoicesInPlan, 5);
-    });
-
-    test("planSuccessRate is 0 when planCount is 0", () => {
-      const stats = makeStats({ planCount: 0, executedPlanCount: 0 });
-      const payload = buildDashboardPayload(stats);
-      assert.strictEqual(payload.agenticStats.agentIntelligenceOverview.planSuccessRate, 0);
     });
 
     test("featureSignals exposes sorted browser tool breakdown", () => {
@@ -1058,107 +492,10 @@ suite("buildDashboardPayload", () => {
       assert.strictEqual(payload.agenticStats.featureSignals.memoryManagement.total, 1);
       assert.strictEqual(payload.agenticStats.featureSignals.agentDebug.total, 4);
     });
-
-    test("autonomousRatioByModel.acceptanceRate is 0 when no inline completion data for model", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map(),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.strictEqual(byModel[0].acceptanceRate, 0);
-      assert.strictEqual(byModel[0].totalAccepted, 0);
-    });
-
-    test("autonomousRatioByModel.acceptanceRate is accepted/shown * 100 from byModel", () => {
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
-      assert.strictEqual(byModel[0].totalAccepted, 40);
-    });
-
-    test("autonomousRatioByModel.totalTimeSaved includes typing and agentic components", () => {
-      // typing: 40 accepted * 40 chars / 200 cpm = 8 min
-      // agentic: 120000ms / 60000 * 0.5 = 1 min
-      // total: 9 min
-      const stats = makeStats({
-        byChatModel: new Map([["gpt-4o", 10]]),
-        subagentByModel: new Map([["gpt-4o", 5]]),
-        byModel: new Map([["gpt-4o", { shown: 100, accepted: 40 }]]),
-        autonomousDurationByModel: new Map([["gpt-4o", 120000]]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      assert.ok(Math.abs(byModel[0].totalTimeSaved - 9) < 0.01);
-    });
-
-    test("autonomousRatioByModel.totalTimeSaved merges inline stats for same normalized model", () => {
-      // Two deployment aliases of gpt-4o that normalize to the same key
-      const stats = makeStats({
-        byChatModel: new Map([
-          ["gpt-4o -> a", 5],
-          ["gpt-4o -> b", 5],
-        ]),
-        subagentByModel: new Map([["gpt-4o -> a", 3]]),
-        byModel: new Map([
-          ["gpt-4o -> a", { shown: 60, accepted: 30 }],
-          ["gpt-4o -> b", { shown: 40, accepted: 10 }],
-        ]),
-      });
-      const payload = buildDashboardPayload(stats);
-      const byModel = payload.agenticStats.agentIntelligenceOverview.autonomousRatioByModel;
-      assert.strictEqual(byModel.length, 1);
-      // merged: shown=100, accepted=40 → acceptanceRate=40%, totalAccepted=40
-      assert.ok(Math.abs(byModel[0].acceptanceRate - 40) < 0.01);
-      assert.strictEqual(byModel[0].totalAccepted, 40);
-    });
   });
 });
 
 suite("buildDashboardPayload — CLI integration", () => {
-  test("cli ROI is zero when cliTotalInteractions is 0", () => {
-    const payload = buildDashboardPayload(makeStats({ cliTotalInteractions: 0, cliByDate: new Map() }));
-    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 0);
-  });
-
-  test("cli ROI equals interactions * default 30 minutes", () => {
-    const payload = buildDashboardPayload(makeStats({ cliTotalInteractions: 4, cliByDate: new Map() }));
-    // 4 interactions × 30 min = 120
-    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 120);
-  });
-
-  test("cli ROI uses custom cliRoiMinutesPerInteraction parameter", () => {
-    const payload = buildDashboardPayload(
-      makeStats({ cliTotalInteractions: 3, cliByDate: new Map() }),
-      undefined,
-      undefined,
-      undefined,
-      [],
-      [],
-      15, // custom: 15 min per interaction
-    );
-    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 45);
-  });
-
-  test("totalMinutesSaved.total includes both editor and cli components", () => {
-    // editor: 0 accepted × 40 / 200 = 0 min; cli: 2 × 30 = 60 min
-    const payload = buildDashboardPayload(
-      makeStats({ totalAccepted: 0, autonomousDurationMs: 0, cliTotalInteractions: 2, cliByDate: new Map() }),
-    );
-    assert.strictEqual(payload.summary.totalMinutesSaved.total, 60);
-    assert.strictEqual(payload.summary.totalMinutesSaved.editor, 0);
-    assert.strictEqual(payload.summary.totalMinutesSaved.cli, 60);
-  });
-
   test("timeline includes CLI-only and chat-only days without inventing acceptance rates", () => {
     const cliByDate = new Map([["2026-03-01", { prompts: 3, outputTokens: 600 }]]);
     const chatByDate = new Map([["2026-03-02", 2]]);

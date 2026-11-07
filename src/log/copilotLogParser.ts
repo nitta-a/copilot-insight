@@ -134,16 +134,10 @@ export async function parseCopilotLogs(
     chatLatencyP95: 0,
     bySession: new Map(),
     subagentRequests: 0,
-    agenticRatio: 0,
     autonomousDurationMs: 0,
     toolUsageStats: new Map(),
-    subagentLoops: 0,
-    subagentLoopsStarted: 0,
-    completionRate: 0,
     subagentByModel: new Map(),
     autonomousDurationByModel: new Map(),
-    agenticDepthByModel: new Map(),
-    byDateAgenticDepth: new Map(),
     latencySum: 0,
     latencyCount: 0,
     chatLatencySum: 0,
@@ -151,19 +145,7 @@ export async function parseCopilotLogs(
     currentSessionId: "",
     activeSubagentLoop: null,
     activeSubagentLoopModel: null,
-    activeSubagentLoopActionCount: 0,
-    loopsStartedByModel: new Map(),
-    loopsCompletedByModel: new Map(),
-    totalLoopActionsByModel: new Map(),
-    loopDistributionByModel: new Map(),
-    loopsStartedByDate: new Map(),
-    loopsCompletedByDate: new Map(),
-    totalLoopActionsByDate: new Map(),
-    loopDistributionByDate: new Map(),
     autonomousDurationByDate: new Map(),
-    planCount: 0,
-    executedPlanCount: 0,
-    userChoicesInPlan: 0,
     browserToolInvocations: 0,
     browserToolsByType: new Map(),
     pluginOrSkillInvocations: 0,
@@ -175,11 +157,9 @@ export async function parseCopilotLogs(
     memoryManagementByType: new Map(),
     agentDebugEvents: 0,
     agentDebugByType: new Map(),
-    activePlanPending: false,
     cliByDate: new Map(),
     cliTotalInteractions: 0,
     cliToolExecutions: new Map(),
-    cliReasoningTokens: 0,
     cliAgentTypes: new Map(),
     commandUsage: new Map(),
     promptEffectiveness: {},
@@ -319,60 +299,6 @@ export async function parseCopilotLogs(
     ctx.chatAvgLatencyMs = ctx.chatLatencySum / ctx.chatLatencyCount;
   }
 
-  const totalRequests = ctx.totalShown + ctx.totalChat;
-  if (totalRequests > 0) {
-    ctx.agenticRatio = (ctx.subagentRequests / totalRequests) * 100;
-  }
-
-  if (ctx.subagentLoopsStarted > 0) {
-    ctx.completionRate = (ctx.subagentLoops / ctx.subagentLoopsStarted) * 100;
-  }
-
-  // Compute per-model agentic depth statistics from accumulated data.
-  const allModelKeys = new Set([...ctx.loopsStartedByModel.keys(), ...ctx.loopsCompletedByModel.keys()]);
-  for (const model of allModelKeys) {
-    const started = ctx.loopsStartedByModel.get(model) ?? 0;
-    const completed = ctx.loopsCompletedByModel.get(model) ?? 0;
-    const totalActions = ctx.totalLoopActionsByModel.get(model) ?? 0;
-    const totalDurationMs = ctx.autonomousDurationByModel.get(model) ?? 0;
-    const dist = ctx.loopDistributionByModel.get(model) ?? {
-      bucket1: 0,
-      bucket2: 0,
-      bucket3to5: 0,
-      bucket6to10: 0,
-      bucket11plus: 0,
-    };
-    ctx.agenticDepthByModel.set(model, {
-      loopDistribution: dist,
-      avgLoopActions: completed > 0 ? totalActions / completed : 0,
-      completionRate: started > 0 ? (completed / started) * 100 : 0,
-      velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
-      totalDurationMs,
-    });
-  }
-
-  const allDateKeys = new Set([...ctx.loopsStartedByDate.keys(), ...ctx.loopsCompletedByDate.keys()]);
-  for (const date of allDateKeys) {
-    const started = ctx.loopsStartedByDate.get(date) ?? 0;
-    const completed = ctx.loopsCompletedByDate.get(date) ?? 0;
-    const totalActions = ctx.totalLoopActionsByDate.get(date) ?? 0;
-    const totalDurationMs = ctx.autonomousDurationByDate.get(date) ?? 0;
-    const dist = ctx.loopDistributionByDate.get(date) ?? {
-      bucket1: 0,
-      bucket2: 0,
-      bucket3to5: 0,
-      bucket6to10: 0,
-      bucket11plus: 0,
-    };
-    ctx.byDateAgenticDepth.set(date, {
-      loopDistribution: dist,
-      avgLoopActions: completed > 0 ? totalActions / completed : 0,
-      completionRate: started > 0 ? (completed / started) * 100 : 0,
-      velocityMsPerAction: totalActions > 0 ? totalDurationMs / totalActions : 0,
-      totalDurationMs,
-    });
-  }
-
   if (ctx.latencies.length > MAX_LATENCY_SAMPLES) {
     ctx.latencies = ctx.latencies.slice(-MAX_LATENCY_SAMPLES);
   }
@@ -435,7 +361,6 @@ export async function parseCopilotLogs(
         fail: existing.fail + counts.fail,
       });
     }
-    ctx.cliReasoningTokens = (ctx.cliReasoningTokens ?? 0) + cliResult.reasoningTokens;
     for (const [agentName, count] of cliResult.agentTypes) {
       ctx.cliAgentTypes?.set(agentName, (ctx.cliAgentTypes?.get(agentName) ?? 0) + count);
     }

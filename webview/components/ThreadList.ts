@@ -126,8 +126,7 @@ export class ThreadList extends LitElement {
                 thread.usage
                   ? html`<span>${formatAiCredits(toAiCredits(thread.usage.totalNanoAiu))} AI credits</span>
                     <span>${(thread.usage.inputTokens + thread.usage.outputTokens).toLocaleString()} tokens</span>`
-                  : html`<span>${thread.estimatedMinutesSaved.toFixed(1)} min saved</span>
-                    <span>AI credits: unavailable</span>`
+                  : html`<span>AI credits: unavailable</span>`
               }
             </div>
           </button>

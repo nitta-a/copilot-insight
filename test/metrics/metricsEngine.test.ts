@@ -1,75 +1,8 @@
 import * as assert from "assert";
 import type { CompletionAcceptEvent, TextChangeEvent, TrackedEvent } from "../../src/events/eventSchema";
-import {
-  computeModelPerformance,
-  computeRefreshAnalysis,
-  computeTrueAcceptanceRate,
-  computeVelocityAnalysis,
-  hasTrueAcceptanceData,
-} from "../../src/metrics/metricsEngine";
-import type { MemoryManagementEvent } from "../../src/types";
+import { computeModelPerformance, computeVelocityAnalysis } from "../../src/metrics/metricsEngine";
 
 suite("metricsEngine", () => {
-  test("true acceptance requires both shown and accepted observations", () => {
-    const events: TrackedEvent[] = [makeAcceptEvent("2026-02-28T10:00:00Z", "typescript", 40)];
-    assert.strictEqual(hasTrueAcceptanceData([], 10), false);
-    assert.strictEqual(hasTrueAcceptanceData(events, 0), false);
-    assert.strictEqual(hasTrueAcceptanceData(events, 10), true);
-  });
-  suite("computeTrueAcceptanceRate", () => {
-    test("returns zero rates for empty events", () => {
-      const result = computeTrueAcceptanceRate([], 0);
-      assert.strictEqual(result.rawAccepted, 0);
-      assert.strictEqual(result.trueAccepted, 0);
-      assert.strictEqual(result.rawRate, 0);
-      assert.strictEqual(result.trueRate, 0);
-      assert.strictEqual(result.revertedCount, 0);
-    });
-
-    test("counts all as true when no deletions follow", () => {
-      const events: TrackedEvent[] = [
-        makeAcceptEvent("2026-02-28T10:00:00Z", "typescript", 40),
-        makeAcceptEvent("2026-02-28T10:01:00Z", "typescript", 30),
-      ];
-      const result = computeTrueAcceptanceRate(events, 10);
-      assert.strictEqual(result.rawAccepted, 2);
-      assert.strictEqual(result.trueAccepted, 2);
-      assert.strictEqual(result.revertedCount, 0);
-      assert.strictEqual(result.rawRate, 20);
-      assert.strictEqual(result.trueRate, 20);
-    });
-
-    test("marks accept as reverted when large deletion follows within window", () => {
-      const events: TrackedEvent[] = [
-        makeAcceptEvent("2026-02-28T10:00:00.000Z", "typescript", 40),
-        makeTextChangeEvent("2026-02-28T10:00:10.000Z", "typescript", 0, 30),
-      ];
-      const result = computeTrueAcceptanceRate(events, 5, 30_000);
-      assert.strictEqual(result.rawAccepted, 1);
-      assert.strictEqual(result.revertedCount, 1);
-      assert.strictEqual(result.trueAccepted, 0);
-    });
-
-    test("does not mark as reverted when deletion is outside window", () => {
-      const events: TrackedEvent[] = [
-        makeAcceptEvent("2026-02-28T10:00:00.000Z", "typescript", 40),
-        makeTextChangeEvent("2026-02-28T10:02:00.000Z", "typescript", 0, 30),
-      ];
-      const result = computeTrueAcceptanceRate(events, 5, 30_000);
-      assert.strictEqual(result.revertedCount, 0);
-      assert.strictEqual(result.trueAccepted, 1);
-    });
-
-    test("does not mark as reverted when deletion is small", () => {
-      const events: TrackedEvent[] = [
-        makeAcceptEvent("2026-02-28T10:00:00.000Z", "typescript", 100),
-        makeTextChangeEvent("2026-02-28T10:00:10.000Z", "typescript", 0, 10),
-      ];
-      const result = computeTrueAcceptanceRate(events, 5, 30_000);
-      assert.strictEqual(result.revertedCount, 0);
-    });
-  });
-
   suite("computeVelocityAnalysis", () => {
     test("returns empty result for no events", () => {
       const result = computeVelocityAnalysis([]);
@@ -101,34 +34,6 @@ suite("metricsEngine", () => {
       const result = computeVelocityAnalysis(events, 60_000);
       assert.ok(result.timeSeries.length >= 2);
       // The second window should have much lower KPM
-    });
-  });
-
-  suite("computeRefreshAnalysis", () => {
-    test("computes recovery delta around compact boundaries", () => {
-      const events: TrackedEvent[] = [
-        makeAcceptEvent("2026-03-07T10:00:00.000Z", "typescript", 40),
-        makeTextChangeEvent("2026-03-07T10:00:10.000Z", "typescript", 0, 30),
-        makeAcceptEvent("2026-03-07T10:05:00.000Z", "typescript", 40),
-        makeAcceptEvent("2026-03-07T10:06:00.000Z", "typescript", 30),
-      ];
-      const refreshEvents: MemoryManagementEvent[] = [
-        {
-          timestamp: "2026-03-07T10:02:00.000Z",
-          type: "compact",
-          rawText: "/compact",
-          sessionId: "s1",
-        },
-      ];
-
-      const result = computeRefreshAnalysis(events, refreshEvents, { turnWindowSize: 2 });
-      assert.strictEqual(result.length, 1);
-      assert.strictEqual(result[0].preTurns.turnCount, 1);
-      assert.strictEqual(result[0].postTurns.turnCount, 2);
-      assert.strictEqual(result[0].preTurns.trueRate, 0);
-      assert.strictEqual(result[0].postTurns.trueRate, 100);
-      assert.strictEqual(result[0].recoveryDelta, 100);
-      assert.strictEqual(result[0].refreshRoi, null);
     });
   });
 

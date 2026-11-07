@@ -107,17 +107,7 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): stri
     const displayName = INTENT_DISPLAY_NAMES[rawIntent] ?? rawIntent;
     incrementCount(ctx.byChatIntent, displayName);
   }
-  // panel/unknown is the Copilot "Plan" mode intent: a plan was proposed.
-  if (rawIntent === "panel/unknown") {
-    ctx.planCount++;
-    ctx.activePlanPending = true;
-  }
   if (isSubagentIntent(rawIntent)) {
-    // If a plan was pending execution, the first agentic request fulfils it.
-    if (ctx.activePlanPending) {
-      ctx.executedPlanCount++;
-      ctx.activePlanPending = false;
-    }
     ctx.subagentRequests++;
     // Extract the short intent name (e.g. "tool/runSubagent" → "runSubagent")
     const shortIntent = rawIntent.split("/").pop() ?? rawIntent;
@@ -128,16 +118,7 @@ function trackChatIntent(line: string, ctx: ParsingContext, model: string): stri
       if (tsMatch) {
         ctx.activeSubagentLoop = tsMatch[1];
         ctx.activeSubagentLoopModel = model ? model : null;
-        ctx.subagentLoopsStarted++;
-        incrementCount(ctx.loopsStartedByDate, tsMatch[1].slice(0, 10));
-        ctx.activeSubagentLoopActionCount = 1;
-        if (model) {
-          incrementCount(ctx.loopsStartedByModel, model);
-        }
       }
-    } else {
-      // Subsequent action in the currently active loop.
-      ctx.activeSubagentLoopActionCount++;
     }
   }
   return rawIntent;
@@ -325,7 +306,6 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   if (!lower.includes("[toolcallingloop]") || !/shouldcontinue\s*=\s*false/.test(lower)) {
     return false;
   }
-  ctx.subagentLoops++;
   pushSessionSignal(ctx, {
     timestamp: extractTimestampFromText(line),
     signalType: "tool-loop-stop",
@@ -339,7 +319,6 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
   });
   if (ctx.activeSubagentLoop !== null) {
     const dateKey = ctx.activeSubagentLoop.slice(0, 10);
-    const actionCount = ctx.activeSubagentLoopActionCount;
     const tsMatch = line.match(/(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
     if (tsMatch) {
       const startMs = new Date(ctx.activeSubagentLoop.replace(/\s+/g, "T")).getTime();
@@ -356,59 +335,8 @@ function parseToolCallingLoopStopLine(line: string, ctx: ParsingContext): boolea
       }
     }
 
-    incrementCount(ctx.loopsCompletedByDate, dateKey);
-    const dateTotalActions = ctx.totalLoopActionsByDate.get(dateKey) ?? 0;
-    ctx.totalLoopActionsByDate.set(dateKey, dateTotalActions + actionCount);
-    const dateDist = ctx.loopDistributionByDate.get(dateKey) ?? {
-      bucket1: 0,
-      bucket2: 0,
-      bucket3to5: 0,
-      bucket6to10: 0,
-      bucket11plus: 0,
-    };
-    if (actionCount === 1) {
-      dateDist.bucket1++;
-    } else if (actionCount === 2) {
-      dateDist.bucket2++;
-    } else if (actionCount <= 5) {
-      dateDist.bucket3to5++;
-    } else if (actionCount <= 10) {
-      dateDist.bucket6to10++;
-    } else {
-      dateDist.bucket11plus++;
-    }
-    ctx.loopDistributionByDate.set(dateKey, dateDist);
-
-    // Record per-model completion and action-count histogram.
-    const model = ctx.activeSubagentLoopModel;
-    if (model) {
-      incrementCount(ctx.loopsCompletedByModel, model);
-      const prev = ctx.totalLoopActionsByModel.get(model) ?? 0;
-      ctx.totalLoopActionsByModel.set(model, prev + actionCount);
-      const dist = ctx.loopDistributionByModel.get(model) ?? {
-        bucket1: 0,
-        bucket2: 0,
-        bucket3to5: 0,
-        bucket6to10: 0,
-        bucket11plus: 0,
-      };
-      if (actionCount === 1) {
-        dist.bucket1++;
-      } else if (actionCount === 2) {
-        dist.bucket2++;
-      } else if (actionCount <= 5) {
-        dist.bucket3to5++;
-      } else if (actionCount <= 10) {
-        dist.bucket6to10++;
-      } else {
-        dist.bucket11plus++;
-      }
-      ctx.loopDistributionByModel.set(model, dist);
-    }
-
     ctx.activeSubagentLoop = null;
     ctx.activeSubagentLoopModel = null;
-    ctx.activeSubagentLoopActionCount = 0;
   }
   return true;
 }

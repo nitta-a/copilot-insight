@@ -265,7 +265,6 @@ suite("dbWorker session detail", () => {
     assert.ok((detail?.fatigueMarker?.score ?? 0) >= 3);
     assert.match(detail?.fatigueMarker?.reason ?? "", /refresh boundary occurred/);
     assert.strictEqual(detail?.threads[0]?.hasAutonomousRun, true);
-    assert.ok((detail?.threads[0]?.estimatedMinutesSaved ?? 0) > 0);
   });
 
   test("starts a new thread when vscodePrompt appears inside the same session", () => {

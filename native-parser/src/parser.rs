@@ -19,7 +19,6 @@ where
         total_accepted: 0,
         total_chat: 0,
         subagent_requests: 0,
-        plan_count: 0,
         by_model_shown: HashMap::new(),
         by_model_accepted: HashMap::new(),
         by_date: HashMap::new(),
@@ -28,8 +27,6 @@ where
         by_context_source: HashMap::new(),
         context_richness: NativeContextRichness::default(),
         autonomous_duration_ms: 0.0,
-        subagent_loops: 0,
-        executed_plan_count: 0,
         browser_tools_by_type: HashMap::new(),
         errors_by_type: HashMap::new(),
         total_prompt_tokens: 0,
@@ -42,14 +39,7 @@ where
         autonomous_duration_by_model: HashMap::new(),
         chat_by_date: HashMap::new(),
         finish_reason_counts: HashMap::new(),
-        subagent_loops_started: 0,
         total_rejected: 0,
-        loops_completed_by_model: HashMap::new(),
-        total_loop_actions_by_model: HashMap::new(),
-        loops_started_by_model: HashMap::new(),
-        loops_started_by_date: HashMap::new(),
-        loops_completed_by_date: HashMap::new(),
-        total_loop_actions_by_date: HashMap::new(),
         autonomous_duration_by_date: HashMap::new(),
     };
 
@@ -58,8 +48,6 @@ where
     // sufficient because Copilot Chat sessions are generally contained within
     // one log file.
     let mut active_loop = false;
-    let mut active_loop_model: Option<String> = None;
-    let mut active_loop_action_count: u32 = 0;
     let mut active_loop_start_ms: Option<u64> = None;
 
     for line in lines {
@@ -151,10 +139,6 @@ where
                     || event_lower.contains("subagent/request")
                 {
                     stats.subagent_requests += 1;
-                } else if event_lower.contains("plan-proposed")
-                    || event_lower.contains("plan/proposed")
-                {
-                    stats.plan_count += 1;
                 }
 
                 if let Some(lat) = entry.latency_ms {
@@ -291,19 +275,8 @@ where
                     }
                     // Track the first request in a new loop as a loop-start.
                     if !active_loop {
-                        stats.subagent_loops_started += 1;
                         active_loop = true;
-                        active_loop_model = norm_model.clone();
-                        active_loop_action_count = 1;
-                        if let Some(ref m) = norm_model {
-                            *stats.loops_started_by_model.entry(m.clone()).or_insert(0) += 1;
-                        }
-                        if let Some(dk) = line_date_key(trimmed) {
-                            *stats.loops_started_by_date.entry(dk.to_string()).or_insert(0) += 1;
-                        }
                         active_loop_start_ms = line_ts_ms(trimmed);
-                    } else {
-                        active_loop_action_count += 1;
                     }
                 }
                 // Always record latency for overall P50/P95 tracking.
@@ -343,19 +316,8 @@ where
         {
             // "[ToolCallingLoop] shouldContinue=false" — episode complete.
             if active_loop {
-                stats.subagent_loops += 1;
-                if let Some(ref m) = active_loop_model {
-                    *stats.loops_completed_by_model.entry(m.clone()).or_insert(0) += 1;
-                    *stats.total_loop_actions_by_model.entry(m.clone()).or_insert(0) +=
-                        active_loop_action_count;
-                }
                 if let Some(dk) = line_date_key(trimmed) {
                     let dk = dk.to_string();
-                    *stats.loops_completed_by_date.entry(dk.clone()).or_insert(0) += 1;
-                    *stats
-                        .total_loop_actions_by_date
-                        .entry(dk.clone())
-                        .or_insert(0) += active_loop_action_count;
                     if let (Some(start_ms), Some(end_ms)) =
                         (active_loop_start_ms, line_ts_ms(trimmed))
                     {
@@ -368,8 +330,6 @@ where
                     }
                 }
                 active_loop = false;
-                active_loop_model = None;
-                active_loop_action_count = 0;
                 active_loop_start_ms = None;
             }
         }
@@ -394,7 +354,6 @@ mod tests {
         assert_eq!(s.total_accepted, 0);
         assert_eq!(s.total_chat, 0);
         assert_eq!(s.subagent_requests, 0);
-        assert_eq!(s.plan_count, 0);
     }
 
     #[test]
@@ -432,7 +391,6 @@ mod tests {
         let s = parse(input);
         assert_eq!(s.total_chat, 1);
         assert_eq!(s.subagent_requests, 1);
-        assert_eq!(s.plan_count, 1);
     }
 
     #[test]
@@ -580,8 +538,6 @@ mod tests {
         assert!(s.latencies.is_empty());
         assert!(s.by_context_source.is_empty());
         assert_eq!(s.autonomous_duration_ms, 0.0);
-        assert_eq!(s.subagent_loops, 0);
-        assert_eq!(s.executed_plan_count, 0);
         assert!(s.browser_tools_by_type.is_empty());
         assert!(s.errors_by_type.is_empty());
         assert_eq!(s.total_prompt_tokens, 0);
@@ -752,34 +708,7 @@ mod tests {
         assert_eq!(s.total_rejected, 2);
     }
 
-    #[test]
-    fn tool_calling_loop_stop_increments_subagent_loops() {
-        let input = concat!(
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 200ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:01 [ToolCallingLoop] Subagent stop hook result: shouldContinue=false\n",
-        );
-        let s = parse(input);
-        assert_eq!(s.subagent_loops_started, 1);
-        assert_eq!(s.subagent_loops, 1);
-    }
 
-    #[test]
-    fn multiple_loops_tracked_correctly() {
-        let input = concat!(
-            // Loop 1
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 200ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 150ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
-            // Loop 2
-            "2026-03-27 12:01:00 ccreq:c | success | gpt-4o | 300ms | [panel/editAgent]\n",
-            "2026-03-27 12:01:01 [ToolCallingLoop] shouldContinue=false\n",
-        );
-        let s = parse(input);
-        assert_eq!(s.subagent_loops_started, 2);
-        assert_eq!(s.subagent_loops, 2);
-        // 3 subagent requests (a, b, c)
-        assert_eq!(s.subagent_requests, 3);
-    }
 
     #[test]
     fn new_fields_zero_when_empty_input() {
@@ -789,78 +718,12 @@ mod tests {
         assert!(s.autonomous_duration_by_model.is_empty());
         assert!(s.chat_by_date.is_empty());
         assert!(s.finish_reason_counts.is_empty());
-        assert_eq!(s.subagent_loops_started, 0);
         assert_eq!(s.total_rejected, 0);
-        assert!(s.loops_completed_by_model.is_empty());
-        assert!(s.total_loop_actions_by_model.is_empty());
-        assert!(s.loops_started_by_model.is_empty());
     }
 
-    #[test]
-    fn loops_completed_by_model_tracks_per_model_depth() {
-        // gpt-4o loop: 2 actions then stops
-        // claude loop: 1 action then stops
-        let input = concat!(
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
-            "2026-03-27 12:01:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
-            "2026-03-27 12:01:01 [ToolCallingLoop] shouldContinue=false\n",
-        );
-        let s = parse(input);
-        assert_eq!(s.loops_completed_by_model.get("gpt-4o"), Some(&1));
-        assert_eq!(s.total_loop_actions_by_model.get("gpt-4o"), Some(&2));
-        assert_eq!(s.loops_completed_by_model.get("claude-3.5-sonnet"), Some(&1));
-        assert_eq!(s.total_loop_actions_by_model.get("claude-3.5-sonnet"), Some(&1));
-    }
 
-    #[test]
-    fn loop_without_stop_not_counted_in_completed() {
-        // Loop started but never stopped — should not appear in loops_completed_by_model
-        let input =
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n";
-        let s = parse(input);
-        assert_eq!(s.subagent_loops_started, 1);
-        assert_eq!(s.subagent_loops, 0);
-        assert!(s.loops_completed_by_model.is_empty());
-        assert!(s.total_loop_actions_by_model.is_empty());
-    }
 
-    #[test]
-    fn loops_started_by_model_tracks_per_model() {
-        // Two loops started: gpt-4o starts and stops, then claude starts (no stop).
-        let input = concat!(
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:01 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:02 [ToolCallingLoop] shouldContinue=false\n",
-            "2026-03-27 12:01:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
-        );
-        let s = parse(input);
-        // gpt-4o started 1 loop, claude started 1 loop
-        assert_eq!(s.loops_started_by_model.get("gpt-4o"), Some(&1));
-        assert_eq!(s.loops_started_by_model.get("claude-3.5-sonnet"), Some(&1));
-        // global counter matches
-        assert_eq!(s.subagent_loops_started, 2);
-    }
 
-    #[test]
-    fn loops_started_by_date_tracks_per_date() {
-        let input = concat!(
-            "2026-03-27 12:00:00 ccreq:a | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-27 12:00:01 [ToolCallingLoop] shouldContinue=false\n",
-            "2026-03-28 09:00:00 ccreq:b | success | gpt-4o | 100ms | [tool/runSubagent]\n",
-            "2026-03-28 09:00:01 [ToolCallingLoop] shouldContinue=false\n",
-            "2026-03-28 10:00:00 ccreq:c | success | claude-3.5-sonnet | 200ms | [tool/runSubagent]\n",
-            "2026-03-28 10:00:02 [ToolCallingLoop] shouldContinue=false\n",
-        );
-        let s = parse(input);
-        assert_eq!(s.loops_started_by_date.get("2026-03-27"), Some(&1));
-        assert_eq!(s.loops_started_by_date.get("2026-03-28"), Some(&2));
-        assert_eq!(s.loops_completed_by_date.get("2026-03-27"), Some(&1));
-        assert_eq!(s.loops_completed_by_date.get("2026-03-28"), Some(&2));
-        assert_eq!(s.total_loop_actions_by_date.get("2026-03-27"), Some(&1));
-        assert_eq!(s.total_loop_actions_by_date.get("2026-03-28"), Some(&2)); // 1+1 actions
-    }
 
     #[test]
     fn autonomous_duration_by_date_computed_from_timestamps() {
