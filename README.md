@@ -2,12 +2,6 @@
 
 > 🇬🇧 [English](#english) | 🇯🇵 [日本語](#japanese)
 
-![Copilot Insight dashboard — Overview tab](images/screenshots/overview.png)
-
-<sub>Screenshots use synthetic sample data. / スクリーンショットは架空のサンプルデータで描画しています。</sub>
-
----
-
 <a name="english"></a>
 
 ## English
@@ -22,7 +16,7 @@ Explore recorded Copilot activity, token usage, and session history from local l
 - **Completion counts** — Shows recorded inline suggestions and acceptances when available.
 - **Inline data limits** — Suggestion counts depend on local logs and can be incomplete. VS Code does not expose another extension's live Copilot completion events.
 - **Exported rates** — CSV leaves acceptance rates empty when no suggestions were shown. JSON retains its numeric `summary.acceptanceRate` for compatibility and includes `summary.acceptanceRateAvailable` to indicate whether that value can be used.
-- **Model Efficiency Breakdown** — Compares performance across different models, highlighting the best model for your specific codebase and separating Chat vs. Inline Completion effectiveness. Includes **token consumption** (prompt + completion tokens per model), Copilot CLI AI credits from local session records, and a **finish-reason distribution** chart showing how often completions end normally versus hitting the context-window limit.
+- **Model usage** — Shows recorded chat and inline completion counts, token usage by model, and finish reasons when the local logs provide them. These observations do not identify the best model or measure output quality.
 - **Copilot CLI Usage** — Shows input/output and cached token totals, AI credits, and daily/model breakdowns from local CLI session records. VS Code Chat credits are not included in this CLI total.
 - **Daily Consumption & Thread Costs** — Overview charts show AI credits and input/output tokens by model-call date (UTC), with 7-day, 30-day, and full-history views. Sessions includes CLI/SDK conversation totals and per-prompt consumption alongside editor threads.
 - **Activity & Flow** — Activity heatmaps by hour of the day and weekly trend comparisons.
@@ -33,7 +27,7 @@ Explore recorded Copilot activity, token usage, and session history from local l
 Copilot Insight is built for extreme performance without bloating your editor:
 - **Backend (Rust + NAPI-RS)**: The log parsing engine is entirely written in Rust. It performs zero-copy, OS-level file I/O to parse massive log files instantly, bypassing Node.js memory limits.
 - **Frontend (Lit)**: The dashboard UI is built with the **Lit** framework, using lightweight, reactive Web Components that render smoothly without the overhead of heavy SPA frameworks.
-- **Database (DuckDB)**: Utilizes local DuckDB (Wasm) for executing fast, analytical queries on the parsed metrics.
+- **Analytics**: A local in-memory event store supports session history and named analytics queries.
 
 ### 🗂️ Dashboard Tabs
 
@@ -42,27 +36,6 @@ Copilot Insight is built for extreme performance without bloating your editor:
 - 🌊 **Activity by Hour**: Inline and chat activity heatmaps.
 - 💬 **Prompt Insights**: Tag Cloud of frequent terms, Intent Command donut, prompt length versus observed response rate, and saved chat sessions by request count. A recorded response is not a measure of acceptance, quality, or task completion.
 - 📂 **Sessions**: Session Intelligence Explorer. Drill down into chat threads, user prompts, file edits, and memory refreshes.
-
-<details>
-<summary>📸 Screenshots of each tab (sample data)</summary>
-
-**🔍 Health (Diagnostics)**
-
-![Health tab](images/screenshots/health.png)
-
-**🌊 Flow (Velocity)**
-
-![Flow tab](images/screenshots/flow.png)
-
-**💬 Prompt Insights**
-
-![Prompt Insights tab](images/screenshots/prompt-insights.png)
-
-**📂 Sessions**
-
-![Sessions tab](images/screenshots/sessions.png)
-
-</details>
 
 ### How to Use
 
@@ -79,6 +52,12 @@ Alternatively, click the **Copilot Insight** icon in the Activity Bar on the lef
 - Cumulative checkpoints can include adjustments (for example Fusion accounting) without a call timestamp or prompt association. These remain in the thread total; differences from the daily graphs are shown separately, never assigned to the session start date. New calls after a checkpoint are included.
 - Cached input is already part of input tokens. Missing credit data is **Unavailable**, not zero. Credits are Copilot usage units, not a currency bill; other devices and unrecorded VS Code Chat usage are not covered. Use **Copilot Insight: Refresh** to read newly appended records. Existing snapshots without thread details require a refresh.
 - The same view shows observed model-call timing across the recorded history and separates human permission responses from host policy decisions. Sessions show recorded context compactions and subagent relationships. Timing comparisons do not control for task differences; unavailable fields are not inferred. Agent-origin messages are shown separately from human prompts. Refresh older snapshots to populate these details.
+
+#### Metric and export changes in 1.1.14
+
+The dashboard and Markdown reports no longer estimate developer time saved, ROI, true acceptance, or agent thinking depth and planning success. Legacy VS Code completion counts are shown only when recorded; CLI token and AI credit usage comes from local session records. Existing event history is retained.
+
+The MCP `get_usage_summary` response no longer includes `estimatedMinutesSaved`; `totalCharsAccepted` sums recorded characters without filling in missing values. Historical Markdown reports generated after updating also omit the removed metrics.
 
 ### Configuration
 
@@ -134,7 +113,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 
   - **100% ローカル & プライバシーファースト** — 外部サーバーへのテレメトリ送信は一切ありません。マシン上の VS Code ログと Copilot CLI のセッション記録を解析します。
   - **補完件数** — 記録がある場合にインライン補完の表示件数と採用件数を表示します。
-  - **モデル効率の内訳** — 言語モデル間のパフォーマンスを比較し、特定のコードベースに最適なモデルを特定します（ChatとInline補完の有効性も分離して分析）。モデルごとの**トークン消費量**（プロンプトトークン＋補完トークン）に加え、Copilot CLI のローカルセッション記録から取得したAIクレジットを表示します。
+  - **モデル別使用量** — ローカルログに記録されたチャット・インライン補完の件数、モデル別トークン使用量、終了理由を表示します。これらの記録から最適なモデルや出力品質は判定できません。
   - **Copilot CLI 使用量** — ローカルセッション記録から入力・出力・キャッシュトークン、AIクレジット、日別・モデル別の内訳を表示します。このCLI集計にはVS Code Chatのクレジットは含まれません。
   - **日別消費グラフとスレッド別費用** — Overviewで呼び出し日時（UTC）に基づくAIクレジット・入力／出力トークンを7日・30日・全履歴で表示。SessionsではCLI/SDKスレッド全体の累計と、プロンプトごとの消費量を確認できます。
   - **アクティビティ** — 時間帯別のヒートマップと週次トレンドを表示します。
@@ -146,7 +125,7 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 
   - **バックエンド (Rust + NAPI-RS)**: ログ解析エンジンはすべてRustで書かれています。Node.jsのメモリ制限を回避し、OSレベルでのゼロコピー・ファイルI/Oにより、巨大なログファイルを瞬時に解析します。
   - **フロントエンド (Lit)**: ダッシュボードUIは **Lit** フレームワークで構築されています。重いSPAフレームワークのオーバーヘッドなしに、軽量でリアクティブな Web Components として高速にレンダリングされます。
-  - **データベース (DuckDB)**: 解析されたメトリクスに対する高速な分析クエリの実行に、ローカルの DuckDB (Wasm) を利用しています。
+  - **分析**: ローカルのインメモリーイベントストアでセッション履歴と定義済みの分析クエリを扱います。
 
 ### 🗂️ ダッシュボードタブ構成
 
@@ -155,27 +134,6 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
   - 🌊 **Activity by Hour**: 補完とチャットの時間帯別ヒートマップ。
   - 💬 **Prompt Insights**: 頻出用語、プロンプト長と記録された応答率、チャットの依頼数分布。応答の記録は採用・品質・タスク完了を意味しません。
   - 📂 **Sessions**: Session Intelligence Explorer。チャットスレッド、ユーザープロンプト、ファイル編集のタイムラインをドリルダウン解析。
-
-<details>
-<summary>📸 各タブのスクリーンショット (サンプルデータ)</summary>
-
-**🔍 Health (Diagnostics)**
-
-![Health タブ](images/screenshots/health.png)
-
-**🌊 Flow (Velocity)**
-
-![Flow タブ](images/screenshots/flow.png)
-
-**💬 Prompt Insights**
-
-![Prompt Insights タブ](images/screenshots/prompt-insights.png)
-
-**📂 Sessions**
-
-![Sessions タブ](images/screenshots/sessions.png)
-
-</details>
 
 ### 使い方
 
@@ -191,6 +149,12 @@ GitHub Copilot のローカルログファイルを解析し、使用統計を�
 - **View thread totals**または**Sessions**から **Copilot CLI / SDK** のスレッドを選択すると、スレッド累計と各プロンプトから次のプロンプトまでの呼び出し消費量を表示します。プロンプトのプレビューは160文字までで、ローカルにのみ保持します。
 - Fusionなどの累計補正や日時不明の利用量は、開始日に押し込まずスレッド累計に含め、日別グラフとの差分を別表示します。キャッシュ分を入力トークンに重ねて加算することはありません。
 - 費用を取得できない場合は0ではなく **Unavailable（未取得）** と表示します。AIクレジットは利用単位で、請求確定額ではありません。他端末や未記録のVS Code Chat利用は対象外です。最新ログの反映・古い保存データの更新には **Copilot Insight: Refresh** を実行してください。
+
+#### 1.1.14 の指標と出力の変更
+
+ダッシュボードと Markdown レポートから、節約時間・ROI・True Acceptance や、思考の深さ・計画成功率の推定を削除しました。旧 VS Code ログ由来の補完件数は記録がある場合に表示し、CLI のトークンと AI クレジットはローカルのセッション記録から集計します。既存のイベント履歴は保持されます。
+
+MCP の `get_usage_summary` は `estimatedMinutesSaved` を返さず、`totalCharsAccepted` は記録された文字数のみを合計します。更新後に過去の履歴から生成する Markdown レポートにも、削除した指標は含まれません。
 
 ### 設定
 
