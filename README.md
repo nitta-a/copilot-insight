@@ -2,6 +2,23 @@
 
 > 🇬🇧 [English](#english) | 🇯🇵 [日本語](#japanese)
 
+![Overview dashboard showing recorded usage and daily token and AI credit consumption](images/screenshots/overview-current.png)
+
+<sub>Current dashboard rendered with synthetic sample data. / 現在のダッシュボードを架空のサンプルデータで描画しています。</sub>
+
+<details>
+<summary>More screenshots / その他の画面</summary>
+
+**Health / 利用状況**
+
+![Health dashboard showing activity and acceptance rate timeline](images/screenshots/health-current.png)
+
+**Activity by Hour / 時間帯別アクティビティ**
+
+![Activity by Hour dashboard showing hourly activity](images/screenshots/activity-current.png)
+
+</details>
+
 <a name="english"></a>
 
 ## English
