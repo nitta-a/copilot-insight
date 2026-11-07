@@ -4,6 +4,16 @@ All notable changes to the "copilot-insight" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.14] - 2026-11-07
+
+### Changed
+- Focus the dashboard and reports on recorded usage and events, preserving legacy log parsing and stored event history.
+- Hide legacy completion counts when no observations were recorded and label their source when shown.
+
+### Removed
+- Remove estimated time savings, ROI, true acceptance, refresh ROI, and unsupported agent depth, autonomy, and planning-success metrics from the dashboard and reports.
+- Remove `estimatedMinutesSaved` from the MCP `get_usage_summary` response; accepted character totals now use recorded values only.
+
 ## [1.1.13] - 2026-11-06
 
 ### Changed
